@@ -55,12 +55,18 @@ export default async function handler(req, res) {
       // 출원번호
       const appNum = props["출원번호"]?.rich_text?.map((t) => t.plain_text).join("") || "";
 
+      // 출원인(특허고객번호)
+      const appOwner = props["출원인(특허고객번호)"]?.rich_text?.map((t) => t.plain_text).join("") || "";
+
+      // 대리인 코드
+      const agentCode = props["대리인 코드"]?.rich_text?.map((t) => t.plain_text).join("") || "";
+
       // 마감일
       const deadline = props["필수 마감일"]?.date?.start || "";
 
       const url = page.url || "";
 
-      return { title, type, status, category, appNum, deadline, url };
+      return { title, type, status, category, appNum, appOwner, agentCode, deadline, url };
     });
 
     res.status(200).json({ results });
