@@ -75,12 +75,10 @@ export default function Home() {
 
       <div className={`page${searched ? " searched" : ""}${dark ? " dark" : ""}`}>
 
-        {/* 다크모드 토글 */}
         <button className="theme-toggle" onClick={() => setDark(!dark)} title={dark ? "라이트 모드" : "다크 모드"}>
           {dark ? "☀️" : "🌙"}
         </button>
 
-        {/* 로고 */}
         <div className="logo-area">
           <h1 className="logo">
             <span className="g">G</span>
@@ -91,7 +89,6 @@ export default function Home() {
           {!searched && <p className="subtitle">가엔 특허법률사무소 · 문서 통합 검색</p>}
         </div>
 
-        {/* 검색창 */}
         <div className="search-wrap">
           <div className="search-box">
             <span className="icon">🔍</span>
@@ -109,7 +106,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* 결과 */}
         <div className="results">
           {loading && (
             <div className="loading">
@@ -211,7 +207,6 @@ export default function Home() {
         </div>
       </div>
 
-      {/* 노션 열기 팝업 */}
       {popup && (
         <div className="overlay" onClick={() => setPopup(null)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -241,7 +236,6 @@ export default function Home() {
           position: relative;
         }
         .page.dark { background: linear-gradient(160deg, #0f172a 0%, #1e293b 100%); color: #e2e8f0; }
-
         .theme-toggle {
           position: absolute; top: 20px; right: 20px;
           background: none; border: 2px solid #d0d9f0; border-radius: 50%;
@@ -250,7 +244,6 @@ export default function Home() {
           transition: border-color 0.2s;
         }
         .dark .theme-toggle { border-color: #475569; }
-
         .logo-area { margin-top: 14vh; margin-bottom: 28px; text-align: center; transition: margin 0.3s; }
         .searched .logo-area { margin-top: 32px; margin-bottom: 16px; }
         .logo { font-size: 52px; font-weight: 900; letter-spacing: -2px; line-height: 1; }
@@ -260,7 +253,6 @@ export default function Home() {
         .ip { color: #4a6fd4; font-size: 32px; font-weight: 700; }
         .dark .ip { color: #93c5fd; }
         .subtitle { color: #6b7280; font-size: 15px; margin-top: 8px; }
-
         .search-wrap { width: 100%; max-width: 640px; margin-bottom: 32px; transition: max-width 0.3s; }
         .searched .search-wrap { max-width: 1050px; }
         .search-box {
@@ -279,7 +271,6 @@ export default function Home() {
           cursor: pointer; font-family: inherit; white-space: nowrap;
         }
         .search-btn:hover { background: #14307a; }
-
         .results { width: 100%; max-width: 1050px; padding-bottom: 60px; }
         .loading { display: flex; flex-direction: column; align-items: center; margin-top: 60px; gap: 16px; }
         .spinner { width: 36px; height: 36px; border: 3px solid #d0d9f0; border-top: 3px solid #1a3a8f; border-radius: 50%; animation: spin 0.8s linear infinite; }
@@ -291,7 +282,6 @@ export default function Home() {
         .no-text { font-size: 18px; font-weight: 600; margin-top: 12px; }
         .no-sub { color: #9ca3af; font-size: 14px; margin-top: 6px; }
         .count { color: #6b7280; font-size: 13px; margin-bottom: 12px; }
-
         .table-outer {
           background: #fff; border-radius: 16px;
           box-shadow: 0 2px 16px rgba(26,58,143,0.08);
@@ -314,7 +304,6 @@ export default function Home() {
           overflow: hidden; text-overflow: ellipsis; max-width: 0;
         }
         .dark td { border-bottom-color: #334155; }
-
         .cell-inner { display: flex; align-items: center; gap: 6px; overflow: hidden; }
         .doc-icon { font-size: 14px; flex-shrink: 0; }
         .doc-title {
@@ -324,7 +313,6 @@ export default function Home() {
         }
         .dark .doc-title { color: #93c5fd; }
         .doc-title:hover { opacity: 0.75; }
-
         .badge { border-radius: 5px; padding: 2px 7px; font-size: 11px; font-weight: 700; display: inline-block; white-space: nowrap; }
         .badge.type     { background: #eef1fb; color: #1a3a8f; }
         .badge.status   { background: #f0fdf4; color: #166534; }
@@ -333,7 +321,6 @@ export default function Home() {
         .dark .badge.status   { background: #14532d; color: #86efac; }
         .dark .badge.category { background: #451a03; color: #fcd34d; }
         .dash { color: #d1d5db; }
-
         .copy-cell { display: flex; align-items: center; gap: 4px; overflow: hidden; }
         .cell-text { font-size: 12px; color: #6b7280; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
         .dark .cell-text { color: #94a3b8; }
@@ -347,8 +334,6 @@ export default function Home() {
         .copy-btn.copied { background: #dcfce7; color: #166534; }
         .dark .copy-btn { background: #1e3a6e; color: #93c5fd; }
         .dark .copy-btn.copied { background: #14532d; color: #86efac; }
-
-        /* 팝업 */
         .overlay {
           position: fixed; inset: 0; background: rgba(0,0,0,0.45);
           display: flex; align-items: center; justify-content: center; z-index: 999;
