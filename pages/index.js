@@ -129,11 +129,11 @@ export default function Home() {
                     <colgroup>
                       <col style={{ width: "200px" }} />
                       <col style={{ width: "80px" }} />
-                      <col style={{ width: "100px" }} />
+                      <col style={{ width: "110px" }} />
                       <col style={{ width: "90px" }} />
-                      <col style={{ width: "150px" }} />
-                      <col style={{ width: "160px" }} />
-                      <col style={{ width: "130px" }} />
+                      <col />
+                      <col />
+                      <col />
                       <col style={{ width: "100px" }} />
                     </colgroup>
                     <thead>
@@ -151,7 +151,7 @@ export default function Home() {
                     <tbody>
                       {results.map((row, i) => (
                         <tr key={i} className="result-row">
-                          <td>
+                          <td className="td-ellipsis">
                             <div className="cell-inner">
                               <span className="doc-icon">📄</span>
                               <span className="doc-title" onClick={(e) => handleTitleClick(e, row.url)}>
@@ -159,10 +159,10 @@ export default function Home() {
                               </span>
                             </div>
                           </td>
-                          <td>{row.type ? <span className="badge type">{row.type}</span> : <span className="dash">—</span>}</td>
-                          <td>{row.status ? <span className="badge status">{row.status}</span> : <span className="dash">—</span>}</td>
-                          <td>{row.category ? <span className="badge category">{row.category}</span> : <span className="dash">—</span>}</td>
-                          <td>
+                          <td className="td-ellipsis">{row.type ? <span className="badge type">{row.type}</span> : <span className="dash">—</span>}</td>
+                          <td className="td-ellipsis">{row.status ? <span className="badge status">{row.status}</span> : <span className="dash">—</span>}</td>
+                          <td className="td-ellipsis">{row.category ? <span className="badge category">{row.category}</span> : <span className="dash">—</span>}</td>
+                          <td className="td-auto">
                             <div className="copy-cell">
                               <span className="cell-text">{row.appNum || "—"}</span>
                               {row.appNum && (
@@ -173,7 +173,7 @@ export default function Home() {
                               )}
                             </div>
                           </td>
-                          <td>
+                          <td className="td-auto">
                             <div className="copy-cell">
                               <span className="cell-text">{row.appOwner || "—"}</span>
                               {row.appOwner && (
@@ -184,7 +184,7 @@ export default function Home() {
                               )}
                             </div>
                           </td>
-                          <td>
+                          <td className="td-auto">
                             <div className="copy-cell">
                               <span className="cell-text">{row.agentCode || "—"}</span>
                               {row.agentCode && (
@@ -195,7 +195,7 @@ export default function Home() {
                               )}
                             </div>
                           </td>
-                          <td><span className="cell-text">{row.deadline || "—"}</span></td>
+                          <td className="td-ellipsis"><span className="cell-text">{row.deadline || "—"}</span></td>
                         </tr>
                       ))}
                     </tbody>
@@ -254,7 +254,7 @@ export default function Home() {
         .dark .ip { color: #93c5fd; }
         .subtitle { color: #6b7280; font-size: 15px; margin-top: 8px; }
         .search-wrap { width: 100%; max-width: 640px; margin-bottom: 32px; transition: max-width 0.3s; }
-        .searched .search-wrap { max-width: 1050px; }
+        .searched .search-wrap { max-width: 1100px; }
         .search-box {
           display: flex; align-items: center; background: #fff;
           border: 2px solid #d0d9f0; border-radius: 48px;
@@ -271,7 +271,7 @@ export default function Home() {
           cursor: pointer; font-family: inherit; white-space: nowrap;
         }
         .search-btn:hover { background: #14307a; }
-        .results { width: 100%; max-width: 1050px; padding-bottom: 60px; }
+        .results { width: 100%; max-width: 1100px; padding-bottom: 60px; }
         .loading { display: flex; flex-direction: column; align-items: center; margin-top: 60px; gap: 16px; }
         .spinner { width: 36px; height: 36px; border: 3px solid #d0d9f0; border-top: 3px solid #1a3a8f; border-radius: 50%; animation: spin 0.8s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -288,11 +288,10 @@ export default function Home() {
           overflow-x: auto; border: 1px solid #e5e9f5;
         }
         .dark .table-outer { background: #1e293b; border-color: #334155; }
-        table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
         th {
           background: #1a3a8f; color: #fff; padding: 11px 10px;
-          text-align: left; font-weight: 700; font-size: 12px;
-          white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+          text-align: left; font-weight: 700; font-size: 12px; white-space: nowrap;
         }
         .dark th { background: #1e3a6e; }
         .result-row { transition: background 0.12s; }
@@ -300,10 +299,17 @@ export default function Home() {
         .dark .result-row:hover { background: #1e3a5f; }
         td {
           padding: 8px 10px; border-bottom: 1px solid #f0f2f8;
-          vertical-align: middle; white-space: nowrap;
-          overflow: hidden; text-overflow: ellipsis; max-width: 0;
+          vertical-align: middle;
         }
         .dark td { border-bottom-color: #334155; }
+        /* 말줄임 적용 td (제목, 유형, 상태, 카테고리, 마감일) */
+        .td-ellipsis {
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 0;
+        }
+        /* 복사버튼 td - 내용 전체 표시 */
+        .td-auto {
+          white-space: nowrap;
+        }
         .cell-inner { display: flex; align-items: center; gap: 6px; overflow: hidden; }
         .doc-icon { font-size: 14px; flex-shrink: 0; }
         .doc-title {
@@ -321,12 +327,12 @@ export default function Home() {
         .dark .badge.status   { background: #14532d; color: #86efac; }
         .dark .badge.category { background: #451a03; color: #fcd34d; }
         .dash { color: #d1d5db; }
-        .copy-cell { display: flex; align-items: center; gap: 4px; overflow: hidden; }
-        .cell-text { font-size: 12px; color: #6b7280; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+        .copy-cell { display: flex; align-items: center; gap: 6px; }
+        .cell-text { font-size: 12px; color: #6b7280; white-space: nowrap; }
         .dark .cell-text { color: #94a3b8; }
         .copy-btn {
           flex-shrink: 0; background: #eef1fb; color: #1a3a8f;
-          border: none; border-radius: 4px; padding: 2px 6px;
+          border: none; border-radius: 4px; padding: 2px 7px;
           font-size: 10px; font-weight: 700; cursor: pointer; font-family: inherit;
           transition: background 0.15s;
         }
