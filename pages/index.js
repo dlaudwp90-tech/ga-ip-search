@@ -112,12 +112,14 @@ export default function Home() {
                   <table>
                     <thead>
                       <tr>
-                        <th style={{ width: "35%" }}>문서 제목</th>
-                        <th style={{ width: "12%" }}>유형</th>
-                        <th style={{ width: "15%" }}>상태</th>
-                        <th style={{ width: "13%" }}>카테고리</th>
-                        <th style={{ width: "13%" }}>출원번호</th>
-                        <th style={{ width: "12%" }}>마감일</th>
+                        <th style={{ width: "25%" }}>문서 제목</th>
+                        <th style={{ width: "10%" }}>유형</th>
+                        <th style={{ width: "10%" }}>상태</th>
+                        <th style={{ width: "10%" }}>카테고리</th>
+                        <th style={{ width: "12%" }}>출원번호</th>
+                        <th style={{ width: "13%" }}>출원인(특허고객번호)</th>
+                        <th style={{ width: "10%" }}>대리인 코드</th>
+                        <th style={{ width: "10%" }}>마감일</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -141,6 +143,8 @@ export default function Home() {
                             {row.category ? <span className="badge category">{row.category}</span> : <span className="dash">—</span>}
                           </td>
                           <td style={{ fontSize: "13px", color: "#6b7280" }}>{row.appNum || "—"}</td>
+                          <td style={{ fontSize: "13px", color: "#6b7280" }}>{row.appOwner || "—"}</td>
+                          <td style={{ fontSize: "13px", color: "#6b7280" }}>{row.agentCode || "—"}</td>
                           <td style={{ fontSize: "13px", color: "#6b7280" }}>{row.deadline || "—"}</td>
                         </tr>
                       ))}
