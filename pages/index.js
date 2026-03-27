@@ -126,16 +126,6 @@ export default function Home() {
                 <p className="count">검색 결과 {results.length}건</p>
                 <div className="table-outer">
                   <table>
-                    <colgroup>
-                      <col style={{ width: "200px" }} />
-                      <col style={{ width: "80px" }} />
-                      <col style={{ width: "110px" }} />
-                      <col style={{ width: "90px" }} />
-                      <col />
-                      <col />
-                      <col />
-                      <col style={{ width: "100px" }} />
-                    </colgroup>
                     <thead>
                       <tr>
                         <th>문서 제목</th>
@@ -151,7 +141,7 @@ export default function Home() {
                     <tbody>
                       {results.map((row, i) => (
                         <tr key={i} className="result-row">
-                          <td className="td-ellipsis">
+                          <td>
                             <div className="cell-inner">
                               <span className="doc-icon">📄</span>
                               <span className="doc-title" onClick={(e) => handleTitleClick(e, row.url)}>
@@ -159,10 +149,10 @@ export default function Home() {
                               </span>
                             </div>
                           </td>
-                          <td className="td-ellipsis">{row.type ? <span className="badge type">{row.type}</span> : <span className="dash">—</span>}</td>
-                          <td className="td-ellipsis">{row.status ? <span className="badge status">{row.status}</span> : <span className="dash">—</span>}</td>
-                          <td className="td-ellipsis">{row.category ? <span className="badge category">{row.category}</span> : <span className="dash">—</span>}</td>
-                          <td className="td-auto">
+                          <td>{row.type ? <span className="badge type">{row.type}</span> : <span className="dash">—</span>}</td>
+                          <td>{row.status ? <span className="badge status">{row.status}</span> : <span className="dash">—</span>}</td>
+                          <td>{row.category ? <span className="badge category">{row.category}</span> : <span className="dash">—</span>}</td>
+                          <td>
                             <div className="copy-cell">
                               <span className="cell-text">{row.appNum || "—"}</span>
                               {row.appNum && (
@@ -173,7 +163,7 @@ export default function Home() {
                               )}
                             </div>
                           </td>
-                          <td className="td-auto">
+                          <td>
                             <div className="copy-cell">
                               <span className="cell-text">{row.appOwner || "—"}</span>
                               {row.appOwner && (
@@ -184,7 +174,7 @@ export default function Home() {
                               )}
                             </div>
                           </td>
-                          <td className="td-auto">
+                          <td>
                             <div className="copy-cell">
                               <span className="cell-text">{row.agentCode || "—"}</span>
                               {row.agentCode && (
@@ -195,7 +185,7 @@ export default function Home() {
                               )}
                             </div>
                           </td>
-                          <td className="td-ellipsis"><span className="cell-text">{row.deadline || "—"}</span></td>
+                          <td><span className="cell-text">{row.deadline || "—"}</span></td>
                         </tr>
                       ))}
                     </tbody>
@@ -299,23 +289,14 @@ export default function Home() {
         .dark .result-row:hover { background: #1e3a5f; }
         td {
           padding: 8px 10px; border-bottom: 1px solid #f0f2f8;
-          vertical-align: middle;
+          vertical-align: middle; white-space: nowrap;
         }
         .dark td { border-bottom-color: #334155; }
-        /* 말줄임 적용 td (제목, 유형, 상태, 카테고리, 마감일) */
-        .td-ellipsis {
-          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 0;
-        }
-        /* 복사버튼 td - 내용 전체 표시 */
-        .td-auto {
-          white-space: nowrap;
-        }
-        .cell-inner { display: flex; align-items: center; gap: 6px; overflow: hidden; }
+        .cell-inner { display: flex; align-items: center; gap: 6px; }
         .doc-icon { font-size: 14px; flex-shrink: 0; }
         .doc-title {
           color: #1a3a8f; font-weight: 600; font-size: 13px;
-          cursor: pointer; text-decoration: underline;
-          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+          cursor: pointer; text-decoration: underline; white-space: nowrap;
         }
         .dark .doc-title { color: #93c5fd; }
         .doc-title:hover { opacity: 0.75; }
