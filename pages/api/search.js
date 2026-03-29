@@ -19,18 +19,23 @@ export default async function handler(req, res) {
     const agentCode = props["대리인 코드"]?.rich_text?.map((t) => t.plain_text).join("") || "";
     const deadline = props["필수 마감일"]?.date?.start || "";
     const url = page.url || "";
+
+    // (파일명)URL 형식 파싱 — URL만 추출해서 홈페이지에 전달
     const fileLinksRaw = props["파일다운링크"]?.rich_text?.map((t) => t.plain_text).join("") || "";
-        // (파일명)URL 형식 또는 기존 URL 형식 모두 지원
-        const fileLinks = fileLinksRaw.split("\n").filter(Boolean).map((line) => {
-          const match = line.match(/^\((.+?)\)(https?:\/\/.+)$/);
-          return match ? match[2] : line; // URL만 추출
-        }).join("\n");
+    const fileLinks = fileLinksRaw
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => {
+        const match = line.match(/^\(.+?\)(https?:\/\/.+)$/);
+        return match ? match[1] : line;
+      })
+      .join("\n");
+
     return { title, type, status, category, appNum, appOwner, agentCode, deadline, url, fileLinks };
   };
 
   try {
     if (mode === "all") {
-      // 전체 데이터 수집 (생성일자 내림차순, 최대 1000건)
       let allResults = [];
       let nextCursor = undefined;
       let hasMore = true;
@@ -70,7 +75,6 @@ export default async function handler(req, res) {
       return res.status(200).json({ results: allResults });
 
     } else {
-      // 키워드 검색
       if (!query) return res.status(400).json({ error: "query required" });
 
       const response = await fetch(
