@@ -39,9 +39,22 @@ async function appendFileLink(pageId, newUrl) {
   const data = await res.json();
   const existing = data.properties?.["파일다운링크"]?.rich_text?.map((t) => t.plain_text).join("") || "";
   const encodedUrl = newUrl.split("/").map((part, i) =>
-    i < 3 ? part : encodeURIComponent(decodeURIComponent(part))
-  ).join("/");
-  const updated = existing ? `${existing}\n${encodedUrl}` : encodedUrl;
+      i < 3 ? part : encodeURIComponent(decodeURIComponent(part))
+    ).join("/");
+    const fileName = decodeURIComponent(newUrl.split("/").pop());
+    const entry = `(${fileName})${encodedUrl}`;
+    const updated = existing ? `${existing}\n${entry}` : entry;
+  ```
+
+  ---
+
+  **"Commit changes"** 후 완료되면 알려주세요!
+
+  이렇게 하면 Notion DB의 `파일다운링크` 칸에 아래 형식으로 저장됩니다:
+  ```
+  (T우선심사설명서(35류)_클로드테스트(실험).hwpx)https://pub-xxx.r2.dev/...
+  (T우선심사설명서(35류)_클로드테스트(실험).pdf)https://pub-xxx.r2.dev/...
+  (사업자.jpg)https://pub-xxx.r2.dev/...
   await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
     method: "PATCH",
     headers: {
