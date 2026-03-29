@@ -19,7 +19,8 @@ export default async function handler(req, res) {
     const agentCode = props["대리인 코드"]?.rich_text?.map((t) => t.plain_text).join("") || "";
     const deadline = props["필수 마감일"]?.date?.start || "";
     const url = page.url || "";
-    return { title, type, status, category, appNum, appOwner, agentCode, deadline, url };
+    const fileLinks = props["파일다운링크"]?.rich_text?.map((t) => t.plain_text).join("") || "";
+    return { title, type, status, category, appNum, appOwner, agentCode, deadline, url, fileLinks };
   };
 
   try {
