@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import Head from "next/head";
+import { useRouter } from "next/router";
 
 // 1행 고정 (문서제목, 유형, 상태, 카테고리)
 function renderSingleLine(text) {
@@ -36,6 +37,7 @@ export default function Home() {
   const [popup, setPopup] = useState(null);
   const [copied, setCopied] = useState({});
   const inputRef = useRef(null);
+  const router = useRouter();
 
   const handleSearch = async () => {
     if (!query.trim()) return;
@@ -114,9 +116,13 @@ export default function Home() {
 
       <div className={`page${searched ? " searched" : ""}${dark ? " dark" : ""}`}>
 
-        <button className="theme-toggle" onClick={() => setDark(!dark)} title={dark ? "라이트 모드" : "다크 모드"}>
-          {dark ? "☀️" : "🌙"}
-        </button>
+      <button className="theme-toggle" onClick={() => setDark(!dark)} title={dark ? "라이트 모드" : "다크 모드"}>
+        {dark ? "☀️" : "🌙"}
+      </button>
+
+      <button className="upload-btn" onClick={() => router.push("/upload")} title="파일 업로드">
+        📁
+      </button>
 
         <div className="logo-area" onClick={searched ? handleClear : undefined} style={searched ? { cursor: "pointer" } : {}}>
           <div className="logo-wrap">
@@ -316,6 +322,14 @@ export default function Home() {
           display: flex; align-items: center; justify-content: center;
           transition: border-color 0.2s;
         }
+        .upload-btn {
+          position: absolute; top: 20px; right: 70px;
+          background: none; border: 2px solid #d0d9f0; border-radius: 50%;
+          width: 40px; height: 40px; font-size: 18px; cursor: pointer;
+          display: flex; align-items: center; justify-content: center;
+          transition: border-color 0.2s;
+        }
+        .dark .upload-btn { border-color: #475569; }
         .dark .theme-toggle { border-color: #475569; }
 
         .logo-area { margin-top: 10vh; margin-bottom: 32px; text-align: center; transition: margin 0.3s; }
