@@ -37,24 +37,19 @@ async function appendFileLink(pageId, newUrl) {
     },
   });
   const data = await res.json();
-  const existing = data.properties?.["파일다운링크"]?.rich_text?.map((t) => t.plain_text).join("") || "";
+  const existing =
+    data.properties?.["파일다운링크"]?.rich_text?.map((t) => t.plain_text).join("") || "";
+
+  // URL 인코딩
   const encodedUrl = newUrl.split("/").map((part, i) =>
-      i < 3 ? part : encodeURIComponent(decodeURIComponent(part))
-    ).join("/");
-    const fileName = decodeURIComponent(newUrl.split("/").pop());
-    const entry = `(${fileName})${encodedUrl}`;
-    const updated = existing ? `${existing}\n${entry}` : entry;
-  ```
+    i < 3 ? part : encodeURIComponent(decodeURIComponent(part))
+  ).join("/");
 
-  ---
+  // (파일명)URL 형식으로 저장
+  const fileName = decodeURIComponent(newUrl.split("/").pop());
+  const entry = `(${fileName})${encodedUrl}`;
+  const updated = existing ? `${existing}\n${entry}` : entry;
 
-  **"Commit changes"** 후 완료되면 알려주세요!
-
-  이렇게 하면 Notion DB의 `파일다운링크` 칸에 아래 형식으로 저장됩니다:
-  ```
-  (T우선심사설명서(35류)_클로드테스트(실험).hwpx)https://pub-xxx.r2.dev/...
-  (T우선심사설명서(35류)_클로드테스트(실험).pdf)https://pub-xxx.r2.dev/...
-  (사업자.jpg)https://pub-xxx.r2.dev/...
   await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
     method: "PATCH",
     headers: {
@@ -78,15 +73,19 @@ async function removeFileLink(pageId, urlToRemove) {
     },
   });
   const data = await res.json();
-  const existing = data.properties?.["파일다운링크"]?.rich_text?.map((t) => t.plain_text).join("") || "";
+  const existing =
+    data.properties?.["파일다운링크"]?.rich_text?.map((t) => t.plain_text).join("") || "";
+
   const updated = existing
     .split("\n")
     .filter((line) => {
-      const decoded = decodeURIComponent(line.trim());
-      const target = decodeURIComponent(urlToRemove.trim());
-      return decoded !== target;
+      // (파일명)URL 형식 또는 기존 URL 형식 모두 처리
+      const match = line.match(/^\(.+?\)(https?:\/\/.+)$/);
+      const lineUrl = match ? match[1] : line.trim();
+      return decodeURIComponent(lineUrl) !== decodeURIComponent(urlToRemove.trim());
     })
     .join("\n");
+
   await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
     method: "PATCH",
     headers: {
@@ -107,10 +106,10 @@ export default async function handler(req, res) {
   const { action, fileName, contentType, folder, publicUrl, key } = req.body;
 
   // Notion DB 일치 여부 사전 확인
-    if (action === "check") {
-      const pageId = await getNotionPageId(folder);
-      return res.status(200).json({ exists: !!pageId });
-    }
+  if (action === "check") {
+    const pageId = await getNotionPageId(folder);
+    return res.status(200).json({ exists: !!pageId });
+  }
 
   // Presigned URL 발급
   if (action === "presign") {
@@ -125,7 +124,7 @@ export default async function handler(req, res) {
     return res.status(200).json({ presignedUrl, publicUrl: pubUrl, key: fileKey });
   }
 
-  // Notion 기입 + 불일치 경고
+  // Notion 기입
   if (action === "notify") {
     let notionUpdated = false;
     let notionFound = false;
@@ -177,5 +176,5 @@ export default async function handler(req, res) {
     }
   }
 
-  return res.status(400).json({ error: "action 필요 (presign | notify | delete | list)" });
+  return res.status(400).json({ error: "action 필요 (check | presign | notify | delete | list)" });
 }
