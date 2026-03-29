@@ -45,7 +45,10 @@ async function appendFileLink(pageId, newUrl) {
       ?.map((t) => t.plain_text)
       .join("") || "";
 
-  const updated = existing ? `${existing}\n${newUrl}` : newUrl;
+  const encodedUrl = newUrl.split("/").map((part, i) =>
+    i < 3 ? part : encodeURIComponent(decodeURIComponent(part))
+  ).join("/");
+  const updated = existing ? `${existing}\n${encodedUrl}` : encodedUrl;
 
   await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
     method: "PATCH",
