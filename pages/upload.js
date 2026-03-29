@@ -8,22 +8,33 @@ export default function Upload() {
   const [uploading, setUploading] = useState(false);
   const [results, setResults] = useState([]);
   const [error, setError] = useState(null);
+  const [dragging, setDragging] = useState(false);
   const fileRef = useRef(null);
   const router = useRouter();
 
-  const handleFiles = (e) => {
-    setFiles(Array.from(e.target.files));
+  const addFiles = (newFiles) => {
+    const arr = Array.from(newFiles);
+    setFiles((prev) => {
+      const names = new Set(prev.map((f) => f.name));
+      return [...prev, ...arr.filter((f) => !names.has(f.name))];
+    });
     setResults([]);
     setError(null);
   };
 
-  const toBase64 = (file) =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result.split(",")[1]);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
+  const handleFiles = (e) => addFiles(e.target.files);
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragging(false);
+    addFiles(e.dataTransfer.files);
+  };
+
+  const handleDragOver = (e) => { e.preventDefault(); setDragging(true); };
+  const handleDragLeave = () => setDragging(false);
+
+  const removeFile = (name) =>
+    setFiles((prev) => prev.filter((f) => f.name !== name));
 
   const handleUpload = async () => {
     if (!folder.trim()) { setError("사건 폴더명을 입력하세요"); return; }
@@ -33,20 +44,39 @@ export default function Upload() {
     const uploaded = [];
     for (const file of files) {
       try {
-        const fileData = await toBase64(file);
-        const res = await fetch("/api/upload", {
+        // 1. Presigned URL 발급
+        const presignRes = await fetch("/api/upload", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            action: "presign",
             fileName: file.name,
-            fileData,
             contentType: file.type || "application/octet-stream",
             folder: folder.trim(),
           }),
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "업로드 실패");
-        uploaded.push({ name: file.name, url: data.url, ok: true });
+        const { presignedUrl, publicUrl } = await presignRes.json();
+
+        // 2. R2에 직접 업로드
+        const uploadRes = await fetch(presignedUrl, {
+          method: "PUT",
+          headers: { "Content-Type": file.type || "application/octet-stream" },
+          body: file,
+        });
+        if (!uploadRes.ok) throw new Error("R2 업로드 실패");
+
+        // 3. Notion 기입
+        await fetch("/api/upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "notify",
+            folder: folder.trim(),
+            publicUrl,
+          }),
+        });
+
+        uploaded.push({ name: file.name, url: publicUrl, ok: true });
       } catch (err) {
         uploaded.push({ name: file.name, error: err.message, ok: false });
       }
@@ -77,17 +107,31 @@ export default function Upload() {
           <label className="label">사건 폴더명</label>
           <input
             className="input"
-            placeholder="예: T우선심사설명서(3류_브랜드명)"
+            placeholder="예: 클로드테스트(상표)"
             value={folder}
             onChange={(e) => setFolder(e.target.value)}
           />
 
-          <label className="label">파일 선택 (복수 선택 가능)</label>
-          <div className="file-area" onClick={() => fileRef.current?.click()}>
-            {files.length === 0
-              ? <p className="file-hint">클릭하여 파일 선택</p>
-              : <ul className="file-list">{files.map((f, i) => <li key={i}>📄 {f.name}</li>)}</ul>
-            }
+          <label className="label">파일 선택 (클릭 또는 드래그 앤 드롭)</label>
+          <div
+            className={`file-area${dragging ? " dragging" : ""}`}
+            onClick={() => fileRef.current?.click()}
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+          >
+            {files.length === 0 ? (
+              <p className="file-hint">📂 클릭하거나 파일을 여기에 끌어다 놓으세요</p>
+            ) : (
+              <ul className="file-list">
+                {files.map((f, i) => (
+                  <li key={i}>
+                    <span>📄 {f.name}</span>
+                    <button className="remove-btn" onClick={(e) => { e.stopPropagation(); removeFile(f.name); }}>✕</button>
+                  </li>
+                ))}
+              </ul>
+            )}
             <input ref={fileRef} type="file" multiple style={{ display: "none" }} onChange={handleFiles} />
           </div>
 
@@ -133,10 +177,18 @@ export default function Upload() {
         .label { display: block; font-size: 13px; font-weight: 700; color: #374151; margin-bottom: 8px; margin-top: 20px; }
         .input { width: 100%; padding: 12px 16px; border: 1.5px solid #cbd5e1; border-radius: 10px; font-size: 14px; font-family: inherit; outline: none; background: #f8faff; }
         .input:focus { border-color: #13274F; }
-        .file-area { margin-top: 8px; border: 2px dashed #cbd5e1; border-radius: 10px; padding: 24px; cursor: pointer; text-align: center; background: #f8faff; transition: border-color 0.2s; }
-        .file-area:hover { border-color: #13274F; }
-        .file-hint { color: #9ca3af; font-size: 14px; }
-        .file-list { list-style: none; text-align: left; font-size: 13px; color: #374151; display: flex; flex-direction: column; gap: 4px; }
+        .file-area {
+          margin-top: 8px; border: 2px dashed #cbd5e1; border-radius: 10px;
+          padding: 24px; cursor: pointer; background: #f8faff;
+          transition: border-color 0.2s, background 0.2s; min-height: 90px;
+          display: flex; align-items: center; justify-content: center;
+        }
+        .file-area:hover, .file-area.dragging { border-color: #13274F; background: #eef1fb; }
+        .file-hint { color: #9ca3af; font-size: 14px; text-align: center; }
+        .file-list { list-style: none; width: 100%; display: flex; flex-direction: column; gap: 6px; }
+        .file-list li { display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: #374151; background: #f0f4ff; border-radius: 6px; padding: 6px 10px; }
+        .remove-btn { background: none; border: none; color: #9ca3af; cursor: pointer; font-size: 12px; padding: 0 2px; }
+        .remove-btn:hover { color: #dc2626; }
         .error { color: #dc2626; font-size: 13px; margin-top: 12px; }
         .btn { margin-top: 24px; width: 100%; padding: 14px; background: #13274F; color: #fff; border: none; border-radius: 10px; font-size: 15px; font-weight: 700; cursor: pointer; font-family: inherit; transition: background 0.2s; }
         .btn:hover { background: #0d1e3d; }
