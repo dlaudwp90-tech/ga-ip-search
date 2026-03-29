@@ -1,14 +1,12 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
 
-// 1행 고정 (문서제목, 유형, 상태, 카테고리)
 function renderSingleLine(text) {
   if (!text) return "—";
   return text.split("\n")[0];
 }
 
-// 들여쓰기 렌더링 (출원번호, 출원인, 대리인 코드)
 function renderWithIndent(text) {
   if (!text) return <span className="cell-text">—</span>;
   const lines = text.split("\n");
@@ -39,6 +37,22 @@ export default function Home() {
   const [downloading, setDownloading] = useState({});
   const inputRef = useRef(null);
   const router = useRouter();
+
+  // 팝업 외부 클릭/터치 시 닫기 — overlay div 없이 document 레벨 감지
+  useEffect(() => {
+    if (!filePopup) return;
+    const handleOutside = (e) => {
+      if (!e.target.closest(".file-link-wrap")) {
+        setFilePopup(null);
+      }
+    };
+    document.addEventListener("mousedown", handleOutside);
+    document.addEventListener("touchstart", handleOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleOutside);
+      document.removeEventListener("touchstart", handleOutside);
+    };
+  }, [filePopup]);
 
   const handleSearch = async () => {
     if (!query.trim()) return;
@@ -96,7 +110,6 @@ export default function Home() {
 
   const isMultiLine = (text) => text && text.includes("\n");
 
-  // blob 방식 다운로드 — 저장 경로 선택창 표시
   const handleDownload = async (e, url, fileName, key) => {
     e.stopPropagation();
     e.preventDefault();
@@ -140,18 +153,13 @@ export default function Home() {
         <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@600;700&family=Noto+Serif+KR:wght@400;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet" />
       </Head>
 
-      {/* 파일 팝업 닫기용 오버레이 */}
-      {filePopup && (
-        <div className="file-overlay" onClick={() => setFilePopup(null)} />
-      )}
+      <div className={`page${searched ? " searched" : ""}${dark ? " dark" : ""}`}>
 
-      <div className={`page${searched ? " searched" : ""}${dark ? " dark" : ""}`} onClick={() => setFilePopup(null)}>
-
-        <button className="theme-toggle" onClick={(e) => { e.stopPropagation(); setDark(!dark); }} title={dark ? "라이트 모드" : "다크 모드"}>
+        <button className="theme-toggle" onClick={() => setDark(!dark)} title={dark ? "라이트 모드" : "다크 모드"}>
           {dark ? "☀️" : "🌙"}
         </button>
 
-        <button className="upload-btn" onClick={(e) => { e.stopPropagation(); router.push("/upload"); }} title="파일 업로드">
+        <button className="upload-btn" onClick={() => router.push("/upload")} title="파일 업로드">
           📁
         </button>
 
@@ -222,7 +230,6 @@ export default function Home() {
                       {results.map((row, i) => (
                         <tr key={i} className={`result-row ${i % 2 === 0 ? "row-even" : "row-odd"}`}>
 
-                          {/* 문서제목 */}
                           <td className="td-nowrap">
                             <div className="cell-inner">
                               <span className="doc-icon">📄</span>
@@ -232,22 +239,18 @@ export default function Home() {
                             </div>
                           </td>
 
-                          {/* 유형 */}
                           <td className="td-nowrap">
                             {row.type ? <span className="badge type">{renderSingleLine(row.type)}</span> : <span className="dash">—</span>}
                           </td>
 
-                          {/* 상태 */}
                           <td className="td-nowrap">
                             {row.status ? <span className="badge status">{renderSingleLine(row.status)}</span> : <span className="dash">—</span>}
                           </td>
 
-                          {/* 카테고리 */}
                           <td className="td-nowrap">
                             {row.category ? <span className="badge category">{renderSingleLine(row.category)}</span> : <span className="dash">—</span>}
                           </td>
 
-                          {/* 출원번호 */}
                           <td className={isMultiLine(row.appNum) ? "td-top" : "td-nowrap"}>
                             <div className="copy-wrap">
                               {renderWithIndent(row.appNum)}
@@ -260,7 +263,6 @@ export default function Home() {
                             </div>
                           </td>
 
-                          {/* 출원인 */}
                           <td className={isMultiLine(row.appOwner) ? "td-top" : "td-nowrap"}>
                             <div className="copy-wrap">
                               {renderWithIndent(row.appOwner)}
@@ -273,7 +275,6 @@ export default function Home() {
                             </div>
                           </td>
 
-                          {/* 대리인 코드 */}
                           <td className={isMultiLine(row.agentCode) ? "td-top" : "td-nowrap"}>
                             <div className="copy-wrap">
                               {renderWithIndent(row.agentCode)}
@@ -286,13 +287,12 @@ export default function Home() {
                             </div>
                           </td>
 
-                          {/* 마감일 */}
                           <td className="td-nowrap">
                             <span className="cell-text">{row.deadline || "—"}</span>
                           </td>
 
                           {/* 파일 */}
-                          <td className="td-files" onClick={(e) => e.stopPropagation()}>
+                          <td className="td-files">
                             {row.fileLinks ? (
                               <div className="file-links">
                                 {row.fileLinks.split("\n").filter(Boolean).map((link, j) => {
@@ -304,7 +304,7 @@ export default function Home() {
                                     <div key={j} className="file-link-wrap">
                                       <span
                                         className={`file-link${isOpen ? " active" : ""}`}
-                                        onClick={(e) => {
+                                        onMouseDown={(e) => {
                                           e.stopPropagation();
                                           setFilePopup(isOpen ? null : popupKey);
                                         }}
@@ -312,18 +312,25 @@ export default function Home() {
                                         📄 {fileName} ▾
                                       </span>
                                       {isOpen && (
-                                        <div className="file-popup" onClick={(e) => e.stopPropagation()}>
+                                        <div
+                                          className="file-popup"
+                                          onMouseDown={(e) => e.stopPropagation()}
+                                          onTouchStart={(e) => e.stopPropagation()}
+                                        >
                                           <a
                                             href={link}
                                             target="_blank"
                                             rel="noreferrer"
                                             className="popup-btn preview"
+                                            onMouseDown={(e) => e.stopPropagation()}
                                             onClick={() => setFilePopup(null)}
                                           >
                                             🔍 미리보기
                                           </a>
                                           <button
                                             className={`popup-btn download${downloading[dlKey] ? " loading" : ""}`}
+                                            onMouseDown={(e) => e.stopPropagation()}
+                                            onTouchStart={(e) => e.stopPropagation()}
                                             onClick={(e) => handleDownload(e, link, fileName, dlKey)}
                                             disabled={downloading[dlKey]}
                                           >
@@ -344,7 +351,6 @@ export default function Home() {
                   </table>
                 </div>
 
-                {/* 노션 DB 전체보기 버튼 */}
                 <div className="notion-db-wrap">
                   <button
                     className="notion-db-btn"
@@ -393,12 +399,6 @@ export default function Home() {
           animation: slideUpFade 0.7s ease both;
         }
         .page.dark { background: linear-gradient(160deg, #0f172a 0%, #1e293b 100%); color: #e2e8f0; }
-
-        /* 파일 팝업 오버레이 */
-        .file-overlay {
-          position: fixed; inset: 0; z-index: 99;
-          background: transparent;
-        }
 
         .theme-toggle {
           position: absolute; top: 20px; right: 20px;
@@ -563,7 +563,6 @@ export default function Home() {
         .file-links { display: flex; flex-direction: column; gap: 4px; }
         .file-link-wrap { position: relative; display: inline-block; }
 
-        /* 파일명 태그 — 클릭으로 팝업 토글 */
         .file-link {
           font-size: 12px; color: #1a3a8f;
           padding: 3px 8px; background: #eef1fb; border-radius: 5px;
@@ -575,12 +574,12 @@ export default function Home() {
         .dark .file-link { background: #1e3a6e; color: #93c5fd; }
         .dark .file-link:hover, .dark .file-link.active { background: #2a4a8e; }
 
-        /* 팝업 — 클릭 시 표시, 파일명 우측 고정 */
+        /* 팝업 — 파일명 우측, 세로 중앙, z-index 높게 */
         .file-popup {
           position: absolute;
           left: calc(100% + 8px);
           top: 50%; transform: translateY(-50%);
-          z-index: 200;
+          z-index: 500;
           background: #fff; border: 1.5px solid #e5e9f5; border-radius: 10px;
           box-shadow: 0 8px 24px rgba(19,39,79,0.18);
           padding: 6px; min-width: 140px;
@@ -592,7 +591,7 @@ export default function Home() {
           font-size: 12px; font-weight: 700; padding: 8px 14px;
           border-radius: 7px; text-decoration: none; white-space: nowrap;
           text-align: center; cursor: pointer; border: none; font-family: inherit;
-          transition: background 0.15s;
+          transition: background 0.15s; display: block;
         }
         .popup-btn.preview { background: #eef1fb; color: #1a3a8f; }
         .popup-btn.preview:hover { background: #d0d9f0; }
@@ -604,13 +603,11 @@ export default function Home() {
         .dark .popup-btn.download { background: #14532d; color: #86efac; }
         .dark .popup-btn.download:hover { background: #166534; }
 
-        /* 노션 DB 전체보기 */
         .notion-db-wrap { text-align: center; margin-top: 24px; padding-bottom: 20px; }
         .notion-db-btn { background: #fff; color: #1e3a8a; border: 2px solid #c7d2fe; border-radius: 28px; padding: 12px 28px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit; box-shadow: 0 2px 10px rgba(99,102,241,0.12); transition: all 0.2s; }
         .notion-db-btn:hover { background: #eef2ff; border-color: #4f46e5; box-shadow: 0 4px 16px rgba(99,102,241,0.2); }
         .dark .notion-db-btn { background: #1e293b; color: #818cf8; border-color: #334155; }
 
-        /* 노션 페이지 팝업 */
         .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; z-index: 999; }
         .modal { background: #fff; border-radius: 20px; padding: 32px 36px; max-width: 360px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.25); text-align: center; }
         .dark .modal { background: #1e293b; color: #e2e8f0; }
