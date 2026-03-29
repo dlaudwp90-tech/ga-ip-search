@@ -184,6 +184,7 @@ export default function Home() {
                         <th>출원인(특허고객번호)</th>
                         <th>대리인 코드</th>
                         <th>마감일</th>
+                        <th>파일</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -257,6 +258,22 @@ export default function Home() {
                           {/* 마감일 */}
                           <td className="td-nowrap">
                             <span className="cell-text">{row.deadline || "—"}</span>
+                          </td>
+
+                          {/* 파일 */}
+                          <td className="td-files">
+                            {row.fileLinks ? (
+                              <div className="file-links">
+                                {row.fileLinks.split("\n").filter(Boolean).map((link, j) => {
+                                  const fileName = link.split("/").pop();
+                                  return (
+                                    <a key={j} href={link} download className="file-link" target="_blank" rel="noreferrer">
+                                      📄 {fileName}
+                                    </a>
+                                  );
+                                })}
+                              </div>
+                            ) : <span className="dash">—</span>}
                           </td>
 
                         </tr>
@@ -606,6 +623,16 @@ export default function Home() {
         .modal-btn.cancel    { background: #f3f4f6; color: #6b7280; }
         .dark .modal-btn.secondary { background: #1e3a6e; color: #93c5fd; }
         .dark .modal-btn.cancel    { background: #334155; color: #94a3b8; }
+        .td-files { vertical-align: middle; text-align: left; min-width: 180px; }
+        .file-links { display: flex; flex-direction: column; gap: 4px; }
+        .file-link {
+          font-size: 12px; color: #1a3a8f; text-decoration: none;
+          padding: 3px 8px; background: #eef1fb; border-radius: 5px;
+          white-space: nowrap; display: inline-block;
+        }
+        .file-link:hover { background: #d0d9f0; }
+        .dark .file-link { background: #1e3a6e; color: #93c5fd; }
+        .dark .file-link:hover { background: #2a4a8e; }
       `}</style>
     </>
   );
