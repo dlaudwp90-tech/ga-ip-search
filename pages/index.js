@@ -111,27 +111,57 @@ export default function Home() {
   const isMultiLine = (text) => text && text.includes("\n");
 
   const handleDownload = async (e, url, fileName, key) => {
-    e.stopPropagation();
-    e.preventDefault();
-    setDownloading((prev) => ({ ...prev, [key]: true }));
-    try {
-      const res = await fetch(url);
-      const blob = await res.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = blobUrl;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(blobUrl);
-    } catch (err) {
-      alert("다운로드 실패: " + err.message);
-    } finally {
-      setDownloading((prev) => ({ ...prev, [key]: false }));
-      setFilePopup(null);
-    }
-  };
+      e.stopPropagation();
+      e.preventDefault();
+      setDownloading((prev) => ({ ...prev, [key]: true }));
+      try {
+        const res = await fetch(url);
+        const blob = await res.blob();
+
+        // File System Access API 지원 브라우저 (Chrome 등) — 저장 경로 선택창
+        if (window.showSaveFilePicker) {
+          const ext = fileName.split(".").pop().toLowerCase();
+          const mimeMap = {
+            pdf: "application/pdf",
+            hwpx: "application/octet-stream",
+            hwp: "application/octet-stream",
+            pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            jpg: "image/jpeg", jpeg: "image/jpeg",
+            png: "image/png",
+            htl: "application/octet-stream",
+          };
+          const fileHandle = await window.showSaveFilePicker({
+            suggestedName: fileName,
+            types: [{
+              description: "파일",
+              accept: { [mimeMap[ext] || "application/octet-stream"]: [`.${ext}`] },
+            }],
+          });
+          const writable = await fileHandle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+        } else {
+          // 미지원 브라우저 (Firefox, Safari, 모바일) — 기존 방식
+          const blobUrl = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = blobUrl;
+          a.download = fileName;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(blobUrl);
+        }
+      } catch (err) {
+        // 사용자가 저장 창을 닫은 경우 무시
+        if (err.name !== "AbortError") {
+          alert("다운로드 실패: " + err.message);
+        }
+      } finally {
+        setDownloading((prev) => ({ ...prev, [key]: false }));
+        setFilePopup(null);
+      }
+    };
 
   return (
     <>
