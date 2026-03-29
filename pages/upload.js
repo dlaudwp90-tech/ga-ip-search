@@ -4,7 +4,7 @@ import { useRouter } from "next/router";
 
 export default function Upload() {
   const [folder, setFolder] = useState("");
-  const [folderStatus, setFolderStatus] = useState(null); // null | "checking" | "ok" | "fail"
+  const [folderStatus, setFolderStatus] = useState(null);
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [results, setResults] = useState([]);
@@ -16,10 +16,14 @@ export default function Upload() {
   const [checkedKeys, setCheckedKeys] = useState(new Set());
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadDone, setUploadDone] = useState(false);
+
+  // 중복 파일 처리 모달
+  const [dupModal, setDupModal] = useState(null); // { conflicts: [{file, existingKey}], decisions: {fileName: 'replace'|'rename'} }
+  const [dupDecisions, setDupDecisions] = useState({});
+
   const fileRef = useRef(null);
   const router = useRouter();
 
-  // 폴더명 입력 시 상태 초기화
   const handleFolderChange = (e) => {
     setFolder(e.target.value);
     setFolderStatus(null);
@@ -30,7 +34,6 @@ export default function Upload() {
     setResults([]);
   };
 
-  // Notion DB 일치 여부 확인
   const checkFolder = async (folderName) => {
     if (!folderName.trim()) return;
     setFolderStatus("checking");
@@ -44,9 +47,7 @@ export default function Upload() {
   };
 
   const handleFolderBlur = () => checkFolder(folder);
-  const handleFolderKeyDown = (e) => {
-    if (e.key === "Enter") checkFolder(folder);
-  };
+  const handleFolderKeyDown = (e) => { if (e.key === "Enter") checkFolder(folder); };
 
   const addFiles = (newFiles) => {
     const arr = Array.from(newFiles);
@@ -74,6 +75,7 @@ export default function Upload() {
     const data = await res.json();
     setExistingFiles(data.files || []);
     setLoadingExisting(false);
+    return data.files || [];
   };
 
   const toggleCheck = (key) => {
@@ -121,25 +123,74 @@ export default function Upload() {
     setDeletingKeys(new Set());
   };
 
+  // 새 이름 생성: 파일명(1).ext, 파일명(2).ext ...
+  const getNewName = (fileName, existingNames) => {
+    const lastDot = fileName.lastIndexOf(".");
+    const base = lastDot > -1 ? fileName.slice(0, lastDot) : fileName;
+    const ext = lastDot > -1 ? fileName.slice(lastDot) : "";
+    let n = 1;
+    while (existingNames.has(`${base}(${n})${ext}`)) n++;
+    return `${base}(${n})${ext}`;
+  };
+
+  // 업로드 시작 — 중복 체크 먼저
   const handleUpload = async () => {
     if (!folder.trim()) { setError("사건 폴더명을 입력하세요"); return; }
     if (folderStatus !== "ok") { setError("Notion DB에서 확인된 폴더명이 아닙니다"); return; }
     if (files.length === 0) { setError("파일을 선택하세요"); return; }
+
+    // 최신 기존 파일 목록 가져오기
+    const latest = await loadExistingFiles();
+    const existingNames = new Set(latest.map((f) => f.name));
+
+    // 중복 파일 확인
+    const conflicts = files.filter((f) => existingNames.has(f.name));
+    if (conflicts.length > 0) {
+      // 초기 결정: 모두 "replace"
+      const initDecisions = {};
+      conflicts.forEach((f) => { initDecisions[f.name] = "replace"; });
+      setDupDecisions(initDecisions);
+      setDupModal({ conflicts, existingNames });
+      return;
+    }
+
+    // 중복 없으면 바로 업로드
+    await doUpload(files, {}, existingNames);
+  };
+
+  // 모달 확인 후 업로드 실행
+  const handleDupConfirm = async () => {
+    const { existingNames } = dupModal;
+    setDupModal(null);
+    await doUpload(files, dupDecisions, existingNames);
+  };
+
+  // 실제 업로드 처리
+  const doUpload = async (fileList, decisions, existingNames) => {
     setUploading(true); setError(null); setResults([]);
     setUploadProgress(0); setUploadDone(false);
 
     const uploaded = [];
-    const total = files.length;
+    const total = fileList.length;
+    // 현재 존재하는 이름 셋 (새 이름 충돌 방지용)
+    const usedNames = new Set(existingNames);
 
     for (let idx = 0; idx < total; idx++) {
-      const file = files[idx];
+      const file = fileList[idx];
+      let targetName = file.name;
+
+      if (decisions[file.name] === "rename") {
+        targetName = getNewName(file.name, usedNames);
+      }
+      usedNames.add(targetName);
+
       try {
         const presignRes = await fetch("/api/upload", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "presign",
-            fileName: file.name,
+            fileName: targetName,
             contentType: file.type || "application/octet-stream",
             folder: folder.trim(),
           }),
@@ -153,13 +204,18 @@ export default function Upload() {
         });
         if (!uploadRes.ok) throw new Error("R2 업로드 실패");
 
-        await fetch("/api/upload", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "notify", folder: folder.trim(), publicUrl }),
-        });
+        // 교체인 경우 기존 Notion URL과 동일 → notify 불필요 (URL 동일)
+        // 새 이름인 경우 새 URL 추가
+        if (decisions[file.name] !== "replace" || targetName !== file.name) {
+          await fetch("/api/upload", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "notify", folder: folder.trim(), publicUrl }),
+          });
+        }
 
-        uploaded.push({ name: file.name, url: publicUrl, ok: true });
+        const label = targetName !== file.name ? `${file.name} → ${targetName}` : file.name;
+        uploaded.push({ name: label, url: publicUrl, ok: true });
       } catch (err) {
         uploaded.push({ name: file.name, error: err.message, ok: false });
       }
@@ -169,7 +225,7 @@ export default function Upload() {
     setResults(uploaded);
     setUploadDone(true);
     setUploading(false);
-    if (existingFiles.length > 0) loadExistingFiles();
+    loadExistingFiles();
   };
 
   const formatSize = (bytes) => {
@@ -201,7 +257,6 @@ export default function Upload() {
           <h2 className="title">📁 파일 업로드</h2>
           <p className="desc">R2 저장소에 파일을 업로드합니다</p>
 
-          {/* 사건 폴더명 */}
           <label className="label">사건 폴더명</label>
           <div className="folder-row">
             <div className={`input-wrap${folderStatus === "ok" ? " ok" : folderStatus === "fail" ? " fail" : ""}`}>
@@ -222,7 +277,6 @@ export default function Upload() {
             </button>
           </div>
 
-          {/* 폴더 상태 메시지 */}
           {folderStatus === "ok" && (
             <p className="folder-msg ok">✅ Notion DB에서 일치하는 문서를 찾았습니다. 업로드를 진행할 수 있습니다.</p>
           )}
@@ -230,7 +284,6 @@ export default function Upload() {
             <p className="folder-msg fail">❌ Notion DB에서 일치하는 문서를 찾지 못했습니다. 폴더명을 다시 확인해주세요.</p>
           )}
 
-          {/* 기존 파일 목록 */}
           {existingFiles.length > 0 && (
             <div className="existing-section">
               <div className="existing-header">
@@ -257,7 +310,6 @@ export default function Upload() {
             </div>
           )}
 
-          {/* 파일 선택 */}
           <label className="label" style={{ marginTop: "24px" }}>파일 선택 (클릭 또는 드래그 앤 드롭)</label>
           <div
             className={`file-area${dragging ? " dragging" : ""}${folderStatus === "fail" ? " disabled" : ""}`}
@@ -268,9 +320,7 @@ export default function Upload() {
           >
             {files.length === 0 ? (
               <p className="file-hint">
-                {folderStatus === "fail"
-                  ? "⛔ 폴더명을 먼저 확인하세요"
-                  : "📂 클릭하거나 파일을 여기에 끌어다 놓으세요"}
+                {folderStatus === "fail" ? "⛔ 폴더명을 먼저 확인하세요" : "📂 클릭하거나 파일을 여기에 끌어다 놓으세요"}
               </p>
             ) : (
               <ul className="file-list">
@@ -287,27 +337,21 @@ export default function Upload() {
 
           {error && <p className="error">⚠️ {error}</p>}
 
-          {/* 업로드 버튼 */}
           <button
             className={`btn${uploadDone ? " done" : ""}${folderStatus === "fail" ? " blocked" : ""}`}
             onClick={canUpload ? handleUpload : undefined}
             disabled={!canUpload}
           >
             <span className="btn-text">
-              {uploadDone
-                ? "✅ 업로드 완료"
-                : uploading
-                ? `업로드 중 (${uploadProgress}%)`
-                : folderStatus === "fail"
-                ? "⛔ 업로드 불가"
-                : folderStatus !== "ok"
-                ? "폴더명을 먼저 확인하세요"
+              {uploadDone ? "✅ 업로드 완료"
+                : uploading ? `업로드 중 (${uploadProgress}%)`
+                : folderStatus === "fail" ? "⛔ 업로드 불가"
+                : folderStatus !== "ok" ? "폴더명을 먼저 확인하세요"
                 : "업로드 시작"}
             </span>
             {uploading && <span className="btn-fill" style={{ width: `${uploadProgress}%` }} />}
           </button>
 
-          {/* 업로드 결과 */}
           {results.length > 0 && (
             <div className="results">
               <p className="results-title">업로드 결과</p>
@@ -315,9 +359,7 @@ export default function Upload() {
                 <div key={i} className={`result-item ${r.ok ? "ok" : "fail"}`}>
                   <span>{r.ok ? "✅" : "❌"} {r.name}</span>
                   {r.ok && (
-                    <button className="copy-btn" onClick={() => navigator.clipboard.writeText(r.url)}>
-                      URL 복사
-                    </button>
+                    <button className="copy-btn" onClick={() => navigator.clipboard.writeText(r.url)}>URL 복사</button>
                   )}
                   {!r.ok && <span className="err-msg">{r.error}</span>}
                 </div>
@@ -326,6 +368,61 @@ export default function Upload() {
           )}
         </div>
       </div>
+
+      {/* 중복 파일 처리 모달 */}
+      {dupModal && (
+        <div className="dup-overlay" onClick={() => setDupModal(null)}>
+          <div className="dup-modal" onClick={(e) => e.stopPropagation()}>
+            <p className="dup-title">⚠️ 동일한 파일이 이미 존재합니다</p>
+            <p className="dup-sub">각 파일의 처리 방법을 선택해주세요</p>
+
+            <div className="dup-list">
+              {dupModal.conflicts.map((file, i) => (
+                <div key={i} className="dup-item">
+                  <span className="dup-filename">📄 {file.name}</span>
+                  <div className="dup-btns">
+                    <button
+                      className={`dup-btn${dupDecisions[file.name] === "replace" ? " selected-replace" : ""}`}
+                      onClick={() => setDupDecisions((prev) => ({ ...prev, [file.name]: "replace" }))}
+                    >
+                      🔄 교체
+                    </button>
+                    <button
+                      className={`dup-btn${dupDecisions[file.name] === "rename" ? " selected-rename" : ""}`}
+                      onClick={() => setDupDecisions((prev) => ({ ...prev, [file.name]: "rename" }))}
+                    >
+                      📋 새 이름으로
+                    </button>
+                  </div>
+                  {dupDecisions[file.name] === "rename" && (
+                    <p className="dup-preview">
+                      → {getNewName(file.name, dupModal.existingNames)}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div className="dup-all-row">
+              <button className="dup-all-btn" onClick={() => {
+                const next = {};
+                dupModal.conflicts.forEach((f) => { next[f.name] = "replace"; });
+                setDupDecisions(next);
+              }}>모두 교체</button>
+              <button className="dup-all-btn rename" onClick={() => {
+                const next = {};
+                dupModal.conflicts.forEach((f) => { next[f.name] = "rename"; });
+                setDupDecisions(next);
+              }}>모두 새 이름으로</button>
+            </div>
+
+            <div className="dup-actions">
+              <button className="dup-confirm" onClick={handleDupConfirm}>확인 후 업로드</button>
+              <button className="dup-cancel" onClick={() => setDupModal(null)}>취소</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style jsx global>{`
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -344,20 +441,11 @@ export default function Upload() {
         .desc { font-size: 13px; color: #6b7280; margin-bottom: 28px; }
         .label { display: block; font-size: 13px; font-weight: 700; color: #374151; margin-bottom: 8px; margin-top: 20px; }
 
-        /* 폴더 입력 */
         .folder-row { display: flex; gap: 8px; }
-        .input-wrap {
-          flex: 1; display: flex; align-items: center;
-          border: 1.5px solid #cbd5e1; border-radius: 10px;
-          background: #f8faff; padding-right: 10px;
-          transition: border-color 0.2s;
-        }
+        .input-wrap { flex: 1; display: flex; align-items: center; border: 1.5px solid #cbd5e1; border-radius: 10px; background: #f8faff; padding-right: 10px; transition: border-color 0.2s; }
         .input-wrap.ok { border-color: #16a34a; background: #f0fdf4; }
         .input-wrap.fail { border-color: #dc2626; background: #fef2f2; }
-        .input {
-          flex: 1; padding: 12px 16px; border: none; outline: none;
-          font-size: 14px; font-family: inherit; background: transparent;
-        }
+        .input { flex: 1; padding: 12px 16px; border: none; outline: none; font-size: 14px; font-family: inherit; background: transparent; }
         .status-icon { font-size: 16px; flex-shrink: 0; }
         .spin { display: inline-block; animation: spin 0.8s linear infinite; }
 
@@ -369,7 +457,6 @@ export default function Upload() {
         .folder-btn:hover { background: #d0d9f0; }
         .folder-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
-        /* 기존 파일 */
         .existing-section { margin-top: 16px; border: 1.5px solid #e5e9f5; border-radius: 12px; overflow: hidden; }
         .existing-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: #f8faff; border-bottom: 1px solid #e5e9f5; }
         .check-all { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: #6b7280; cursor: pointer; }
@@ -386,13 +473,7 @@ export default function Upload() {
         .delete-btn:hover { background: #fee2e2; }
         .delete-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
-        /* 파일 선택 영역 */
-        .file-area {
-          margin-top: 8px; border: 2px dashed #cbd5e1; border-radius: 10px;
-          padding: 24px; cursor: pointer; background: #f8faff;
-          transition: border-color 0.2s, background 0.2s; min-height: 90px;
-          display: flex; align-items: center; justify-content: center;
-        }
+        .file-area { margin-top: 8px; border: 2px dashed #cbd5e1; border-radius: 10px; padding: 24px; cursor: pointer; background: #f8faff; transition: border-color 0.2s, background 0.2s; min-height: 90px; display: flex; align-items: center; justify-content: center; }
         .file-area:hover:not(.disabled), .file-area.dragging { border-color: #13274F; background: #eef1fb; }
         .file-area.disabled { cursor: not-allowed; background: #fef2f2; border-color: #fecaca; }
         .file-hint { color: #9ca3af; font-size: 14px; text-align: center; }
@@ -403,26 +484,14 @@ export default function Upload() {
         .remove-btn:hover { color: #dc2626; }
         .error { color: #dc2626; font-size: 13px; margin-top: 12px; }
 
-        /* 업로드 버튼 */
-        .btn {
-          margin-top: 24px; width: 100%; padding: 14px;
-          background: #13274F; color: #fff; border: none; border-radius: 10px;
-          font-size: 15px; font-weight: 700; cursor: pointer; font-family: inherit;
-          position: relative; overflow: hidden; transition: background 0.3s;
-        }
+        .btn { margin-top: 24px; width: 100%; padding: 14px; background: #13274F; color: #fff; border: none; border-radius: 10px; font-size: 15px; font-weight: 700; cursor: pointer; font-family: inherit; position: relative; overflow: hidden; transition: background 0.3s; }
         .btn:hover:not(:disabled):not(.blocked):not(.done) { background: #0d1e3d; }
         .btn:disabled:not(.blocked):not(.done) { background: #94a3b8; cursor: not-allowed; }
         .btn.blocked { background: #dc2626; cursor: not-allowed; }
         .btn.done { background: #166534; cursor: default; }
         .btn-text { position: relative; z-index: 1; }
-        .btn-fill {
-          position: absolute; left: 0; top: 0; height: 100%;
-          background: rgba(255,255,255,0.18);
-          transition: width 0.4s ease;
-          z-index: 0; border-radius: 10px 0 0 10px;
-        }
+        .btn-fill { position: absolute; left: 0; top: 0; height: 100%; background: rgba(255,255,255,0.18); transition: width 0.4s ease; z-index: 0; border-radius: 10px 0 0 10px; }
 
-        /* 결과 */
         .results { margin-top: 24px; }
         .results-title { font-size: 14px; font-weight: 700; color: #374151; margin-bottom: 12px; }
         .result-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-radius: 8px; margin-bottom: 8px; font-size: 13px; gap: 8px; }
@@ -430,6 +499,33 @@ export default function Upload() {
         .result-item.fail { background: #fef2f2; color: #991b1b; }
         .copy-btn { background: #dcfce7; color: #166634; border: none; border-radius: 6px; padding: 4px 10px; font-size: 11px; font-weight: 700; cursor: pointer; font-family: inherit; flex-shrink: 0; }
         .err-msg { font-size: 11px; color: #991b1b; }
+
+        /* 중복 파일 모달 */
+        .dup-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 999; padding: 16px; }
+        .dup-modal { background: #fff; border-radius: 20px; padding: 28px; max-width: 480px; width: 100%; box-shadow: 0 20px 60px rgba(0,0,0,0.25); }
+        .dup-title { font-size: 17px; font-weight: 800; color: #13274F; margin-bottom: 6px; }
+        .dup-sub { font-size: 13px; color: #6b7280; margin-bottom: 20px; }
+
+        .dup-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; max-height: 300px; overflow-y: auto; }
+        .dup-item { background: #f8faff; border: 1.5px solid #e5e9f5; border-radius: 12px; padding: 12px 14px; }
+        .dup-filename { font-size: 13px; color: #374151; font-weight: 600; display: block; margin-bottom: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .dup-btns { display: flex; gap: 8px; }
+        .dup-btn { flex: 1; padding: 8px; border: 1.5px solid #e5e9f5; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit; background: #fff; color: #6b7280; transition: all 0.15s; }
+        .dup-btn.selected-replace { background: #fef2f2; border-color: #fca5a5; color: #991b1b; }
+        .dup-btn.selected-rename { background: #f0fdf4; border-color: #86efac; color: #166534; }
+        .dup-btn:hover { border-color: #cbd5e1; }
+        .dup-preview { font-size: 11px; color: #166534; margin-top: 6px; padding: 4px 8px; background: #f0fdf4; border-radius: 5px; }
+
+        .dup-all-row { display: flex; gap: 8px; margin-bottom: 16px; padding-top: 4px; border-top: 1px solid #f0f4ff; padding-top: 14px; }
+        .dup-all-btn { flex: 1; padding: 8px; background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit; }
+        .dup-all-btn.rename { background: #f0fdf4; color: #166534; border-color: #86efac; }
+        .dup-all-btn:hover { opacity: 0.85; }
+
+        .dup-actions { display: flex; gap: 10px; }
+        .dup-confirm { flex: 1; padding: 13px; background: #13274F; color: #fff; border: none; border-radius: 12px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit; }
+        .dup-confirm:hover { background: #0d1e3d; }
+        .dup-cancel { padding: 13px 20px; background: #f3f4f6; color: #6b7280; border: none; border-radius: 12px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit; }
+        .dup-cancel:hover { background: #e5e7eb; }
       `}</style>
     </>
   );
