@@ -9,7 +9,6 @@ function renderSingleLine(text) {
 }
 
 // 들여쓰기 렌더링 (출원번호, 출원인, 대리인 코드)
-// 각 줄은 절대 줄바꿈 없이 표시, \n 있으면 두 번째 줄부터 들여쓰기
 function renderWithIndent(text) {
   if (!text) return <span className="cell-text">—</span>;
   const lines = text.split("\n");
@@ -36,12 +35,14 @@ export default function Home() {
   const [dark, setDark] = useState(false);
   const [popup, setPopup] = useState(null);
   const [copied, setCopied] = useState({});
+  const [filePopup, setFilePopup] = useState(null);
+  const [downloading, setDownloading] = useState({});
   const inputRef = useRef(null);
   const router = useRouter();
 
   const handleSearch = async () => {
     if (!query.trim()) return;
-    setLoading(true); setError(null); setResults(null); setSearched(true);
+    setLoading(true); setError(null); setResults(null); setSearched(true); setFilePopup(null);
     try {
       const res = await fetch("/api/search", {
         method: "POST",
@@ -61,12 +62,13 @@ export default function Home() {
   const handleKeyDown = (e) => { if (e.key === "Enter") handleSearch(); };
 
   const handleClear = () => {
-    setQuery(""); setSearched(false); setResults(null); setError(null);
+    setQuery(""); setSearched(false); setResults(null); setError(null); setFilePopup(null);
     inputRef.current?.focus();
   };
 
   const handleTitleClick = (e, url) => {
     e.stopPropagation();
+    setFilePopup(null);
     setPopup({ url });
   };
 
@@ -94,6 +96,30 @@ export default function Home() {
 
   const isMultiLine = (text) => text && text.includes("\n");
 
+  // blob 방식 다운로드 — 저장 경로 선택창 표시
+  const handleDownload = async (e, url, fileName, key) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setDownloading((prev) => ({ ...prev, [key]: true }));
+    try {
+      const res = await fetch(url);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    } catch (err) {
+      alert("다운로드 실패: " + err.message);
+    } finally {
+      setDownloading((prev) => ({ ...prev, [key]: false }));
+      setFilePopup(null);
+    }
+  };
+
   return (
     <>
       <Head>
@@ -114,15 +140,20 @@ export default function Home() {
         <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@600;700&family=Noto+Serif+KR:wght@400;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet" />
       </Head>
 
-      <div className={`page${searched ? " searched" : ""}${dark ? " dark" : ""}`}>
+      {/* 파일 팝업 닫기용 오버레이 */}
+      {filePopup && (
+        <div className="file-overlay" onClick={() => setFilePopup(null)} />
+      )}
 
-      <button className="theme-toggle" onClick={() => setDark(!dark)} title={dark ? "라이트 모드" : "다크 모드"}>
-        {dark ? "☀️" : "🌙"}
-      </button>
+      <div className={`page${searched ? " searched" : ""}${dark ? " dark" : ""}`} onClick={() => setFilePopup(null)}>
 
-      <button className="upload-btn" onClick={() => router.push("/upload")} title="파일 업로드">
-        📁
-      </button>
+        <button className="theme-toggle" onClick={(e) => { e.stopPropagation(); setDark(!dark); }} title={dark ? "라이트 모드" : "다크 모드"}>
+          {dark ? "☀️" : "🌙"}
+        </button>
+
+        <button className="upload-btn" onClick={(e) => { e.stopPropagation(); router.push("/upload"); }} title="파일 업로드">
+          📁
+        </button>
 
         <div className="logo-area" onClick={searched ? handleClear : undefined} style={searched ? { cursor: "pointer" } : {}}>
           <div className="logo-wrap">
@@ -191,7 +222,7 @@ export default function Home() {
                       {results.map((row, i) => (
                         <tr key={i} className={`result-row ${i % 2 === 0 ? "row-even" : "row-odd"}`}>
 
-                          {/* 문서제목 - 1행 고정 */}
+                          {/* 문서제목 */}
                           <td className="td-nowrap">
                             <div className="cell-inner">
                               <span className="doc-icon">📄</span>
@@ -201,17 +232,17 @@ export default function Home() {
                             </div>
                           </td>
 
-                          {/* 유형 - 1행 고정 */}
+                          {/* 유형 */}
                           <td className="td-nowrap">
                             {row.type ? <span className="badge type">{renderSingleLine(row.type)}</span> : <span className="dash">—</span>}
                           </td>
 
-                          {/* 상태 - 1행 고정 */}
+                          {/* 상태 */}
                           <td className="td-nowrap">
                             {row.status ? <span className="badge status">{renderSingleLine(row.status)}</span> : <span className="dash">—</span>}
                           </td>
 
-                          {/* 카테고리 - 1행 고정 */}
+                          {/* 카테고리 */}
                           <td className="td-nowrap">
                             {row.category ? <span className="badge category">{renderSingleLine(row.category)}</span> : <span className="dash">—</span>}
                           </td>
@@ -261,18 +292,45 @@ export default function Home() {
                           </td>
 
                           {/* 파일 */}
-                          <td className="td-files">
+                          <td className="td-files" onClick={(e) => e.stopPropagation()}>
                             {row.fileLinks ? (
                               <div className="file-links">
                                 {row.fileLinks.split("\n").filter(Boolean).map((link, j) => {
                                   const fileName = decodeURIComponent(link.split("/").pop());
+                                  const popupKey = `${i}-${j}`;
+                                  const isOpen = filePopup === popupKey;
+                                  const dlKey = `dl-${i}-${j}`;
                                   return (
                                     <div key={j} className="file-link-wrap">
-                                      <span className="file-link">📄 {fileName}</span>
-                                      <div className="file-popup">
-                                        <a href={link} target="_blank" rel="noreferrer" className="popup-btn preview">🔍 미리보기</a>
-                                        <a href={link} download={fileName} className="popup-btn download">⬇ 다운로드</a>
-                                      </div>
+                                      <span
+                                        className={`file-link${isOpen ? " active" : ""}`}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setFilePopup(isOpen ? null : popupKey);
+                                        }}
+                                      >
+                                        📄 {fileName} ▾
+                                      </span>
+                                      {isOpen && (
+                                        <div className="file-popup" onClick={(e) => e.stopPropagation()}>
+                                          <a
+                                            href={link}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="popup-btn preview"
+                                            onClick={() => setFilePopup(null)}
+                                          >
+                                            🔍 미리보기
+                                          </a>
+                                          <button
+                                            className={`popup-btn download${downloading[dlKey] ? " loading" : ""}`}
+                                            onClick={(e) => handleDownload(e, link, fileName, dlKey)}
+                                            disabled={downloading[dlKey]}
+                                          >
+                                            {downloading[dlKey] ? "⏳ 준비 중..." : "⬇ 다운로드"}
+                                          </button>
+                                        </div>
+                                      )}
                                     </div>
                                   );
                                 })}
@@ -336,6 +394,12 @@ export default function Home() {
         }
         .page.dark { background: linear-gradient(160deg, #0f172a 0%, #1e293b 100%); color: #e2e8f0; }
 
+        /* 파일 팝업 오버레이 */
+        .file-overlay {
+          position: fixed; inset: 0; z-index: 99;
+          background: transparent;
+        }
+
         .theme-toggle {
           position: absolute; top: 20px; right: 20px;
           background: none; border: 2px solid #d0d9f0; border-radius: 50%;
@@ -343,6 +407,8 @@ export default function Home() {
           display: flex; align-items: center; justify-content: center;
           transition: border-color 0.2s;
         }
+        .dark .theme-toggle { border-color: #475569; }
+
         .upload-btn {
           position: absolute; top: 20px; right: 70px;
           background: none; border: 2px solid #d0d9f0; border-radius: 50%;
@@ -351,62 +417,36 @@ export default function Home() {
           transition: border-color 0.2s;
         }
         .dark .upload-btn { border-color: #475569; }
-        .dark .theme-toggle { border-color: #475569; }
 
         .logo-area { margin-top: 10vh; margin-bottom: 32px; text-align: center; transition: margin 0.3s; }
         .searched .logo-area { margin-top: 24px; margin-bottom: 16px; }
         .searched .logo-area:hover .logo-hint { opacity: 1; }
 
-        /* Guardian & Angel 로고 - OG 이미지 동일 스타일 */
         .logo-wrap { display: inline-block; text-align: center; }
-        .logo-top-rule {
-          width: 520px; height: 1px; background: #13274F;
-          margin: 0 auto 18px;
-        }
+        .logo-top-rule { width: 520px; height: 1px; background: #13274F; margin: 0 auto 18px; }
         .logo-main {
           font-family: 'EB Garamond', 'Georgia', 'Times New Roman', serif;
           font-size: 56px; font-weight: 700;
-          color: #13274F; letter-spacing: -0.5px; line-height: 1.1;
-          margin: 0;
+          color: #13274F; letter-spacing: -0.5px; line-height: 1.1; margin: 0;
         }
         .dark .logo-main { color: #e2e8f0; }
         .logo-sub-en {
           font-family: 'Noto Sans KR', sans-serif;
-          font-size: 13px; font-weight: 400;
-          color: #13274F;
-          letter-spacing: 6px;
-          margin: 10px 0 14px;
-          text-transform: uppercase;
+          font-size: 13px; font-weight: 400; color: #13274F;
+          letter-spacing: 6px; margin: 10px 0 14px; text-transform: uppercase;
         }
         .dark .logo-sub-en { color: #94a3b8; }
-        .logo-mid-rule {
-          width: 300px; height: 1px; background: #13274F;
-          margin: 0 auto 14px;
-        }
+        .logo-mid-rule { width: 300px; height: 1px; background: #13274F; margin: 0 auto 14px; }
         .dark .logo-top-rule, .dark .logo-mid-rule, .dark .logo-bot-rule { background: #475569; }
         .logo-sub-kr {
           font-family: 'Noto Serif KR', 'Noto Sans KR', serif;
-          font-size: 26px; font-weight: 700;
-          color: #13274F; letter-spacing: 2px;
-          margin: 0 0 14px;
+          font-size: 26px; font-weight: 700; color: #13274F; letter-spacing: 2px; margin: 0 0 14px;
         }
         .dark .logo-sub-kr { color: #e2e8f0; }
-        .logo-bot-rule {
-          width: 520px; height: 1px; background: #13274F;
-          margin: 0 auto;
-        }
+        .logo-bot-rule { width: 520px; height: 1px; background: #13274F; margin: 0 auto; }
+        .logo-hint { font-size: 11px; color: #94a3b8; margin-top: 6px; opacity: 0; transition: opacity 0.2s; letter-spacing: 0.3px; }
+        .subtitle { color: #6b7280; font-size: 13px; margin-top: 12px; letter-spacing: 3px; font-family: 'Noto Sans KR', sans-serif; text-transform: uppercase; }
 
-        .logo-hint {
-          font-size: 11px; color: #94a3b8; margin-top: 6px;
-          opacity: 0; transition: opacity 0.2s; letter-spacing: 0.3px;
-        }
-        .subtitle {
-          color: #6b7280; font-size: 13px; margin-top: 12px;
-          letter-spacing: 3px; font-family: 'Noto Sans KR', sans-serif;
-          text-transform: uppercase;
-        }
-
-        /* 검색 후 로고 축소 */
         .searched .logo-main { font-size: 30px; }
         .searched .logo-sub-en { font-size: 10px; letter-spacing: 4px; margin: 6px 0 8px; }
         .searched .logo-sub-kr { font-size: 15px; margin-bottom: 8px; }
@@ -422,9 +462,7 @@ export default function Home() {
           .searched .logo-top-rule, .searched .logo-bot-rule { width: 200px; }
         }
 
-        .search-wrap {
-          width: 100%; max-width: 600px; margin-bottom: 24px; transition: max-width 0.3s;
-        }
+        .search-wrap { width: 100%; max-width: 600px; margin-bottom: 24px; transition: max-width 0.3s; }
         .searched .search-wrap { max-width: 100%; }
         .search-box {
           display: flex; align-items: center; background: #f8faff;
@@ -434,31 +472,15 @@ export default function Home() {
         }
         .dark .search-box { background: #1e293b; border-color: #334155; }
         .icon { font-size: 17px; flex-shrink: 0; }
-        input {
-          flex: 1; border: none; outline: none;
-          font-size: 16px; color: #1f2937; background: transparent;
-          font-family: inherit; min-width: 0;
-        }
+        input { flex: 1; border: none; outline: none; font-size: 16px; color: #1f2937; background: transparent; font-family: inherit; min-width: 0; }
         .dark input { color: #e2e8f0; }
-        .clear-btn {
-          background: none; border: none; cursor: pointer;
-          color: #9ca3af; font-size: 15px; padding: 0 2px; flex-shrink: 0;
-        }
-        .search-btn {
-          background: #13274F; color: #fff; border: none; border-radius: 8px;
-          padding: 9px 18px; font-size: 14px; font-weight: 700;
-          cursor: pointer; font-family: inherit; white-space: nowrap; flex-shrink: 0;
-        }
+        .clear-btn { background: none; border: none; cursor: pointer; color: #9ca3af; font-size: 15px; padding: 0 2px; flex-shrink: 0; }
+        .search-btn { background: #13274F; color: #fff; border: none; border-radius: 8px; padding: 9px 18px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit; white-space: nowrap; flex-shrink: 0; }
         .search-btn:hover { background: #0d1e3d; }
 
-        /* 모바일 대응 */
         @media (max-width: 480px) {
           .search-btn { padding: 9px 14px; font-size: 13px; }
-          input { font-size: 16px; }  /* 16px 미만이면 iOS가 자동 확대 */
-          .logo { gap: 10px; font-size: 30px; }
-          .logo-ga { font-size: 30px; }
-          .logo-ip { font-size: 18px; letter-spacing: 2px; }
-          .logo-divider { height: 22px; }
+          input { font-size: 16px; }
         }
 
         .results { width: 100%; max-width: 1100px; padding-bottom: 60px; }
@@ -473,85 +495,43 @@ export default function Home() {
         .no-sub { color: #9ca3af; font-size: 14px; margin-top: 6px; }
         .count { color: #6b7280; font-size: 13px; margin-bottom: 12px; }
 
-        /* 테이블 - 내용에 따라 셀 너비 자동 확장 */
-        .table-outer {
-          background: #fff; border-radius: 16px;
-          box-shadow: 0 2px 16px rgba(26,58,143,0.08);
-          overflow-x: auto; border: 1px solid #e5e9f5;
-        }
+        .table-outer { background: #fff; border-radius: 16px; box-shadow: 0 2px 16px rgba(26,58,143,0.08); overflow-x: auto; border: 1px solid #e5e9f5; }
         .dark .table-outer { background: #1e293b; border-color: #334155; }
-        table {
-          border-collapse: separate; border-spacing: 0;
-          font-size: 13px; width: max-content; min-width: 100%;
-        }
+        table { border-collapse: separate; border-spacing: 0; font-size: 13px; width: max-content; min-width: 100%; }
 
-        /* 헤더 */
-        th {
-          background: #1a3a8f; color: #fff; padding: 11px 16px;
-          text-align: center; font-weight: 700; font-size: 12px;
-          white-space: nowrap; border-right: 1px solid rgba(255,255,255,0.15);
-        }
+        th { background: #1a3a8f; color: #fff; padding: 11px 16px; text-align: center; font-weight: 700; font-size: 12px; white-space: nowrap; border-right: 1px solid rgba(255,255,255,0.15); }
         th:last-child { border-right: none; }
         .dark th { background: #1e3a6e; }
-
-        /* 첫번째 열 헤더 - 고정 */
-        th:first-child {
-          position: sticky; left: 0; z-index: 3;
-          background: #1a3a8f;
-          border-right: 2px solid rgba(255,255,255,0.3);
-        }
+        th:first-child { position: sticky; left: 0; z-index: 3; background: #1a3a8f; border-right: 2px solid rgba(255,255,255,0.3); }
         .dark th:first-child { background: #1e3a6e; }
 
         .result-row { transition: background 0.12s; }
         .result-row:hover td { background: #f0f4ff; }
         .dark .result-row:hover td { background: #1e3a5f; }
 
-        /* 모든 td - 가운데 정렬 */
-        td {
-          padding: 10px 16px;
-          border-bottom: 1.5px solid #dde3f5;
-          border-right: 1px solid #edf0fb;
-          white-space: nowrap;
-          text-align: center;
-          vertical-align: middle;
-          background: inherit;
-        }
+        td { padding: 10px 16px; border-bottom: 1.5px solid #dde3f5; border-right: 1px solid #edf0fb; white-space: nowrap; text-align: center; vertical-align: middle; background: inherit; }
         td:last-child { border-right: none; }
         .dark td { border-bottom-color: #2a3a55; border-right-color: #222e42; }
 
-        /* 첫번째 열 td - 고정 */
-        td:first-child {
-          position: sticky; left: 0; z-index: 2;
-          background: #fff;
-          border-right: 2px solid #dde3f5;
-        }
+        td:first-child { position: sticky; left: 0; z-index: 2; background: #fff; border-right: 2px solid #dde3f5; }
         .dark td:first-child { background: #1e293b; border-right-color: #2a3a55; }
         .result-row:hover td:first-child { background: #f0f4ff; }
         .dark .result-row:hover td:first-child { background: #1e3a5f; }
-        /* 짝수/홀수 행 색상 유지 */
         .row-odd td:first-child { background: #f7f8ff; }
         .dark .row-odd td:first-child { background: #172035; }
         .row-odd { background: #f7f8ff; }
         .row-even { background: #fff; }
         .dark .row-odd { background: #172035; }
         .dark .row-even { background: #1e293b; }
-        .row-odd:hover td:first-child,
-        .row-even:hover td:first-child { background: #f0f4ff; }
-        .dark .row-odd:hover td:first-child,
-        .dark .row-even:hover td:first-child { background: #1e3a5f; }
+        .row-odd:hover td:first-child, .row-even:hover td:first-child { background: #f0f4ff; }
+        .dark .row-odd:hover td:first-child, .dark .row-even:hover td:first-child { background: #1e3a5f; }
 
-        /* 1행 고정 td */
         .td-nowrap { vertical-align: middle; text-align: center; }
-
-        /* 다중행 td */
         .td-top { vertical-align: top; padding-top: 10px; text-align: left; }
 
         .cell-inner { display: flex; align-items: center; justify-content: center; gap: 6px; }
         .doc-icon { font-size: 14px; flex-shrink: 0; }
-        .doc-title {
-          color: #1a3a8f; font-weight: 600; font-size: 13px;
-          cursor: pointer; text-decoration: underline;
-        }
+        .doc-title { color: #1a3a8f; font-weight: 600; font-size: 13px; cursor: pointer; text-decoration: underline; }
         .dark .doc-title { color: #93c5fd; }
         .doc-title:hover { opacity: 0.75; }
 
@@ -564,102 +544,87 @@ export default function Home() {
         .dark .badge.category { background: #451a03; color: #fcd34d; }
         .dash { color: #d1d5db; }
 
-        /* 복사 래퍼 */
         .copy-wrap { display: inline-flex; align-items: flex-start; gap: 6px; }
-
-        /* 텍스트 */
         .cell-text { font-size: 12px; color: #6b7280; white-space: nowrap; }
         .dark .cell-text { color: #94a3b8; }
-
-        /* 들여쓰기 블록 */
         .indent-block { display: flex; flex-direction: column; gap: 3px; text-align: left; }
         .first-line  { font-size: 12px; color: #6b7280; white-space: nowrap; }
         .indent-line { font-size: 12px; color: #6b7280; white-space: nowrap; padding-left: 16px; }
         .dark .first-line, .dark .indent-line { color: #94a3b8; }
 
-        /* 복사 버튼 */
-        .copy-btn {
-          flex-shrink: 0; background: #eef1fb; color: #1a3a8f;
-          border: none; border-radius: 4px; padding: 2px 7px;
-          font-size: 10px; font-weight: 700; cursor: pointer; font-family: inherit;
-          transition: background 0.15s;
-        }
+        .copy-btn { flex-shrink: 0; background: #eef1fb; color: #1a3a8f; border: none; border-radius: 4px; padding: 2px 7px; font-size: 10px; font-weight: 700; cursor: pointer; font-family: inherit; transition: background 0.15s; }
         .copy-btn:hover { background: #d0d9f0; }
         .copy-btn.copied { background: #dcfce7; color: #166634; }
         .dark .copy-btn { background: #1e3a6e; color: #93c5fd; }
         .dark .copy-btn.copied { background: #14532d; color: #86efac; }
 
-        /* 노션 DB 전체보기 버튼 */
-        .notion-db-wrap { text-align: center; margin-top: 24px; padding-bottom: 20px; }
-        .notion-db-btn {
-          background: #fff; color: #1e3a8a;
-          border: 2px solid #c7d2fe; border-radius: 28px;
-          padding: 12px 28px; font-size: 14px; font-weight: 700;
-          cursor: pointer; font-family: inherit;
-          box-shadow: 0 2px 10px rgba(99,102,241,0.12); transition: all 0.2s;
+        /* 파일 열 */
+        .td-files { vertical-align: middle; text-align: left; min-width: 200px; }
+        .file-links { display: flex; flex-direction: column; gap: 4px; }
+        .file-link-wrap { position: relative; display: inline-block; }
+
+        /* 파일명 태그 — 클릭으로 팝업 토글 */
+        .file-link {
+          font-size: 12px; color: #1a3a8f;
+          padding: 3px 8px; background: #eef1fb; border-radius: 5px;
+          white-space: nowrap; display: inline-block;
+          cursor: pointer; user-select: none;
+          transition: background 0.15s;
         }
+        .file-link:hover, .file-link.active { background: #d0d9f0; }
+        .dark .file-link { background: #1e3a6e; color: #93c5fd; }
+        .dark .file-link:hover, .dark .file-link.active { background: #2a4a8e; }
+
+        /* 팝업 — 클릭 시 표시, 파일명 우측 고정 */
+        .file-popup {
+          position: absolute;
+          left: calc(100% + 8px);
+          top: 50%; transform: translateY(-50%);
+          z-index: 200;
+          background: #fff; border: 1.5px solid #e5e9f5; border-radius: 10px;
+          box-shadow: 0 8px 24px rgba(19,39,79,0.18);
+          padding: 6px; min-width: 140px;
+          display: flex; flex-direction: column; gap: 4px;
+        }
+        .dark .file-popup { background: #1e293b; border-color: #334155; }
+
+        .popup-btn {
+          font-size: 12px; font-weight: 700; padding: 8px 14px;
+          border-radius: 7px; text-decoration: none; white-space: nowrap;
+          text-align: center; cursor: pointer; border: none; font-family: inherit;
+          transition: background 0.15s;
+        }
+        .popup-btn.preview { background: #eef1fb; color: #1a3a8f; }
+        .popup-btn.preview:hover { background: #d0d9f0; }
+        .popup-btn.download { background: #f0fdf4; color: #166534; }
+        .popup-btn.download:hover { background: #dcfce7; }
+        .popup-btn.download.loading { background: #f3f4f6; color: #9ca3af; cursor: not-allowed; }
+        .dark .popup-btn.preview { background: #1e3a6e; color: #93c5fd; }
+        .dark .popup-btn.preview:hover { background: #2a4a8e; }
+        .dark .popup-btn.download { background: #14532d; color: #86efac; }
+        .dark .popup-btn.download:hover { background: #166534; }
+
+        /* 노션 DB 전체보기 */
+        .notion-db-wrap { text-align: center; margin-top: 24px; padding-bottom: 20px; }
+        .notion-db-btn { background: #fff; color: #1e3a8a; border: 2px solid #c7d2fe; border-radius: 28px; padding: 12px 28px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit; box-shadow: 0 2px 10px rgba(99,102,241,0.12); transition: all 0.2s; }
         .notion-db-btn:hover { background: #eef2ff; border-color: #4f46e5; box-shadow: 0 4px 16px rgba(99,102,241,0.2); }
         .dark .notion-db-btn { background: #1e293b; color: #818cf8; border-color: #334155; }
 
-        /* 팝업 */
-        .overlay {
-          position: fixed; inset: 0; background: rgba(0,0,0,0.45);
-          display: flex; align-items: center; justify-content: center; z-index: 999;
-        }
-        .modal {
-          background: #fff; border-radius: 20px; padding: 32px 36px;
-          max-width: 360px; width: 90%;
-          box-shadow: 0 20px 60px rgba(0,0,0,0.25); text-align: center;
-        }
+        /* 노션 페이지 팝업 */
+        .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; z-index: 999; }
+        .modal { background: #fff; border-radius: 20px; padding: 32px 36px; max-width: 360px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.25); text-align: center; }
         .dark .modal { background: #1e293b; color: #e2e8f0; }
         .modal-icon { font-size: 40px; margin-bottom: 12px; }
         .modal-title { font-size: 18px; font-weight: 800; margin-bottom: 6px; }
         .modal-sub { font-size: 13px; color: #6b7280; margin-bottom: 24px; }
         .modal-btns { display: flex; flex-direction: column; gap: 10px; }
-        .modal-btn {
-          border: none; border-radius: 12px; padding: 13px;
-          font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit;
-          transition: opacity 0.15s;
-        }
+        .modal-btn { border: none; border-radius: 12px; padding: 13px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit; transition: opacity 0.15s; }
         .modal-btn:hover { opacity: 0.82; }
         .modal-btn.primary   { background: #1a3a8f; color: #fff; }
         .modal-btn.secondary { background: #eef1fb; color: #1a3a8f; }
         .modal-btn.cancel    { background: #f3f4f6; color: #6b7280; }
         .dark .modal-btn.secondary { background: #1e3a6e; color: #93c5fd; }
         .dark .modal-btn.cancel    { background: #334155; color: #94a3b8; }
-        .td-files { vertical-align: middle; text-align: left; min-width: 200px; }
-        .file-links { display: flex; flex-direction: column; gap: 4px; }
-        .file-link-wrap { position: relative; display: inline-block; }
-        .file-link {
-          font-size: 12px; color: #1a3a8f;
-          padding: 3px 8px; background: #eef1fb; border-radius: 5px;
-          white-space: nowrap; display: inline-block; cursor: pointer;
-        }
-        .file-link-wrap:hover .file-link { background: #d0d9f0; }
-        .dark .file-link { background: #1e3a6e; color: #93c5fd; }
-        .dark .file-link-wrap:hover .file-link { background: #2a4a8e; }
-
-        /* 팝업 */
-        .file-popup {
-          display: none; position: absolute; left: 0; top: 100%;
-          margin-top: 4px; z-index: 100;
-          background: #fff; border: 1.5px solid #e5e9f5; border-radius: 10px;
-          box-shadow: 0 8px 24px rgba(19,39,79,0.15);
-          padding: 6px; min-width: 140px; flex-direction: column; gap: 4px;
-        }
-        .file-link-wrap:hover .file-popup { display: flex; }
-        .popup-btn {
-          font-size: 12px; font-weight: 700; padding: 7px 12px;
-          border-radius: 7px; text-decoration: none; white-space: nowrap;
-          text-align: center; cursor: pointer;
-        }
-        .popup-btn.preview { background: #eef1fb; color: #1a3a8f; }
-        .popup-btn.preview:hover { background: #d0d9f0; }
-        .popup-btn.download { background: #f0fdf4; color: #166534; }
-        .popup-btn.download:hover { background: #dcfce7; }
-        .dark .file-popup { background: #1e293b; border-color: #334155; }
-        .dark .popup-btn.preview { background: #1e3a6e; color: #93c5fd; }
-        .dark .popup-btn.download { background: #14532d; color: #86efac; }
       `}</style>
     </>
   );
