@@ -19,7 +19,12 @@ export default async function handler(req, res) {
     const agentCode = props["대리인 코드"]?.rich_text?.map((t) => t.plain_text).join("") || "";
     const deadline = props["필수 마감일"]?.date?.start || "";
     const url = page.url || "";
-    const fileLinks = props["파일다운링크"]?.rich_text?.map((t) => t.plain_text).join("") || "";
+    const fileLinksRaw = props["파일다운링크"]?.rich_text?.map((t) => t.plain_text).join("") || "";
+        // (파일명)URL 형식 또는 기존 URL 형식 모두 지원
+        const fileLinks = fileLinksRaw.split("\n").filter(Boolean).map((line) => {
+          const match = line.match(/^\((.+?)\)(https?:\/\/.+)$/);
+          return match ? match[2] : line; // URL만 추출
+        }).join("\n");
     return { title, type, status, category, appNum, appOwner, agentCode, deadline, url, fileLinks };
   };
 
