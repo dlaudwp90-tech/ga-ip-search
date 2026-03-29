@@ -93,6 +93,12 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
   const { action, fileName, contentType, folder, publicUrl, key } = req.body;
 
+  // Notion DB 일치 여부 사전 확인
+    if (action === "check") {
+      const pageId = await getNotionPageId(folder);
+      return res.status(200).json({ exists: !!pageId });
+    }
+
   // Presigned URL 발급
   if (action === "presign") {
     const fileKey = folder ? `${folder}/${fileName}` : fileName;
