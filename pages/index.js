@@ -265,11 +265,15 @@ export default function Home() {
                             {row.fileLinks ? (
                               <div className="file-links">
                                 {row.fileLinks.split("\n").filter(Boolean).map((link, j) => {
-                                  const fileName = link.split("/").pop();
+                                  const fileName = decodeURIComponent(link.split("/").pop());
                                   return (
-                                    <a key={j} href={link} download className="file-link" target="_blank" rel="noreferrer">
-                                      📄 {fileName}
-                                    </a>
+                                    <div key={j} className="file-link-wrap">
+                                      <span className="file-link">📄 {fileName}</span>
+                                      <div className="file-popup">
+                                        <a href={link} target="_blank" rel="noreferrer" className="popup-btn preview">🔍 미리보기</a>
+                                        <a href={link} download={fileName} className="popup-btn download">⬇ 다운로드</a>
+                                      </div>
+                                    </div>
                                   );
                                 })}
                               </div>
@@ -623,16 +627,39 @@ export default function Home() {
         .modal-btn.cancel    { background: #f3f4f6; color: #6b7280; }
         .dark .modal-btn.secondary { background: #1e3a6e; color: #93c5fd; }
         .dark .modal-btn.cancel    { background: #334155; color: #94a3b8; }
-        .td-files { vertical-align: middle; text-align: left; min-width: 180px; }
+        .td-files { vertical-align: middle; text-align: left; min-width: 200px; }
         .file-links { display: flex; flex-direction: column; gap: 4px; }
+        .file-link-wrap { position: relative; display: inline-block; }
         .file-link {
-          font-size: 12px; color: #1a3a8f; text-decoration: none;
+          font-size: 12px; color: #1a3a8f;
           padding: 3px 8px; background: #eef1fb; border-radius: 5px;
-          white-space: nowrap; display: inline-block;
+          white-space: nowrap; display: inline-block; cursor: pointer;
         }
-        .file-link:hover { background: #d0d9f0; }
+        .file-link-wrap:hover .file-link { background: #d0d9f0; }
         .dark .file-link { background: #1e3a6e; color: #93c5fd; }
-        .dark .file-link:hover { background: #2a4a8e; }
+        .dark .file-link-wrap:hover .file-link { background: #2a4a8e; }
+
+        /* 팝업 */
+        .file-popup {
+          display: none; position: absolute; left: 0; top: 100%;
+          margin-top: 4px; z-index: 100;
+          background: #fff; border: 1.5px solid #e5e9f5; border-radius: 10px;
+          box-shadow: 0 8px 24px rgba(19,39,79,0.15);
+          padding: 6px; min-width: 140px; flex-direction: column; gap: 4px;
+        }
+        .file-link-wrap:hover .file-popup { display: flex; }
+        .popup-btn {
+          font-size: 12px; font-weight: 700; padding: 7px 12px;
+          border-radius: 7px; text-decoration: none; white-space: nowrap;
+          text-align: center; cursor: pointer;
+        }
+        .popup-btn.preview { background: #eef1fb; color: #1a3a8f; }
+        .popup-btn.preview:hover { background: #d0d9f0; }
+        .popup-btn.download { background: #f0fdf4; color: #166534; }
+        .popup-btn.download:hover { background: #dcfce7; }
+        .dark .file-popup { background: #1e293b; border-color: #334155; }
+        .dark .popup-btn.preview { background: #1e3a6e; color: #93c5fd; }
+        .dark .popup-btn.download { background: #14532d; color: #86efac; }
       `}</style>
     </>
   );
