@@ -1,8 +1,5 @@
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
-
-export const config = {
-  api: { bodyParser: { sizeLimit: "150mb" } },
-};
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 const s3 = new S3Client({
   region: "auto",
@@ -36,7 +33,6 @@ async function getNotionPageId(title) {
 }
 
 async function appendFileLink(pageId, newUrl) {
-  // 기존 파일다운링크 가져오기
   const res = await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
     headers: {
       Authorization: `Bearer ${process.env.NOTION_API_KEY}`,
@@ -44,15 +40,13 @@ async function appendFileLink(pageId, newUrl) {
     },
   });
   const data = await res.json();
-  const existing = data.properties?.["파일다운링크"]?.rich_text
-    ?.map((t) => t.plain_text)
-    .join("") || "";
+  const existing =
+    data.properties?.["파일다운링크"]?.rich_text
+      ?.map((t) => t.plain_text)
+      .join("") || "";
 
-  const updated = existing
-    ? `${existing}\n${newUrl}`
-    : newUrl;
+  const updated = existing ? `${existing}\n${newUrl}` : newUrl;
 
-  // 업데이트
   await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
     method: "PATCH",
     headers: {
@@ -73,39 +67,34 @@ async function appendFileLink(pageId, newUrl) {
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
 
-  const { fileName, fileData, contentType, folder } = req.body;
-  if (!fileName || !fileData) {
-    return res.status(400).json({ error: "fileName, fileData 필요" });
+  const { action, fileName, contentType, folder } = req.body;
+
+  // Presigned URL 발급
+  if (action === "presign") {
+    const key = folder ? `${folder}/${fileName}` : fileName;
+    const command = new PutObjectCommand({
+      Bucket: process.env.R2_BUCKET_NAME,
+      Key: key,
+      ContentType: contentType || "application/octet-stream",
+    });
+    const presignedUrl = await getSignedUrl(s3, command, { expiresIn: 300 });
+    const publicUrl = `${process.env.R2_PUBLIC_URL}/${key}`;
+    return res.status(200).json({ presignedUrl, publicUrl, key });
   }
 
-  const key = folder ? `${folder}/${fileName}` : fileName;
-  const buffer = Buffer.from(fileData, "base64");
-
-  try {
-    // R2 업로드
-    await s3.send(
-      new PutObjectCommand({
-        Bucket: process.env.R2_BUCKET_NAME,
-        Key: key,
-        Body: buffer,
-        ContentType: contentType || "application/octet-stream",
-      })
-    );
-
-    const url = `${process.env.R2_PUBLIC_URL}/${key}`;
-
-    // Notion DB 자동 기입
+  // Notion 기입
+  if (action === "notify") {
+    const { publicUrl } = req.body;
     let notionUpdated = false;
     if (folder) {
       const pageId = await getNotionPageId(folder);
       if (pageId) {
-        await appendFileLink(pageId, url);
+        await appendFileLink(pageId, publicUrl);
         notionUpdated = true;
       }
     }
-
-    return res.status(200).json({ ok: true, url, key, notionUpdated });
-  } catch (err) {
-    return res.status(500).json({ error: err.message });
+    return res.status(200).json({ ok: true, notionUpdated });
   }
+
+  return res.status(400).json({ error: "action 필요 (presign | notify)" });
 }
