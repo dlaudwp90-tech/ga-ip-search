@@ -11,8 +11,11 @@ export default function Upload() {
   const [dragging, setDragging] = useState(false);
   const [existingFiles, setExistingFiles] = useState([]);
   const [loadingExisting, setLoadingExisting] = useState(false);
-  const [deletingKey, setDeletingKey] = useState(null);
+  const [deletingKeys, setDeletingKeys] = useState(new Set());
   const [notionWarning, setNotionWarning] = useState(false);
+  const [checkedKeys, setCheckedKeys] = useState(new Set());
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadDone, setUploadDone] = useState(false);
   const fileRef = useRef(null);
   const router = useRouter();
 
@@ -22,7 +25,7 @@ export default function Upload() {
       const names = new Set(prev.map((f) => f.name));
       return [...prev, ...arr.filter((f) => !names.has(f.name))];
     });
-    setResults([]); setError(null);
+    setResults([]); setError(null); setUploadDone(false); setUploadProgress(0);
   };
 
   const handleFiles = (e) => addFiles(e.target.files);
@@ -33,7 +36,7 @@ export default function Upload() {
 
   const loadExistingFiles = async () => {
     if (!folder.trim()) { setError("사건 폴더명을 입력하세요"); return; }
-    setLoadingExisting(true);
+    setLoadingExisting(true); setCheckedKeys(new Set());
     const res = await fetch("/api/upload", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -44,32 +47,63 @@ export default function Upload() {
     setLoadingExisting(false);
   };
 
+  const toggleCheck = (key) => {
+    setCheckedKeys((prev) => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (checkedKeys.size === existingFiles.length) {
+      setCheckedKeys(new Set());
+    } else {
+      setCheckedKeys(new Set(existingFiles.map((f) => f.key)));
+    }
+  };
+
   const handleDelete = async (file) => {
-    if (!confirm(`"${file.name}" 을 삭제하시겠습니까?`)) return;
-    setDeletingKey(file.key);
+    setDeletingKeys((prev) => new Set(prev).add(file.key));
     await fetch("/api/upload", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "delete",
-        key: file.key,
-        folder: folder.trim(),
-        publicUrl: file.url,
-      }),
+      body: JSON.stringify({ action: "delete", key: file.key, folder: folder.trim(), publicUrl: file.url }),
     });
     setExistingFiles((prev) => prev.filter((f) => f.key !== file.key));
-    setDeletingKey(null);
+    setCheckedKeys((prev) => { const next = new Set(prev); next.delete(file.key); return next; });
+    setDeletingKeys((prev) => { const next = new Set(prev); next.delete(file.key); return next; });
+  };
+
+  const handleDeleteSelected = async () => {
+    if (checkedKeys.size === 0) return;
+    if (!confirm(`선택한 ${checkedKeys.size}개 파일을 삭제하시겠습니까?`)) return;
+    const toDelete = existingFiles.filter((f) => checkedKeys.has(f.key));
+    setDeletingKeys(new Set(toDelete.map((f) => f.key)));
+    for (const file of toDelete) {
+      await fetch("/api/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete", key: file.key, folder: folder.trim(), publicUrl: file.url }),
+      });
+    }
+    setExistingFiles((prev) => prev.filter((f) => !checkedKeys.has(f.key)));
+    setCheckedKeys(new Set());
+    setDeletingKeys(new Set());
   };
 
   const handleUpload = async () => {
     if (!folder.trim()) { setError("사건 폴더명을 입력하세요"); return; }
     if (files.length === 0) { setError("파일을 선택하세요"); return; }
-    setUploading(true); setError(null); setResults([]); setNotionWarning(false);
+    setUploading(true); setError(null); setResults([]);
+    setNotionWarning(false); setUploadProgress(0); setUploadDone(false);
 
     const uploaded = [];
     let anyNotionMissing = false;
+    const total = files.length;
 
-    for (const file of files) {
+    for (let idx = 0; idx < total; idx++) {
+      const file = files[idx];
       try {
         const presignRes = await fetch("/api/upload", {
           method: "POST",
@@ -98,16 +132,17 @@ export default function Upload() {
         const notifyData = await notifyRes.json();
         if (!notifyData.notionFound) anyNotionMissing = true;
 
-        uploaded.push({ name: file.name, url: publicUrl, ok: true, notionUpdated: notifyData.notionUpdated });
+        uploaded.push({ name: file.name, url: publicUrl, ok: true });
       } catch (err) {
         uploaded.push({ name: file.name, error: err.message, ok: false });
       }
+      setUploadProgress(Math.round(((idx + 1) / total) * 100));
     }
 
     setResults(uploaded);
     if (anyNotionMissing) setNotionWarning(true);
+    setUploadDone(true);
     setUploading(false);
-    // 기존 파일 목록 갱신
     if (existingFiles.length > 0) loadExistingFiles();
   };
 
@@ -116,6 +151,9 @@ export default function Upload() {
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
     return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
   };
+
+  const allChecked = existingFiles.length > 0 && checkedKeys.size === existingFiles.length;
+  const someChecked = checkedKeys.size > 0;
 
   return (
     <>
@@ -142,7 +180,7 @@ export default function Upload() {
               className="input"
               placeholder="예: 클로드테스트(상표)"
               value={folder}
-              onChange={(e) => { setFolder(e.target.value); setExistingFiles([]); }}
+              onChange={(e) => { setFolder(e.target.value); setExistingFiles([]); setCheckedKeys(new Set()); }}
               onKeyDown={(e) => e.key === "Enter" && loadExistingFiles()}
             />
             <button className="folder-btn" onClick={loadExistingFiles} disabled={loadingExisting}>
@@ -153,24 +191,37 @@ export default function Upload() {
           {/* 기존 파일 목록 */}
           {existingFiles.length > 0 && (
             <div className="existing-section">
-              <p className="existing-title">📂 현재 저장된 파일 ({existingFiles.length}개)</p>
+              <div className="existing-header">
+                <label className="check-all">
+                  <input type="checkbox" checked={allChecked} onChange={toggleAll} />
+                  <span>전체 선택 ({existingFiles.length}개)</span>
+                </label>
+                {someChecked && (
+                  <button className="delete-selected-btn" onClick={handleDeleteSelected}>
+                    🗑 선택 삭제 ({checkedKeys.size}개)
+                  </button>
+                )}
+              </div>
               {existingFiles.map((f, i) => (
-                <div key={i} className="existing-item">
+                <div key={i} className={`existing-item${checkedKeys.has(f.key) ? " checked" : ""}`}>
+                  <input
+                    type="checkbox"
+                    checked={checkedKeys.has(f.key)}
+                    onChange={() => toggleCheck(f.key)}
+                    className="item-check"
+                  />
                   <span className="existing-name">📄 {f.name}</span>
                   <span className="existing-size">{formatSize(f.size)}</span>
                   <button
                     className="delete-btn"
                     onClick={() => handleDelete(f)}
-                    disabled={deletingKey === f.key}
+                    disabled={deletingKeys.has(f.key)}
                   >
-                    {deletingKey === f.key ? "삭제 중..." : "🗑 삭제"}
+                    {deletingKeys.has(f.key) ? "삭제 중..." : "🗑"}
                   </button>
                 </div>
               ))}
             </div>
-          )}
-          {existingFiles.length === 0 && folder && !loadingExisting && (
-            <p className="no-files-hint">파일 조회 버튼을 눌러 저장된 파일을 확인하세요</p>
           )}
 
           <label className="label" style={{ marginTop: "24px" }}>파일 선택 (클릭 또는 드래그 앤 드롭)</label>
@@ -205,8 +256,22 @@ export default function Upload() {
             </div>
           )}
 
-          <button className="btn" onClick={handleUpload} disabled={uploading}>
-            {uploading ? "업로드 중..." : "업로드 시작"}
+          {/* 업로드 버튼 */}
+          <button
+            className={`btn${uploadDone ? " done" : ""}`}
+            onClick={uploadDone ? undefined : handleUpload}
+            disabled={uploading || uploadDone}
+          >
+            <span className="btn-text">
+              {uploadDone
+                ? "✅ 업로드 완료"
+                : uploading
+                ? `업로드 중 (${uploadProgress}%)`
+                : "업로드 시작"}
+            </span>
+            {uploading && (
+              <span className="btn-fill" style={{ width: `${uploadProgress}%` }} />
+            )}
           </button>
 
           {results.length > 0 && (
@@ -249,16 +314,23 @@ export default function Upload() {
         .folder-btn { background: #eef1fb; color: #1a3a8f; border: 1.5px solid #c7d2fe; border-radius: 10px; padding: 0 16px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: inherit; white-space: nowrap; }
         .folder-btn:hover { background: #d0d9f0; }
         .folder-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
         .existing-section { margin-top: 16px; border: 1.5px solid #e5e9f5; border-radius: 12px; overflow: hidden; }
-        .existing-title { font-size: 12px; font-weight: 700; color: #6b7280; padding: 10px 14px; background: #f8faff; border-bottom: 1px solid #e5e9f5; }
-        .existing-item { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid #f0f4ff; font-size: 13px; }
+        .existing-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: #f8faff; border-bottom: 1px solid #e5e9f5; }
+        .check-all { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: #6b7280; cursor: pointer; }
+        .check-all input { cursor: pointer; width: 15px; height: 15px; }
+        .delete-selected-btn { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; border-radius: 6px; padding: 5px 12px; font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit; }
+        .delete-selected-btn:hover { background: #fee2e2; }
+        .existing-item { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid #f0f4ff; font-size: 13px; transition: background 0.1s; }
         .existing-item:last-child { border-bottom: none; }
+        .existing-item.checked { background: #f0f4ff; }
+        .item-check { width: 15px; height: 15px; cursor: pointer; flex-shrink: 0; }
         .existing-name { flex: 1; color: #374151; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .existing-size { color: #9ca3af; font-size: 11px; flex-shrink: 0; }
         .delete-btn { background: #fef2f2; color: #991b1b; border: none; border-radius: 6px; padding: 4px 10px; font-size: 11px; font-weight: 700; cursor: pointer; font-family: inherit; flex-shrink: 0; }
         .delete-btn:hover { background: #fee2e2; }
         .delete-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-        .no-files-hint { font-size: 12px; color: #9ca3af; margin-top: 8px; }
+
         .file-area { margin-top: 8px; border: 2px dashed #cbd5e1; border-radius: 10px; padding: 24px; cursor: pointer; background: #f8faff; transition: border-color 0.2s, background 0.2s; min-height: 90px; display: flex; align-items: center; justify-content: center; }
         .file-area:hover, .file-area.dragging { border-color: #13274F; background: #eef1fb; }
         .file-hint { color: #9ca3af; font-size: 14px; text-align: center; }
@@ -268,9 +340,25 @@ export default function Upload() {
         .remove-btn:hover { color: #dc2626; }
         .error { color: #dc2626; font-size: 13px; margin-top: 12px; }
         .notion-warning { margin-top: 14px; background: #fffbeb; border: 1.5px solid #fcd34d; border-radius: 10px; padding: 12px 16px; font-size: 13px; color: #92400e; line-height: 1.6; }
-        .btn { margin-top: 24px; width: 100%; padding: 14px; background: #13274F; color: #fff; border: none; border-radius: 10px; font-size: 15px; font-weight: 700; cursor: pointer; font-family: inherit; transition: background 0.2s; }
-        .btn:hover { background: #0d1e3d; }
-        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        /* 업로드 버튼 + 프로그레스 */
+        .btn {
+          margin-top: 24px; width: 100%; padding: 14px;
+          background: #13274F; color: #fff; border: none; border-radius: 10px;
+          font-size: 15px; font-weight: 700; cursor: pointer; font-family: inherit;
+          position: relative; overflow: hidden; transition: background 0.3s;
+        }
+        .btn:hover:not(:disabled) { background: #0d1e3d; }
+        .btn:disabled { cursor: not-allowed; }
+        .btn.done { background: #166534; cursor: default; }
+        .btn-text { position: relative; z-index: 1; }
+        .btn-fill {
+          position: absolute; left: 0; top: 0; height: 100%;
+          background: rgba(255, 255, 255, 0.18);
+          transition: width 0.4s ease;
+          z-index: 0; border-radius: 10px 0 0 10px;
+        }
+
         .results { margin-top: 24px; }
         .results-title { font-size: 14px; font-weight: 700; color: #374151; margin-bottom: 12px; }
         .result-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-radius: 8px; margin-bottom: 8px; font-size: 13px; gap: 8px; }
