@@ -20,7 +20,7 @@ export default async function handler(req, res) {
     const deadline = props["필수 마감일"]?.date?.start || "";
     const url = page.url || "";
 
-    // (파일명)URL 형식 파싱 — URL만 추출해서 홈페이지에 전달
+    // (파일명)URL 형식 파싱
     const fileLinksRaw = props["파일다운링크"]?.rich_text?.map((t) => t.plain_text).join("") || "";
     const fileLinks = fileLinksRaw
       .split("\n")
@@ -35,48 +35,8 @@ export default async function handler(req, res) {
   };
 
   try {
-    if (mode === "all") {
-      let allResults = [];
-      let nextCursor = undefined;
-      let hasMore = true;
-      let fetchCount = 0;
-
-      while (hasMore && fetchCount < 10) {
-        const body = {
-          page_size: 100,
-          sorts: [{ timestamp: "created_time", direction: "descending" }],
-        };
-        if (nextCursor) body.start_cursor = nextCursor;
-
-        const response = await fetch(
-          `https://api.notion.com/v1/databases/${DB_ID}/query`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${NOTION_KEY}`,
-              "Notion-Version": "2022-06-28",
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(body),
-          }
-        );
-
-        const data = await response.json();
-        if (!response.ok) {
-          return res.status(response.status).json({ error: data.message || "Notion API error" });
-        }
-
-        allResults = allResults.concat((data.results || []).map(parseRow));
-        hasMore = data.has_more;
-        nextCursor = data.next_cursor;
-        fetchCount++;
-      }
-
-      return res.status(200).json({ results: allResults });
-
-    } else {
-      if (!query) return res.status(400).json({ error: "query required" });
-
+    // 최근 수정 5개 조회 모드
+    if (mode === "recent") {
       const response = await fetch(
         `https://api.notion.com/v1/databases/${DB_ID}/query`,
         {
@@ -87,27 +47,46 @@ export default async function handler(req, res) {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            filter: {
-              or: [
-                { property: "이름(상표/디자인)", title: { contains: query } },
-                { property: "출원번호", rich_text: { contains: query } },
-                { property: "출원인(특허고객번호)", rich_text: { contains: query } },
-                { property: "대리인 코드", rich_text: { contains: query } },
-              ],
-            },
-            sorts: [{ timestamp: "created_time", direction: "descending" }],
-            page_size: 100,
+            sorts: [{ timestamp: "last_edited_time", direction: "descending" }],
+            page_size: 5,
           }),
         }
       );
-
       const data = await response.json();
-      if (!response.ok) {
-        return res.status(response.status).json({ error: data.message || "Notion API error" });
-      }
-
+      if (!response.ok) return res.status(response.status).json({ error: data.message });
       return res.status(200).json({ results: (data.results || []).map(parseRow) });
     }
+
+    // 일반 검색 모드
+    if (!query) return res.status(400).json({ error: "query required" });
+
+    const response = await fetch(
+      `https://api.notion.com/v1/databases/${DB_ID}/query`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${NOTION_KEY}`,
+          "Notion-Version": "2022-06-28",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          filter: {
+            or: [
+              { property: "이름(상표/디자인)", title: { contains: query } },
+              { property: "출원번호", rich_text: { contains: query } },
+              { property: "출원인(특허고객번호)", rich_text: { contains: query } },
+              { property: "대리인 코드", rich_text: { contains: query } },
+            ],
+          },
+          sorts: [{ timestamp: "last_edited_time", direction: "descending" }],
+          page_size: 100,
+        }),
+      }
+    );
+    const data = await response.json();
+    if (!response.ok) return res.status(response.status).json({ error: data.message });
+    return res.status(200).json({ results: (data.results || []).map(parseRow) });
+
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
