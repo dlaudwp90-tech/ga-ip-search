@@ -10,9 +10,7 @@ function renderSingleLine(text) {
 function renderWithIndent(text) {
   if (!text) return <span className="cell-text">—</span>;
   const lines = text.split("\n");
-  if (lines.length === 1) {
-    return <span className="cell-text">{text}</span>;
-  }
+  if (lines.length === 1) return <span className="cell-text">{text}</span>;
   return (
     <div className="indent-block">
       {lines.map((line, i) => (
@@ -34,17 +32,33 @@ export default function Home() {
   const [popup, setPopup] = useState(null);
   const [copied, setCopied] = useState({});
   const [filePopup, setFilePopup] = useState(null);
+  const [popupPos, setPopupPos] = useState({ x: 0, y: 0 });
   const [downloading, setDownloading] = useState({});
   const inputRef = useRef(null);
+  const tableOuterRef = useRef(null);
+  const filePopupRef = useRef(null);
   const router = useRouter();
 
-  // 팝업 외부 클릭/터치 시 닫기 — overlay div 없이 document 레벨 감지
+  // 팝업 외부 클릭 시 닫기 — 스크롤바 클릭은 제외
   useEffect(() => {
     if (!filePopup) return;
     const handleOutside = (e) => {
-      if (!e.target.closest(".file-link-wrap")) {
-        setFilePopup(null);
+      // 팝업 내부 클릭 → 닫지 않음
+      if (filePopupRef.current && filePopupRef.current.contains(e.target)) return;
+      // file-link-wrap 내부 클릭 → 닫지 않음 (토글은 onMouseDown에서 처리)
+      if (e.target.closest(".file-link-wrap")) return;
+      // 스크롤바 클릭 감지: table-outer 요소 자체가 target이면 스크롤바일 가능성 높음
+      if (tableOuterRef.current) {
+        const rect = tableOuterRef.current.getBoundingClientRect();
+        // 가로 스크롤바: clientY가 rect.bottom 근처
+        // 세로 스크롤바: clientX가 rect.right 근처
+        const nearVerticalScrollbar = e.clientX > rect.right - 20;
+        const nearHorizontalScrollbar = e.clientY > rect.bottom - 20;
+        if (nearVerticalScrollbar || nearHorizontalScrollbar) return;
+        // table-outer 자체를 클릭한 경우 (스크롤바 영역)
+        if (e.target === tableOuterRef.current) return;
       }
+      setFilePopup(null);
     };
     document.addEventListener("mousedown", handleOutside);
     document.addEventListener("touchstart", handleOutside);
@@ -111,57 +125,41 @@ export default function Home() {
   const isMultiLine = (text) => text && text.includes("\n");
 
   const handleDownload = async (e, url, fileName, key) => {
-      e.stopPropagation();
-      e.preventDefault();
-      setDownloading((prev) => ({ ...prev, [key]: true }));
-      try {
-        const res = await fetch(url);
-        const blob = await res.blob();
-
-        // File System Access API 지원 브라우저 (Chrome 등) — 저장 경로 선택창
-        if (window.showSaveFilePicker) {
-          const ext = fileName.split(".").pop().toLowerCase();
-          const mimeMap = {
-            pdf: "application/pdf",
-            hwpx: "application/octet-stream",
-            hwp: "application/octet-stream",
-            pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-            docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            jpg: "image/jpeg", jpeg: "image/jpeg",
-            png: "image/png",
-            htl: "application/octet-stream",
-          };
-          const fileHandle = await window.showSaveFilePicker({
-            suggestedName: fileName,
-            types: [{
-              description: "파일",
-              accept: { [mimeMap[ext] || "application/octet-stream"]: [`.${ext}`] },
-            }],
-          });
-          const writable = await fileHandle.createWritable();
-          await writable.write(blob);
-          await writable.close();
-        } else {
-          // 미지원 브라우저 (Firefox, Safari, 모바일) — 기존 방식
-          const blobUrl = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = blobUrl;
-          a.download = fileName;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(blobUrl);
-        }
-      } catch (err) {
-        // 사용자가 저장 창을 닫은 경우 무시
-        if (err.name !== "AbortError") {
-          alert("다운로드 실패: " + err.message);
-        }
-      } finally {
-        setDownloading((prev) => ({ ...prev, [key]: false }));
-        setFilePopup(null);
+    e.stopPropagation();
+    e.preventDefault();
+    setDownloading((prev) => ({ ...prev, [key]: true }));
+    try {
+      const res = await fetch(url);
+      const blob = await res.blob();
+      if (window.showSaveFilePicker) {
+        const ext = fileName.split(".").pop().toLowerCase();
+        const mimeMap = {
+          pdf: "application/pdf", hwpx: "application/octet-stream", hwp: "application/octet-stream",
+          pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+          docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", htl: "application/octet-stream",
+        };
+        const fileHandle = await window.showSaveFilePicker({
+          suggestedName: fileName,
+          types: [{ description: "파일", accept: { [mimeMap[ext] || "application/octet-stream"]: [`.${ext}`] } }],
+        });
+        const writable = await fileHandle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+      } else {
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = blobUrl; a.download = fileName;
+        document.body.appendChild(a); a.click();
+        document.body.removeChild(a); URL.revokeObjectURL(blobUrl);
       }
-    };
+    } catch (err) {
+      if (err.name !== "AbortError") alert("다운로드 실패: " + err.message);
+    } finally {
+      setDownloading((prev) => ({ ...prev, [key]: false }));
+      setFilePopup(null);
+    }
+  };
 
   return (
     <>
@@ -182,6 +180,51 @@ export default function Home() {
         <meta name="twitter:image" content="https://ga-ip-search.vercel.app/og-image.png" />
         <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@600;700&family=Noto+Serif+KR:wght@400;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet" />
       </Head>
+
+      {/* cursor 위치에 고정되는 파일 팝업 */}
+      {filePopup && (
+        <div
+          ref={filePopupRef}
+          className="file-popup-fixed"
+          style={{ left: popupPos.x + 14, top: popupPos.y - 10 }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+        >
+          {(() => {
+            const [rowIdx, colIdx] = filePopup.split("-").map(Number);
+            const row = results?.[rowIdx];
+            if (!row?.fileLinks) return null;
+            const links = row.fileLinks.split("\n").filter(Boolean);
+            const link = links[colIdx];
+            if (!link) return null;
+            const fileName = decodeURIComponent(link.split("/").pop());
+            const dlKey = `dl-${filePopup}`;
+            return (
+              <>
+                <a
+                  href={link}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="popup-btn preview"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={() => setFilePopup(null)}
+                >
+                  🔍 미리보기
+                </a>
+                <button
+                  className={`popup-btn download${downloading[dlKey] ? " loading" : ""}`}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onTouchStart={(e) => e.stopPropagation()}
+                  onClick={(e) => handleDownload(e, link, fileName, dlKey)}
+                  disabled={downloading[dlKey]}
+                >
+                  {downloading[dlKey] ? "⏳ 준비 중..." : "⬇ 다운로드"}
+                </button>
+              </>
+            );
+          })()}
+        </div>
+      )}
 
       <div className={`page${searched ? " searched" : ""}${dark ? " dark" : ""}`}>
 
@@ -241,7 +284,7 @@ export default function Home() {
             ) : (
               <>
                 <p className="count">검색 결과 {results.length}건</p>
-                <div className="table-outer">
+                <div className="table-outer" ref={tableOuterRef}>
                   <table>
                     <thead>
                       <tr>
@@ -329,45 +372,23 @@ export default function Home() {
                                   const fileName = decodeURIComponent(link.split("/").pop());
                                   const popupKey = `${i}-${j}`;
                                   const isOpen = filePopup === popupKey;
-                                  const dlKey = `dl-${i}-${j}`;
                                   return (
                                     <div key={j} className="file-link-wrap">
                                       <span
                                         className={`file-link${isOpen ? " active" : ""}`}
                                         onMouseDown={(e) => {
                                           e.stopPropagation();
-                                          setFilePopup(isOpen ? null : popupKey);
+                                          if (isOpen) {
+                                            setFilePopup(null);
+                                          } else {
+                                            // 커서 위치 저장 후 팝업 열기
+                                            setPopupPos({ x: e.clientX, y: e.clientY });
+                                            setFilePopup(popupKey);
+                                          }
                                         }}
                                       >
                                         📄 {fileName} ▾
                                       </span>
-                                      {isOpen && (
-                                        <div
-                                          className="file-popup"
-                                          onMouseDown={(e) => e.stopPropagation()}
-                                          onTouchStart={(e) => e.stopPropagation()}
-                                        >
-                                          <a
-                                            href={link}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="popup-btn preview"
-                                            onMouseDown={(e) => e.stopPropagation()}
-                                            onClick={() => setFilePopup(null)}
-                                          >
-                                            🔍 미리보기
-                                          </a>
-                                          <button
-                                            className={`popup-btn download${downloading[dlKey] ? " loading" : ""}`}
-                                            onMouseDown={(e) => e.stopPropagation()}
-                                            onTouchStart={(e) => e.stopPropagation()}
-                                            onClick={(e) => handleDownload(e, link, fileName, dlKey)}
-                                            disabled={downloading[dlKey]}
-                                          >
-                                            {downloading[dlKey] ? "⏳ 준비 중..." : "⬇ 다운로드"}
-                                          </button>
-                                        </div>
-                                      )}
                                     </div>
                                   );
                                 })}
@@ -425,8 +446,7 @@ export default function Home() {
           align-items: center; padding: 0 16px;
           background: linear-gradient(180deg, #ffffff 0%, #f4f6fc 100%);
           color: #1f2937; transition: background 0.3s, color 0.3s; position: relative;
-          box-sizing: border-box;
-          animation: slideUpFade 0.7s ease both;
+          box-sizing: border-box; animation: slideUpFade 0.7s ease both;
         }
         .page.dark { background: linear-gradient(160deg, #0f172a 0%, #1e293b 100%); color: #e2e8f0; }
 
@@ -434,8 +454,7 @@ export default function Home() {
           position: absolute; top: 20px; right: 20px;
           background: none; border: 2px solid #d0d9f0; border-radius: 50%;
           width: 40px; height: 40px; font-size: 18px; cursor: pointer;
-          display: flex; align-items: center; justify-content: center;
-          transition: border-color 0.2s;
+          display: flex; align-items: center; justify-content: center; transition: border-color 0.2s;
         }
         .dark .theme-toggle { border-color: #475569; }
 
@@ -443,46 +462,31 @@ export default function Home() {
           position: absolute; top: 20px; right: 70px;
           background: none; border: 2px solid #d0d9f0; border-radius: 50%;
           width: 40px; height: 40px; font-size: 18px; cursor: pointer;
-          display: flex; align-items: center; justify-content: center;
-          transition: border-color 0.2s;
+          display: flex; align-items: center; justify-content: center; transition: border-color 0.2s;
         }
         .dark .upload-btn { border-color: #475569; }
 
         .logo-area { margin-top: 10vh; margin-bottom: 32px; text-align: center; transition: margin 0.3s; }
         .searched .logo-area { margin-top: 24px; margin-bottom: 16px; }
         .searched .logo-area:hover .logo-hint { opacity: 1; }
-
         .logo-wrap { display: inline-block; text-align: center; }
         .logo-top-rule { width: 520px; height: 1px; background: #13274F; margin: 0 auto 18px; }
-        .logo-main {
-          font-family: 'EB Garamond', 'Georgia', 'Times New Roman', serif;
-          font-size: 56px; font-weight: 700;
-          color: #13274F; letter-spacing: -0.5px; line-height: 1.1; margin: 0;
-        }
+        .logo-main { font-family: 'EB Garamond', serif; font-size: 56px; font-weight: 700; color: #13274F; letter-spacing: -0.5px; line-height: 1.1; margin: 0; }
         .dark .logo-main { color: #e2e8f0; }
-        .logo-sub-en {
-          font-family: 'Noto Sans KR', sans-serif;
-          font-size: 13px; font-weight: 400; color: #13274F;
-          letter-spacing: 6px; margin: 10px 0 14px; text-transform: uppercase;
-        }
+        .logo-sub-en { font-family: 'Noto Sans KR', sans-serif; font-size: 13px; font-weight: 400; color: #13274F; letter-spacing: 6px; margin: 10px 0 14px; text-transform: uppercase; }
         .dark .logo-sub-en { color: #94a3b8; }
         .logo-mid-rule { width: 300px; height: 1px; background: #13274F; margin: 0 auto 14px; }
         .dark .logo-top-rule, .dark .logo-mid-rule, .dark .logo-bot-rule { background: #475569; }
-        .logo-sub-kr {
-          font-family: 'Noto Serif KR', 'Noto Sans KR', serif;
-          font-size: 26px; font-weight: 700; color: #13274F; letter-spacing: 2px; margin: 0 0 14px;
-        }
+        .logo-sub-kr { font-family: 'Noto Serif KR', serif; font-size: 26px; font-weight: 700; color: #13274F; letter-spacing: 2px; margin: 0 0 14px; }
         .dark .logo-sub-kr { color: #e2e8f0; }
         .logo-bot-rule { width: 520px; height: 1px; background: #13274F; margin: 0 auto; }
-        .logo-hint { font-size: 11px; color: #94a3b8; margin-top: 6px; opacity: 0; transition: opacity 0.2s; letter-spacing: 0.3px; }
-        .subtitle { color: #6b7280; font-size: 13px; margin-top: 12px; letter-spacing: 3px; font-family: 'Noto Sans KR', sans-serif; text-transform: uppercase; }
-
+        .logo-hint { font-size: 11px; color: #94a3b8; margin-top: 6px; opacity: 0; transition: opacity 0.2s; }
+        .subtitle { color: #6b7280; font-size: 13px; margin-top: 12px; letter-spacing: 3px; text-transform: uppercase; }
         .searched .logo-main { font-size: 30px; }
         .searched .logo-sub-en { font-size: 10px; letter-spacing: 4px; margin: 6px 0 8px; }
         .searched .logo-sub-kr { font-size: 15px; margin-bottom: 8px; }
         .searched .logo-top-rule, .searched .logo-bot-rule { width: 300px; }
         .searched .logo-mid-rule { width: 170px; }
-
         @media (max-width: 480px) {
           .logo-main { font-size: 36px; }
           .logo-top-rule, .logo-bot-rule { width: 300px; }
@@ -494,12 +498,7 @@ export default function Home() {
 
         .search-wrap { width: 100%; max-width: 600px; margin-bottom: 24px; transition: max-width 0.3s; }
         .searched .search-wrap { max-width: 100%; }
-        .search-box {
-          display: flex; align-items: center; background: #f8faff;
-          border: 1.5px solid #cbd5e1; border-radius: 10px;
-          padding: 6px 6px 6px 16px;
-          box-shadow: 0 2px 12px rgba(19,39,79,0.08); gap: 8px;
-        }
+        .search-box { display: flex; align-items: center; background: #f8faff; border: 1.5px solid #cbd5e1; border-radius: 10px; padding: 6px 6px 6px 16px; box-shadow: 0 2px 12px rgba(19,39,79,0.08); gap: 8px; }
         .dark .search-box { background: #1e293b; border-color: #334155; }
         .icon { font-size: 17px; flex-shrink: 0; }
         input { flex: 1; border: none; outline: none; font-size: 16px; color: #1f2937; background: transparent; font-family: inherit; min-width: 0; }
@@ -507,11 +506,7 @@ export default function Home() {
         .clear-btn { background: none; border: none; cursor: pointer; color: #9ca3af; font-size: 15px; padding: 0 2px; flex-shrink: 0; }
         .search-btn { background: #13274F; color: #fff; border: none; border-radius: 8px; padding: 9px 18px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit; white-space: nowrap; flex-shrink: 0; }
         .search-btn:hover { background: #0d1e3d; }
-
-        @media (max-width: 480px) {
-          .search-btn { padding: 9px 14px; font-size: 13px; }
-          input { font-size: 16px; }
-        }
+        @media (max-width: 480px) { .search-btn { padding: 9px 14px; font-size: 13px; } input { font-size: 16px; } }
 
         .results { width: 100%; max-width: 1100px; padding-bottom: 60px; }
         .loading { display: flex; flex-direction: column; align-items: center; margin-top: 60px; gap: 16px; }
@@ -542,7 +537,6 @@ export default function Home() {
         td { padding: 10px 16px; border-bottom: 1.5px solid #dde3f5; border-right: 1px solid #edf0fb; white-space: nowrap; text-align: center; vertical-align: middle; background: inherit; }
         td:last-child { border-right: none; }
         .dark td { border-bottom-color: #2a3a55; border-right-color: #222e42; }
-
         td:first-child { position: sticky; left: 0; z-index: 2; background: #fff; border-right: 2px solid #dde3f5; }
         .dark td:first-child { background: #1e293b; border-right-color: #2a3a55; }
         .result-row:hover td:first-child { background: #f0f4ff; }
@@ -558,7 +552,6 @@ export default function Home() {
 
         .td-nowrap { vertical-align: middle; text-align: center; }
         .td-top { vertical-align: top; padding-top: 10px; text-align: left; }
-
         .cell-inner { display: flex; align-items: center; justify-content: center; gap: 6px; }
         .doc-icon { font-size: 14px; flex-shrink: 0; }
         .doc-title { color: #1a3a8f; font-weight: 600; font-size: 13px; cursor: pointer; text-decoration: underline; }
@@ -581,7 +574,6 @@ export default function Home() {
         .first-line  { font-size: 12px; color: #6b7280; white-space: nowrap; }
         .indent-line { font-size: 12px; color: #6b7280; white-space: nowrap; padding-left: 16px; }
         .dark .first-line, .dark .indent-line { color: #94a3b8; }
-
         .copy-btn { flex-shrink: 0; background: #eef1fb; color: #1a3a8f; border: none; border-radius: 4px; padding: 2px 7px; font-size: 10px; font-weight: 700; cursor: pointer; font-family: inherit; transition: background 0.15s; }
         .copy-btn:hover { background: #d0d9f0; }
         .copy-btn.copied { background: #dcfce7; color: #166634; }
@@ -592,52 +584,22 @@ export default function Home() {
         .td-files { vertical-align: middle; text-align: left; min-width: 200px; }
         .file-links { display: flex; flex-direction: column; gap: 4px; }
         .file-link-wrap { position: relative; display: inline-block; }
-
         .file-link {
-          font-size: 12px; color: #1a3a8f;
-          padding: 3px 8px; background: #eef1fb; border-radius: 5px;
-          white-space: nowrap; display: inline-block;
-          cursor: pointer; user-select: none;
-          transition: background 0.15s;
+          font-size: 12px; color: #1a3a8f; padding: 3px 8px; background: #eef1fb;
+          border-radius: 5px; white-space: nowrap; display: inline-block;
+          cursor: pointer; user-select: none; transition: background 0.15s;
         }
         .file-link:hover, .file-link.active { background: #d0d9f0; }
         .dark .file-link { background: #1e3a6e; color: #93c5fd; }
         .dark .file-link:hover, .dark .file-link.active { background: #2a4a8e; }
 
-        /* 팝업 — 파일명 우측, 세로 중앙, z-index 높게 */
-        .file-popup {
-          position: absolute;
-          left: calc(100% + 8px);
-          top: 50%; transform: translateY(-50%);
-          z-index: 500;
-          background: #fff; border: 1.5px solid #e5e9f5; border-radius: 10px;
-          box-shadow: 0 8px 24px rgba(19,39,79,0.18);
-          padding: 6px; min-width: 140px;
-          display: flex; flex-direction: column; gap: 4px;
-        }
-        .dark .file-popup { background: #1e293b; border-color: #334155; }
-
-        .popup-btn {
-          font-size: 12px; font-weight: 700; padding: 8px 14px;
-          border-radius: 7px; text-decoration: none; white-space: nowrap;
-          text-align: center; cursor: pointer; border: none; font-family: inherit;
-          transition: background 0.15s; display: block;
-        }
-        .popup-btn.preview { background: #eef1fb; color: #1a3a8f; }
-        .popup-btn.preview:hover { background: #d0d9f0; }
-        .popup-btn.download { background: #f0fdf4; color: #166534; }
-        .popup-btn.download:hover { background: #dcfce7; }
-        .popup-btn.download.loading { background: #f3f4f6; color: #9ca3af; cursor: not-allowed; }
-        .dark .popup-btn.preview { background: #1e3a6e; color: #93c5fd; }
-        .dark .popup-btn.preview:hover { background: #2a4a8e; }
-        .dark .popup-btn.download { background: #14532d; color: #86efac; }
-        .dark .popup-btn.download:hover { background: #166534; }
-
+        /* Notion DB 버튼 */
         .notion-db-wrap { text-align: center; margin-top: 24px; padding-bottom: 20px; }
         .notion-db-btn { background: #fff; color: #1e3a8a; border: 2px solid #c7d2fe; border-radius: 28px; padding: 12px 28px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit; box-shadow: 0 2px 10px rgba(99,102,241,0.12); transition: all 0.2s; }
-        .notion-db-btn:hover { background: #eef2ff; border-color: #4f46e5; box-shadow: 0 4px 16px rgba(99,102,241,0.2); }
+        .notion-db-btn:hover { background: #eef2ff; border-color: #4f46e5; }
         .dark .notion-db-btn { background: #1e293b; color: #818cf8; border-color: #334155; }
 
+        /* 노션 팝업 */
         .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; z-index: 999; }
         .modal { background: #fff; border-radius: 20px; padding: 32px 36px; max-width: 360px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.25); text-align: center; }
         .dark .modal { background: #1e293b; color: #e2e8f0; }
@@ -652,6 +614,35 @@ export default function Home() {
         .modal-btn.cancel    { background: #f3f4f6; color: #6b7280; }
         .dark .modal-btn.secondary { background: #1e3a6e; color: #93c5fd; }
         .dark .modal-btn.cancel    { background: #334155; color: #94a3b8; }
+      `}</style>
+
+      {/* 커서 위치 고정 팝업 — global CSS */}
+      <style jsx global>{`
+        .file-popup-fixed {
+          position: fixed;
+          z-index: 500;
+          background: #fff;
+          border: 1.5px solid #e5e9f5;
+          border-radius: 10px;
+          box-shadow: 0 8px 24px rgba(19,39,79,0.18);
+          padding: 6px;
+          min-width: 140px;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          pointer-events: auto;
+        }
+        .popup-btn {
+          font-size: 12px; font-weight: 700; padding: 8px 14px;
+          border-radius: 7px; text-decoration: none; white-space: nowrap;
+          text-align: center; cursor: pointer; border: none; font-family: inherit;
+          transition: background 0.15s; display: block;
+        }
+        .popup-btn.preview { background: #eef1fb; color: #1a3a8f; }
+        .popup-btn.preview:hover { background: #d0d9f0; }
+        .popup-btn.download { background: #f0fdf4; color: #166534; }
+        .popup-btn.download:hover { background: #dcfce7; }
+        .popup-btn.download.loading { background: #f3f4f6; color: #9ca3af; cursor: not-allowed; }
       `}</style>
     </>
   );
