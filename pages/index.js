@@ -34,28 +34,49 @@ export default function Home() {
   const [filePopup, setFilePopup] = useState(null);
   const [popupPos, setPopupPos] = useState({ x: 0, y: 0 });
   const [downloading, setDownloading] = useState({});
+  const [tableVisible, setTableVisible] = useState(false); // fade 제어
+  const [isRecent, setIsRecent] = useState(false); // 기본화면 여부
+
   const inputRef = useRef(null);
   const tableOuterRef = useRef(null);
   const filePopupRef = useRef(null);
   const router = useRouter();
 
-  // 팝업 외부 클릭 시 닫기 — 스크롤바 클릭은 제외
+  // 페이지 로드 시 최근 5개 자동 조회
+  useEffect(() => {
+    const fetchRecent = async () => {
+      setLoading(true);
+      try {
+        const res = await fetch("/api/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode: "recent" }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          setResults(data.results);
+          setIsRecent(true);
+          // 약간 딜레이 후 fade in
+          setTimeout(() => setTableVisible(true), 50);
+        }
+      } catch (err) {
+        // 조용히 실패
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchRecent();
+  }, []);
+
+  // 팝업 외부 클릭 시 닫기 — 스크롤바 클릭 제외
   useEffect(() => {
     if (!filePopup) return;
     const handleOutside = (e) => {
-      // 팝업 내부 클릭 → 닫지 않음
       if (filePopupRef.current && filePopupRef.current.contains(e.target)) return;
-      // file-link-wrap 내부 클릭 → 닫지 않음 (토글은 onMouseDown에서 처리)
       if (e.target.closest(".file-link-wrap")) return;
-      // 스크롤바 클릭 감지: table-outer 요소 자체가 target이면 스크롤바일 가능성 높음
       if (tableOuterRef.current) {
         const rect = tableOuterRef.current.getBoundingClientRect();
-        // 가로 스크롤바: clientY가 rect.bottom 근처
-        // 세로 스크롤바: clientX가 rect.right 근처
-        const nearVerticalScrollbar = e.clientX > rect.right - 20;
-        const nearHorizontalScrollbar = e.clientY > rect.bottom - 20;
-        if (nearVerticalScrollbar || nearHorizontalScrollbar) return;
-        // table-outer 자체를 클릭한 경우 (스크롤바 영역)
+        if (e.clientX > rect.right - 20 || e.clientY > rect.bottom - 20) return;
         if (e.target === tableOuterRef.current) return;
       }
       setFilePopup(null);
@@ -70,7 +91,13 @@ export default function Home() {
 
   const handleSearch = async () => {
     if (!query.trim()) return;
-    setLoading(true); setError(null); setResults(null); setSearched(true); setFilePopup(null);
+    setFilePopup(null);
+
+    // 기존 결과 fade out
+    setTableVisible(false);
+    await new Promise((r) => setTimeout(r, 280));
+
+    setLoading(true); setError(null); setResults(null); setSearched(true); setIsRecent(false);
     try {
       const res = await fetch("/api/search", {
         method: "POST",
@@ -80,6 +107,8 @@ export default function Home() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "검색 실패");
       setResults(data.results);
+      // 새 결과 fade in
+      setTimeout(() => setTableVisible(true), 50);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -90,7 +119,27 @@ export default function Home() {
   const handleKeyDown = (e) => { if (e.key === "Enter") handleSearch(); };
 
   const handleClear = () => {
-    setQuery(""); setSearched(false); setResults(null); setError(null); setFilePopup(null);
+    setQuery(""); setSearched(false); setResults(null); setError(null);
+    setFilePopup(null); setTableVisible(false); setIsRecent(false);
+    // 다시 최근 5개 로드
+    const fetchRecent = async () => {
+      setLoading(true);
+      try {
+        const res = await fetch("/api/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode: "recent" }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          setResults(data.results);
+          setIsRecent(true);
+          setTimeout(() => setTableVisible(true), 50);
+        }
+      } catch (err) {}
+      finally { setLoading(false); }
+    };
+    fetchRecent();
     inputRef.current?.focus();
   };
 
@@ -181,7 +230,7 @@ export default function Home() {
         <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@600;700&family=Noto+Serif+KR:wght@400;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet" />
       </Head>
 
-      {/* cursor 위치에 고정되는 파일 팝업 */}
+      {/* 커서 위치 고정 파일 팝업 */}
       {filePopup && (
         <div
           ref={filePopupRef}
@@ -201,14 +250,9 @@ export default function Home() {
             const dlKey = `dl-${filePopup}`;
             return (
               <>
-                <a
-                  href={link}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="popup-btn preview"
+                <a href={link} target="_blank" rel="noreferrer" className="popup-btn preview"
                   onMouseDown={(e) => e.stopPropagation()}
-                  onClick={() => setFilePopup(null)}
-                >
+                  onClick={() => setFilePopup(null)}>
                   🔍 미리보기
                 </a>
                 <button
@@ -216,8 +260,7 @@ export default function Home() {
                   onMouseDown={(e) => e.stopPropagation()}
                   onTouchStart={(e) => e.stopPropagation()}
                   onClick={(e) => handleDownload(e, link, fileName, dlKey)}
-                  disabled={downloading[dlKey]}
-                >
+                  disabled={downloading[dlKey]}>
                   {downloading[dlKey] ? "⏳ 준비 중..." : "⬇ 다운로드"}
                 </button>
               </>
@@ -231,7 +274,6 @@ export default function Home() {
         <button className="theme-toggle" onClick={() => setDark(!dark)} title={dark ? "라이트 모드" : "다크 모드"}>
           {dark ? "☀️" : "🌙"}
         </button>
-
         <button className="upload-btn" onClick={() => router.push("/upload")} title="파일 업로드">
           📁
         </button>
@@ -276,14 +318,18 @@ export default function Home() {
           {error && <p className="error">⚠️ {error}</p>}
           {!loading && results !== null && (
             results.length === 0 ? (
-              <div className="no-result">
-                <p className="no-icon">📭</p>
-                <p className="no-text">검색 결과가 없습니다</p>
-                <p className="no-sub">다른 키워드로 시도해 보세요</p>
+              <div className={`fade-wrap${tableVisible ? " visible" : ""}`}>
+                <div className="no-result">
+                  <p className="no-icon">📭</p>
+                  <p className="no-text">검색 결과가 없습니다</p>
+                  <p className="no-sub">다른 키워드로 시도해 보세요</p>
+                </div>
               </div>
             ) : (
-              <>
-                <p className="count">검색 결과 {results.length}건</p>
+              <div className={`fade-wrap${tableVisible ? " visible" : ""}`}>
+                <p className="count">
+                  {isRecent ? "🕐 최근 수정된 문서 5건" : `검색 결과 ${results.length}건`}
+                </p>
                 <div className="table-outer" ref={tableOuterRef}>
                   <table>
                     <thead>
@@ -364,7 +410,6 @@ export default function Home() {
                             <span className="cell-text">{row.deadline || "—"}</span>
                           </td>
 
-                          {/* 파일 */}
                           <td className="td-files">
                             {row.fileLinks ? (
                               <div className="file-links">
@@ -381,7 +426,6 @@ export default function Home() {
                                           if (isOpen) {
                                             setFilePopup(null);
                                           } else {
-                                            // 커서 위치 저장 후 팝업 열기
                                             setPopupPos({ x: e.clientX, y: e.clientY });
                                             setFilePopup(popupKey);
                                           }
@@ -401,16 +445,13 @@ export default function Home() {
                     </tbody>
                   </table>
                 </div>
-
                 <div className="notion-db-wrap">
-                  <button
-                    className="notion-db-btn"
-                    onClick={() => window.open("https://www.notion.so/328c05f9ee4c80e8bd4dec05e76bf10a", "_blank")}
-                  >
+                  <button className="notion-db-btn"
+                    onClick={() => window.open("https://www.notion.so/328c05f9ee4c80e8bd4dec05e76bf10a", "_blank")}>
                     📋 G&A IP 문서 DB 전체 보기 (Notion)
                   </button>
                 </div>
-              </>
+              </div>
             )
           )}
         </div>
@@ -438,6 +479,35 @@ export default function Home() {
           from { opacity: 0; transform: translateY(20px); }
           to   { opacity: 1; transform: translateY(0); }
         }
+        .file-popup-fixed {
+          position: fixed; z-index: 500;
+          background: #fff; border: 1.5px solid #e5e9f5; border-radius: 10px;
+          box-shadow: 0 8px 24px rgba(19,39,79,0.18);
+          padding: 6px; min-width: 140px;
+          display: flex; flex-direction: column; gap: 4px;
+          pointer-events: auto;
+        }
+        .popup-btn {
+          font-size: 12px; font-weight: 700; padding: 8px 14px;
+          border-radius: 7px; text-decoration: none; white-space: nowrap;
+          text-align: center; cursor: pointer; border: none; font-family: inherit;
+          transition: background 0.15s; display: block;
+        }
+        .popup-btn.preview { background: #eef1fb; color: #1a3a8f; }
+        .popup-btn.preview:hover { background: #d0d9f0; }
+        .popup-btn.download { background: #f0fdf4; color: #166534; }
+        .popup-btn.download:hover { background: #dcfce7; }
+        .popup-btn.download.loading { background: #f3f4f6; color: #9ca3af; cursor: not-allowed; }
+        /* 페이드 전환 */
+        .fade-wrap {
+          opacity: 0;
+          transform: translateY(8px);
+          transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+        .fade-wrap.visible {
+          opacity: 1;
+          transform: translateY(0);
+        }
       `}</style>
 
       <style jsx>{`
@@ -457,7 +527,6 @@ export default function Home() {
           display: flex; align-items: center; justify-content: center; transition: border-color 0.2s;
         }
         .dark .theme-toggle { border-color: #475569; }
-
         .upload-btn {
           position: absolute; top: 20px; right: 70px;
           background: none; border: 2px solid #d0d9f0; border-radius: 50%;
@@ -473,7 +542,7 @@ export default function Home() {
         .logo-top-rule { width: 520px; height: 1px; background: #13274F; margin: 0 auto 18px; }
         .logo-main { font-family: 'EB Garamond', serif; font-size: 56px; font-weight: 700; color: #13274F; letter-spacing: -0.5px; line-height: 1.1; margin: 0; }
         .dark .logo-main { color: #e2e8f0; }
-        .logo-sub-en { font-family: 'Noto Sans KR', sans-serif; font-size: 13px; font-weight: 400; color: #13274F; letter-spacing: 6px; margin: 10px 0 14px; text-transform: uppercase; }
+        .logo-sub-en { font-size: 13px; font-weight: 400; color: #13274F; letter-spacing: 6px; margin: 10px 0 14px; text-transform: uppercase; }
         .dark .logo-sub-en { color: #94a3b8; }
         .logo-mid-rule { width: 300px; height: 1px; background: #13274F; margin: 0 auto 14px; }
         .dark .logo-top-rule, .dark .logo-mid-rule, .dark .logo-bot-rule { background: #475569; }
@@ -580,26 +649,19 @@ export default function Home() {
         .dark .copy-btn { background: #1e3a6e; color: #93c5fd; }
         .dark .copy-btn.copied { background: #14532d; color: #86efac; }
 
-        /* 파일 열 */
         .td-files { vertical-align: middle; text-align: left; min-width: 200px; }
         .file-links { display: flex; flex-direction: column; gap: 4px; }
         .file-link-wrap { position: relative; display: inline-block; }
-        .file-link {
-          font-size: 12px; color: #1a3a8f; padding: 3px 8px; background: #eef1fb;
-          border-radius: 5px; white-space: nowrap; display: inline-block;
-          cursor: pointer; user-select: none; transition: background 0.15s;
-        }
+        .file-link { font-size: 12px; color: #1a3a8f; padding: 3px 8px; background: #eef1fb; border-radius: 5px; white-space: nowrap; display: inline-block; cursor: pointer; user-select: none; transition: background 0.15s; }
         .file-link:hover, .file-link.active { background: #d0d9f0; }
         .dark .file-link { background: #1e3a6e; color: #93c5fd; }
         .dark .file-link:hover, .dark .file-link.active { background: #2a4a8e; }
 
-        /* Notion DB 버튼 */
         .notion-db-wrap { text-align: center; margin-top: 24px; padding-bottom: 20px; }
         .notion-db-btn { background: #fff; color: #1e3a8a; border: 2px solid #c7d2fe; border-radius: 28px; padding: 12px 28px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit; box-shadow: 0 2px 10px rgba(99,102,241,0.12); transition: all 0.2s; }
         .notion-db-btn:hover { background: #eef2ff; border-color: #4f46e5; }
         .dark .notion-db-btn { background: #1e293b; color: #818cf8; border-color: #334155; }
 
-        /* 노션 팝업 */
         .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; z-index: 999; }
         .modal { background: #fff; border-radius: 20px; padding: 32px 36px; max-width: 360px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.25); text-align: center; }
         .dark .modal { background: #1e293b; color: #e2e8f0; }
@@ -614,35 +676,6 @@ export default function Home() {
         .modal-btn.cancel    { background: #f3f4f6; color: #6b7280; }
         .dark .modal-btn.secondary { background: #1e3a6e; color: #93c5fd; }
         .dark .modal-btn.cancel    { background: #334155; color: #94a3b8; }
-      `}</style>
-
-      {/* 커서 위치 고정 팝업 — global CSS */}
-      <style jsx global>{`
-        .file-popup-fixed {
-          position: fixed;
-          z-index: 500;
-          background: #fff;
-          border: 1.5px solid #e5e9f5;
-          border-radius: 10px;
-          box-shadow: 0 8px 24px rgba(19,39,79,0.18);
-          padding: 6px;
-          min-width: 140px;
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
-          pointer-events: auto;
-        }
-        .popup-btn {
-          font-size: 12px; font-weight: 700; padding: 8px 14px;
-          border-radius: 7px; text-decoration: none; white-space: nowrap;
-          text-align: center; cursor: pointer; border: none; font-family: inherit;
-          transition: background 0.15s; display: block;
-        }
-        .popup-btn.preview { background: #eef1fb; color: #1a3a8f; }
-        .popup-btn.preview:hover { background: #d0d9f0; }
-        .popup-btn.download { background: #f0fdf4; color: #166534; }
-        .popup-btn.download:hover { background: #dcfce7; }
-        .popup-btn.download.loading { background: #f3f4f6; color: #9ca3af; cursor: not-allowed; }
       `}</style>
     </>
   );
