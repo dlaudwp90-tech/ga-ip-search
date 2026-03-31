@@ -20,9 +20,9 @@ export default async function handler(req, res) {
     const deadline = props["필수 마감일"]?.date?.start || "";
     const url = page.url || "";
     const docWorkStatus =
-      props["서류작업상태"]?.status?.name ||
-      props["서류작업상태"]?.select?.name ||
-      props["서류작업상태"]?.rich_text?.map((t) => t.plain_text).join("") ||
+      props["서류작업상태(작업자)"]?.status?.name ||
+      props["서류작업상태(작업자)"]?.select?.name ||
+      props["서류작업상태(작업자)"]?.rich_text?.map((t) => t.plain_text).join("") ||
       "";
 
     // (파일명)URL 형식 파싱
