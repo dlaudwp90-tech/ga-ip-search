@@ -412,7 +412,7 @@ export default function Home() {
                                       className={`expand-btn${isExpanded ? " expanded" : ""}`}
                                       onClick={(e) => { e.stopPropagation(); toggleRow(i); }}
                                     >
-                                      {isExpanded ? "↑ 접기" : `+${hiddenCount}`}
+                                      {isExpanded ? "↑ 접기" : `+${hiddenCount} 더보기`}
                                     </button>
                                   )}
                                 </div>
@@ -636,7 +636,7 @@ export default function Home() {
         .badge { border-radius: 5px; padding: 2px 7px; font-size: 11px; font-weight: 700; display: inline-block; }
         .dash { color: #d1d5db; }
 
-        .file-expand-wrap { display: inline-flex; align-items: flex-start; gap: 5px; }
+        .file-expand-wrap { display: flex; width: 100%; align-items: flex-start; justify-content: space-between; gap: 8px; }
         .expand-btn {
           flex-shrink: 0;
           background: #eef1fb; color: #1a3a8f;
