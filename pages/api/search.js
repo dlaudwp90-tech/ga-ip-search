@@ -24,8 +24,8 @@ export default async function handler(req, res) {
       name: c.name, color: c.color || "default"
     }));
 
-    // 서류작업상태 — status 또는 select (이름+색상 단일)
-    const docWorkRaw = props["서류작업상태"]?.status || props["서류작업상태"]?.select || null;
+    // 서류작업상태(작업자) — status 또는 select (이름+색상 단일)
+    const docWorkRaw = props["서류작업상태(작업자)"]?.status || props["서류작업상태(작업자)"]?.select || null;
     const docWorkStatusItem = docWorkRaw ? { name: docWorkRaw.name, color: docWorkRaw.color || "default" } : null;
 
     const appNum = props["출원번호"]?.rich_text?.map((t) => t.plain_text).join("") || "";
