@@ -412,7 +412,7 @@ export default function Home() {
                                       className={`expand-btn${isExpanded ? " expanded" : ""}`}
                                       onClick={(e) => { e.stopPropagation(); toggleRow(i); }}
                                     >
-                                      {isExpanded ? "↑ 접기" : `+${hiddenCount} 더보기`}
+                                      {isExpanded ? "↑ 접기" : `+${hiddenCount} 파일더보기`}
                                     </button>
                                   )}
                                 </div>
