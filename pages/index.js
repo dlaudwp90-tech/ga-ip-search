@@ -431,23 +431,24 @@ export default function Home() {
             ) : (
               <div className={`fade-wrap${tableVisible?" visible":""}`}>
                 <div className="count-row">
-                  {/* 왼쪽: 잠금 해제 안내 (최근 문서일 때) 또는 검색 결과 수 */}
-                  {isRecent
-                    ? <p className="lock-guide">🔓 잠금 표시를 해제하고 버튼을 눌러주세요</p>
-                    : <p className="count">{`검색 결과 ${results.length}건`}</p>
-                  }
-
-                  {/* 오른쪽: 문서 수 + 버튼들 */}
-                  {isRecent && (
-                    <div className="count-right">
+                  {/* 왼쪽: 텍스트 2줄 세로 스택 */}
+                  {isRecent ? (
+                    <div className="count-left-stack">
                       <p className="count" style={{marginBottom:0}}>
                         🕐 최근 수정된 문서 20건&nbsp;
                         <span className="recent-hint">(여기에 없는 문서는 검색창을 이용해주세요)</span>
                       </p>
-                      <div className="count-btns">
-                        <button className="nav-btn nav-btn-all"   onClick={()=>router.push("/all")}>📂 문서 전체 보기</button>
-                        <button className="nav-btn nav-btn-guide" onClick={()=>router.push("/guide")}>📋 문서 작성 방법 및 양식</button>
-                      </div>
+                      <p className="lock-guide">🔓 잠금 표시를 해제하고 버튼을 눌러주세요</p>
+                    </div>
+                  ) : (
+                    <p className="count">{`검색 결과 ${results.length}건`}</p>
+                  )}
+
+                  {/* 오른쪽: 버튼들만 */}
+                  {isRecent && (
+                    <div className="count-btns">
+                      <button className="nav-btn nav-btn-all"   onClick={()=>router.push("/all")}>📂 문서 전체 보기</button>
+                      <button className="nav-btn nav-btn-guide" onClick={()=>router.push("/guide")}>📋 문서 작성 방법 및 양식</button>
                     </div>
                   )}
                 </div>
@@ -673,11 +674,11 @@ export default function Home() {
 
         .count-row  { display:flex; align-items:center; justify-content:space-between; width:100%; margin-bottom:12px; gap:10px; flex-wrap:wrap; }
         .count      { color:#6b7280; font-size:13px; margin-bottom:0; }
-        /* 잠금 해제 안내 — 왼쪽 */
+        /* 왼쪽 텍스트 세로 스택 */
+        .count-left-stack { display:flex; flex-direction:column; gap:3px; }
+        /* 잠금 해제 안내 */
         .lock-guide { font-size:12px; font-weight:700; color:#d97706; letter-spacing:0.2px; }
         .dark .lock-guide { color:#fbbf24; }
-        /* 오른쪽 그룹: 문서수 + 버튼 */
-        .count-right { display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:flex-end; }
         .recent-hint { font-style:italic; text-decoration:underline; color:#16a34a; font-size:12px; }
         .dark .recent-hint { color:#4ade80; }
         .count-btns { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
@@ -690,36 +691,36 @@ export default function Home() {
         .nav-btn-guide:hover { background:#0d1e3d; }
         .dark .nav-btn-guide { background:#1e3a6e; }
 
-        /* ── 테이블 컨테이너: 세로 스크롤 + max-height → thead sticky 작동 ── */
+        /* ── 테이블 컨테이너 ── */
+        /* overflow:auto(양방향) + height → 내부에서 X/Y 모두 스크롤 → sticky 작동 보장 */
         .table-outer {
           background:#fff; border-radius:16px;
           box-shadow:0 2px 16px rgba(26,58,143,0.08);
-          overflow-x:auto;
-          overflow-y:auto;
-          max-height: calc(100vh - 280px);
+          overflow:auto;
+          height: 65vh;
+          min-height: 280px;
           border:1px solid #e5e9f5;
         }
         .dark .table-outer { background:#1e293b; border-color:#334155; }
         table { border-collapse:separate; border-spacing:0; font-size:13px; width:max-content; min-width:100%; }
 
-        /* ── thead sticky top ── */
+        /* ── thead sticky top — table-outer 기준 ── */
         th { background:#1a3a8f; color:#fff; padding:11px 16px; text-align:center; font-weight:700;
           font-size:12px; white-space:nowrap; border-right:1px solid rgba(255,255,255,0.15);
           position:sticky; top:0; z-index:3; }
         th:last-child { border-right:none; }
         .dark th { background:#1e3a6e; }
 
-        /* ── 대표 검토 th — left:0, top:0 고정 ── */
-        /* display:flex 제거 → 내부 div(.th-check-inner)로 레이아웃 처리 */
+        /* ── 대표 검토 th — 좌상단 코너 고정 (top:0 + left:0 동시) ── */
         .th-check {
-          position:sticky; left:0; top:0; z-index:6;
+          position:sticky !important; left:0 !important; top:0 !important; z-index:10 !important;
           width:${COL_CHECK_W}px; min-width:${COL_CHECK_W}px;
           padding:8px 10px;
-          background:#1a3a8f;
+          background:#1a3a8f !important;
           border-right:2px solid rgba(255,255,255,0.4) !important;
           vertical-align:middle;
         }
-        .dark .th-check { background:#1e3a6e; }
+        .dark .th-check { background:#1e3a6e !important; }
 
         /* th 내부 flex 래퍼 */
         .th-check-inner {
@@ -729,13 +730,13 @@ export default function Home() {
           display:flex; align-items:center; gap:5px;
         }
 
-        .lock-btn { background:none; border:1.5px solid rgba(255,255,255,0.45); border-radius:7px;
-          padding:4px 7px; font-size:16px; cursor:pointer; line-height:1; transition:all .15s; }
-        .lock-btn.is-locked   { border-color:rgba(255,255,255,0.5); }
+        .lock-btn { background:none; border:1.5px solid rgba(255,255,255,0.6); border-radius:7px;
+          padding:4px 7px; font-size:16px; cursor:pointer; line-height:1; transition:all .15s; color:#fff; }
+        .lock-btn.is-locked   { border-color:rgba(255,255,255,0.6); }
         .lock-btn.is-unlocked { background:rgba(255,255,255,0.15); border-color:#fbbf24; }
         .lock-btn:hover       { background:rgba(255,255,255,0.2); }
         .lock-cd       { font-size:10px; color:#fbbf24; font-weight:700; letter-spacing:0.5px; }
-        .check-col-title { font-size:10px; color:rgba(255,255,255,0.75); letter-spacing:0.3px; }
+        .check-col-title { font-size:10px; color:#fff; font-weight:700; letter-spacing:0.3px; }
 
         /* ── 문서 제목 th — left:COL_CHECK_W sticky ── */
         .th-title {
