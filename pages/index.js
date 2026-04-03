@@ -79,6 +79,21 @@ export default function Home() {
   const [savingUrl,    setSavingUrl]    = useState(null);
   const [kvAvailable,  setKvAvailable]  = useState(true);
 
+  // ── localStorage에서 검토 상태 복원 (마운트 시 1회) ──
+  useEffect(() => {
+    try {
+      const stored = {};
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith("gaip_review:")) {
+          const v = localStorage.getItem(k);
+          if (v) stored[k.slice(12)] = v;
+        }
+      }
+      if (Object.keys(stored).length > 0) setReviewStates(stored);
+    } catch {}
+  }, []);
+
   const [checkLocked,   setCheckLocked]   = useState(true);
   const [lockCountdown, setLockCountdown] = useState(0);
   const lockIntervalRef = useRef(null);
@@ -136,7 +151,18 @@ export default function Home() {
 
   const handleStatusSelect = useCallback(async (url, newStatus) => {
     if (checkLocked) return;
+
+    // 1. UI 즉시 반영
     setReviewStates(p => ({ ...p, [url]: newStatus }));
+
+    // 2. localStorage에 즉시 저장 (새로고침/재접속 후에도 유지)
+    try {
+      const lsKey = `gaip_review:${url}`;
+      if (!newStatus) localStorage.removeItem(lsKey);
+      else            localStorage.setItem(lsKey, newStatus);
+    } catch {}
+
+    // 3. Redis API도 시도 (Upstash 설정된 경우 크로스 디바이스 동기화)
     setSavingUrl(url);
     try {
       const res  = await fetch("/api/review", {
@@ -147,6 +173,7 @@ export default function Home() {
       setKvAvailable(data.kvAvailable !== false);
     } catch {}
     finally { setSavingUrl(null); }
+
     startLockTimer();
   }, [checkLocked, startLockTimer]);
 
@@ -241,27 +268,53 @@ export default function Home() {
     finally { setDownloading(p => ({ ...p, [key]: false })); setFilePopup(null); }
   };
 
-  // ─── 검토 열 헤더 ───────────────────────────────────────────────────────
-  // Fix: th에 display:flex 직접 사용 시 sticky 깨짐 → 내부 div 래퍼로 해결
+  // ─── 검토 열 헤더 — 인라인 스타일로 sticky 직접 적용 ───────────────────
+  const thBg = dark ? "#1e3a6e" : "#1a3a8f";
   const reviewTh = (
-    <th className="th-check">
-      <div className="th-check-inner">
-        <div className="th-check-top">
+    <th style={{
+      position: "sticky",
+      left: 0,
+      top: 0,
+      zIndex: 10,
+      width: COL_CHECK_W,
+      minWidth: COL_CHECK_W,
+      padding: "8px 10px",
+      background: thBg,
+      color: "#fff",
+      borderRight: "2px solid rgba(255,255,255,0.4)",
+      borderBottom: "none",
+      verticalAlign: "middle",
+      textAlign: "center",
+      whiteSpace: "nowrap",
+      fontWeight: 700,
+    }}>
+      <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:5 }}>
           <button
-            className={`lock-btn${checkLocked ? " is-locked" : " is-unlocked"}`}
+            style={{
+              background: "none",
+              border: `1.5px solid ${checkLocked ? "rgba(255,255,255,0.6)" : "#fbbf24"}`,
+              borderRadius: 7,
+              padding: "4px 7px",
+              fontSize: 16,
+              cursor: "pointer",
+              lineHeight: 1,
+              color: "#fff",
+              backgroundColor: checkLocked ? "transparent" : "rgba(255,255,255,0.15)",
+            }}
             onClick={handleLockToggle}
             title={checkLocked ? "클릭하여 잠금 해제 (10분 후 자동 잠금)" : `잠금 해제 중 — ${fmtCountdown(lockCountdown)} 후 자동 잠금`}
           >
             {checkLocked ? "🔒" : "🔓"}
           </button>
           {!checkLocked && lockCountdown > 0 && (
-            <span className="lock-cd">{fmtCountdown(lockCountdown)}</span>
+            <span style={{ fontSize:10, color:"#fbbf24", fontWeight:700 }}>{fmtCountdown(lockCountdown)}</span>
           )}
           {!kvAvailable && (
-            <span title="Upstash Redis 미설정 — 상태가 저장되지 않습니다" style={{fontSize:11,color:"#fbbf24",cursor:"help"}}>⚠</span>
+            <span title="Upstash Redis 미설정 — localStorage로 저장 중" style={{fontSize:11,color:"#fbbf24",cursor:"help"}}>⚠</span>
           )}
         </div>
-        <span className="check-col-title">대표 검토</span>
+        <span style={{ fontSize:10, color:"#fff", fontWeight:700, letterSpacing:"0.3px" }}>대표 검토</span>
       </div>
     </th>
   );
