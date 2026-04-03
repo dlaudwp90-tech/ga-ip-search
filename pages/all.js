@@ -1,6 +1,20 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
+
+// ─── index.js와 동일한 상수 ───────────────────────────────────────────────
+const STATUS_OPTIONS = [
+  { key: "confirmed", label: "대표확인", short: "확인다운", color: "#16a34a", bg: "#f0fdf4", darkColor: "#4ade80", darkBg: "#14532d" },
+  { key: "rejected",  label: "대표반려", short: "반려",    color: "#dc2626", bg: "#fff1f2", darkColor: "#f87171", darkBg: "#450a0a" },
+  { key: "reviewing", label: "대표검토", short: "검토",    color: "#d97706", bg: "#fffbeb", darkColor: "#fbbf24", darkBg: "#451a03" },
+];
+const LOCK_SECONDS  = 600;
+const COL_CHECK_W   = 160;
+const STORAGE_KEY   = "gaip_reviews"; // index.js와 동일 키 → 자동 동기화
+
+function fmtCountdown(s) {
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
 
 function renderSingleLine(text) {
   if (!text) return "—";
@@ -32,10 +46,15 @@ const NOTION_COLOR = {
   pink:    { bg:"#fce7f3",text:"#9d174d",darkBg:"#500724",darkText:"#f9a8d4" },
   red:     { bg:"#fee2e2",text:"#991b1b",darkBg:"#450a0a",darkText:"#fca5a5" },
 };
-
 function notionBadgeStyle(color, dark) {
   const c = NOTION_COLOR[color] || NOTION_COLOR.default;
   return dark ? { background: c.darkBg, color: c.darkText } : { background: c.bg, color: c.text };
+}
+
+function rowBg(i, dark, hover = false) {
+  if (hover) return dark ? "#1e3a5f" : "#f0f4ff";
+  if (i % 2 === 0) return dark ? "#1e293b" : "#fff";
+  return dark ? "#172035" : "#f7f8ff";
 }
 
 export default function AllPage() {
@@ -56,14 +75,120 @@ export default function AllPage() {
   const [downloading, setDownloading] = useState({});
   const [copied, setCopied] = useState({});
   const [notionPopup, setNotionPopup] = useState(null);
+  const [hoveredRow, setHoveredRow] = useState(null);
+
+  // ── 대표 검토 상태 ──
+  const [reviewStates, setReviewStates] = useState({});
+  const [savingUrl,    setSavingUrl]    = useState(null);
+  const [kvAvailable,  setKvAvailable]  = useState(true);
+  const [statesReady,  setStatesReady]  = useState(false);
+
+  // ── 잠금 상태 ──
+  const [checkLocked,   setCheckLocked]   = useState(true);
+  const [lockCountdown, setLockCountdown] = useState(0);
+  const lockIntervalRef = useRef(null);
+  const lockTimeoutRef  = useRef(null);
 
   const tableOuterRef = useRef(null);
-  const filePopupRef = useRef(null);
-  const bottomRef = useRef(null);
+  const filePopupRef  = useRef(null);
+  const bottomRef     = useRef(null);
 
   const toggleRow = (idx) => setExpandedRows(prev => ({ ...prev, [idx]: !prev[idx] }));
 
-  // 초기 로드
+  // ── localStorage 복원 (index.js와 동일 키 → 자동 동기화) ──
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") setReviewStates(parsed);
+      }
+    } catch {}
+    setStatesReady(true);
+  }, []);
+
+  // ── reviewStates 변경 시 자동 저장 ──
+  useEffect(() => {
+    if (!statesReady) return;
+    try {
+      const toSave = Object.fromEntries(
+        Object.entries(reviewStates).filter(([, v]) => v !== null && v !== undefined && v !== "")
+      );
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+    } catch {}
+  }, [reviewStates, statesReady]);
+
+  // ── 잠금 타이머 ──
+  const startLockTimer = useCallback(() => {
+    if (lockIntervalRef.current) clearInterval(lockIntervalRef.current);
+    if (lockTimeoutRef.current)  clearTimeout(lockTimeoutRef.current);
+    setLockCountdown(LOCK_SECONDS);
+    lockIntervalRef.current = setInterval(() => {
+      setLockCountdown(p => Math.max(0, p - 1));
+    }, 1000);
+    lockTimeoutRef.current = setTimeout(() => {
+      setCheckLocked(true);
+      clearInterval(lockIntervalRef.current);
+      setLockCountdown(0);
+    }, LOCK_SECONDS * 1000);
+  }, []);
+
+  const stopLockTimer = useCallback(() => {
+    if (lockIntervalRef.current) clearInterval(lockIntervalRef.current);
+    if (lockTimeoutRef.current)  clearTimeout(lockTimeoutRef.current);
+    setLockCountdown(0);
+  }, []);
+
+  useEffect(() => () => stopLockTimer(), [stopLockTimer]);
+
+  const handleLockToggle = () => {
+    if (checkLocked) { setCheckLocked(false); startLockTimer(); }
+    else             { setCheckLocked(true);  stopLockTimer();  }
+  };
+
+  // ── Redis API 조회 (null 필터링으로 localStorage 보호) ──
+  const fetchReviewStates = useCallback(async (urls) => {
+    if (!urls?.length) return;
+    try {
+      const res  = await fetch("/api/review", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "get", urls }),
+      });
+      const data = await res.json();
+      setKvAvailable(data.kvAvailable !== false);
+      if (data.states) {
+        const validStates = Object.fromEntries(
+          Object.entries(data.states).filter(([, v]) => v !== null && v !== undefined && v !== "")
+        );
+        if (Object.keys(validStates).length > 0) {
+          setReviewStates(p => ({ ...p, ...validStates }));
+        }
+      }
+    } catch { setKvAvailable(false); }
+  }, []);
+
+  useEffect(() => {
+    if (results?.length) fetchReviewStates(results.map(r => r.url));
+  }, [results, fetchReviewStates]);
+
+  // ── 버튼 클릭 처리 ──
+  const handleStatusSelect = useCallback(async (url, newStatus) => {
+    if (checkLocked) return;
+    setReviewStates(p => ({ ...p, [url]: newStatus }));
+    setSavingUrl(url);
+    try {
+      const res  = await fetch("/api/review", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "set", url, status: newStatus }),
+      });
+      const data = await res.json();
+      setKvAvailable(data.kvAvailable !== false);
+    } catch {}
+    finally { setSavingUrl(null); }
+    startLockTimer();
+  }, [checkLocked, startLockTimer]);
+
+  // ── 초기 로드 ──
   useEffect(() => {
     fetchPage(null, true);
     fetchTotalCount();
@@ -114,10 +239,10 @@ export default function AllPage() {
       const res = await fetch("/api/count");
       const data = await res.json();
       if (res.ok) setTotalCount(data.count);
-    } catch (e) {}
+    } catch {}
   };
 
-  // 파일 팝업 외부 클릭 닫기
+  // ── 파일 팝업 외부 클릭 닫기 ──
   useEffect(() => {
     if (!filePopup) return;
     const handle = (e) => {
@@ -130,11 +255,7 @@ export default function AllPage() {
     return () => { document.removeEventListener("mousedown", handle); document.removeEventListener("touchstart", handle); };
   }, [filePopup]);
 
-  const handleTitleClick = (e, url) => {
-    e.stopPropagation();
-    setFilePopup(null);
-    setNotionPopup({ url });
-  };
+  const handleTitleClick = (e, url) => { e.stopPropagation(); setFilePopup(null); setNotionPopup({ url }); };
 
   const handleCopy = (e, value, key) => {
     e.stopPropagation();
@@ -169,6 +290,99 @@ export default function AllPage() {
       }
     } catch (err) { if (err.name !== "AbortError") alert("다운로드 실패: "+err.message); }
     finally { setDownloading(p => ({ ...p, [key]: false })); setFilePopup(null); }
+  };
+
+  // ─── 대표 검토 헤더 (인라인 스타일) ────────────────────────────────────
+  const thBg = dark ? "#1e3a6e" : "#1a3a8f";
+  const reviewTh = (
+    <th style={{
+      position:"sticky", left:0, top:0, zIndex:10,
+      width:COL_CHECK_W, minWidth:COL_CHECK_W,
+      padding:"8px 10px",
+      background:thBg, color:"#fff",
+      borderRight:"2px solid rgba(255,255,255,0.4)",
+      verticalAlign:"middle", textAlign:"center",
+      whiteSpace:"nowrap", fontWeight:700,
+    }}>
+      <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:5 }}>
+          <button
+            style={{
+              background:"none",
+              border:`1.5px solid ${checkLocked ? "rgba(255,255,255,0.6)" : "#fbbf24"}`,
+              borderRadius:7, padding:"4px 7px", fontSize:16, cursor:"pointer",
+              lineHeight:1, color:"#fff",
+              backgroundColor: checkLocked ? "transparent" : "rgba(255,255,255,0.15)",
+            }}
+            onClick={handleLockToggle}
+            title={checkLocked ? "클릭하여 잠금 해제 (10분 후 자동 잠금)" : `잠금 해제 중 — ${fmtCountdown(lockCountdown)} 후 자동 잠금`}
+          >
+            {checkLocked ? "🔒" : "🔓"}
+          </button>
+          {!checkLocked && lockCountdown > 0 && (
+            <span style={{ fontSize:10, color:"#fbbf24", fontWeight:700 }}>{fmtCountdown(lockCountdown)}</span>
+          )}
+        </div>
+        <span style={{ fontSize:10, color:"#fff", fontWeight:700, letterSpacing:"0.3px" }}>대표 검토</span>
+      </div>
+    </th>
+  );
+
+  // ─── 대표 검토 셀 (인라인 스타일, 가로 1행 배치) ─────────────────────
+  const reviewTd = (row, i) => {
+    const status  = reviewStates[row.url] ?? null;
+    const saving  = savingUrl === row.url;
+    const bg      = rowBg(i, dark, hoveredRow === i);
+    return (
+      <td style={{
+        position:"sticky", left:0, zIndex:2,
+        width:COL_CHECK_W, minWidth:COL_CHECK_W,
+        padding:"6px 8px",
+        borderBottom:`1.5px solid ${dark ? "#2a3a55" : "#dde3f5"}`,
+        borderRight:`2px solid ${dark ? "#2a3a55" : "#dde3f5"}`,
+        verticalAlign:"middle", background:bg,
+        transition:"background 0.12s",
+      }}>
+        <div style={{ display:"flex", flexDirection:"row", gap:3, opacity: saving ? 0.6 : 1 }}>
+          {STATUS_OPTIONS.map(opt => {
+            const isActive = status === opt.key;
+            const c   = dark ? opt.darkColor : opt.color;
+            const obg = dark ? opt.darkBg    : opt.bg;
+            return (
+              <button key={opt.key}
+                onClick={() => handleStatusSelect(row.url, isActive ? null : opt.key)}
+                disabled={checkLocked || saving}
+                title={checkLocked ? "🔒 잠금을 해제하고 클릭하세요" : opt.label}
+                style={{
+                  display:"flex", alignItems:"center", justifyContent:"center", gap:3,
+                  background: isActive ? obg : "transparent",
+                  border:`1.5px solid ${isActive ? c : (dark ? "#334155" : "#e5e7eb")}`,
+                  borderRadius:5, padding:"3px 4px",
+                  cursor:(checkLocked||saving) ? "not-allowed" : "pointer",
+                  fontFamily:"inherit", flex:1, minWidth:0,
+                  opacity: checkLocked ? 0.6 : 1,
+                  transition:"all 0.15s",
+                }}
+              >
+                <span style={{
+                  width:7, height:7, borderRadius:"50%",
+                  border:`1.5px solid ${c}`, flexShrink:0,
+                  background: isActive ? c : "transparent",
+                  display:"inline-block", transition:"background 0.15s",
+                }} />
+                <span style={{
+                  fontSize:9, fontWeight:700,
+                  color: isActive ? c : (dark ? "#94a3b8" : "#6b7280"),
+                  whiteSpace:"nowrap", lineHeight:1.3,
+                }}>
+                  {opt.short}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </td>
+    );
   };
 
   const remainingCount = totalCount !== null ? Math.max(0, totalCount - results.length) : null;
@@ -278,12 +492,16 @@ export default function AllPage() {
           )}
           {results.length > 0 && (
             <div className={`fade-wrap${tableVisible?" visible":""}`}>
-              <p className="count">📄 {results.length}건 표시 중{hasMore ? ` (전체 ${totalCount??'…'}건)` : ` / 전체 ${results.length}건`}</p>
+              <div className="count-row">
+                <p className="count">📄 {results.length}건 표시 중{hasMore ? ` (전체 ${totalCount??'…'}건)` : ` / 전체 ${results.length}건`}</p>
+                <p className="lock-guide">🔓 잠금 표시를 해제하고 버튼을 눌러주세요</p>
+              </div>
               <div className="table-outer" ref={tableOuterRef}>
                 <table>
                   <thead>
                     <tr>
-                      <th>문서 제목</th>
+                      {reviewTh}
+                      <th className="th-title">문서 제목</th>
                       <th>유형</th>
                       <th>상태</th>
                       <th>서류작업상태</th>
@@ -297,9 +515,14 @@ export default function AllPage() {
                   </thead>
                   <tbody>
                     {results.map((row, i) => (
-                      <tr key={i} className={`result-row ${i%2===0?"row-even":"row-odd"}`}>
+                      <tr key={i}
+                        className={`result-row ${i%2===0?"row-even":"row-odd"}`}
+                        onMouseEnter={()=>setHoveredRow(i)}
+                        onMouseLeave={()=>setHoveredRow(null)}
+                      >
+                        {reviewTd(row, i)}
 
-                        <td className="td-nowrap">
+                        <td className="td-title-col td-nowrap">
                           <div className="cell-inner">
                             <span className="doc-icon">📄</span>
                             <span className="doc-title" onClick={e=>handleTitleClick(e,row.url)}>
@@ -336,7 +559,6 @@ export default function AllPage() {
                             const isExpanded = !!expandedRows[i];
                             const LIMIT = 1;
                             const show = isExpanded ? files : files.slice(0,LIMIT);
-                            const hasMoreFiles = files.length > LIMIT;
                             return (
                               <div className="file-expand-wrap">
                                 <div className="file-links">
@@ -349,8 +571,8 @@ export default function AllPage() {
                                         <span className={`file-link${isOpen?" active":""}`}
                                           onMouseDown={e=>{
                                             e.stopPropagation();
-                                            if(isOpen){setFilePopup(null);}
-                                            else{setPopupPos({x:e.clientX,y:e.clientY});setFilePopup(pk);}
+                                            if(isOpen) setFilePopup(null);
+                                            else { setPopupPos({x:e.clientX,y:e.clientY}); setFilePopup(pk); }
                                           }}>
                                           📄 {fileName} ▾
                                         </span>
@@ -358,7 +580,7 @@ export default function AllPage() {
                                     );
                                   })}
                                 </div>
-                                {hasMoreFiles && (
+                                {files.length>LIMIT && (
                                   <button className={`expand-btn${isExpanded?" expanded":""}`}
                                     onClick={e=>{e.stopPropagation();toggleRow(i);}}>
                                     {isExpanded?"↑ 접기":`+${files.length-LIMIT} 더보기`}
@@ -425,7 +647,7 @@ export default function AllPage() {
                 </table>
               </div>
 
-              {/* 더보기 버튼 영역 */}
+              {/* 더보기 버튼 */}
               {hasMore && (
                 <div className="load-more-area" ref={bottomRef}>
                   <div className="load-more-info">
@@ -436,14 +658,10 @@ export default function AllPage() {
                   </div>
                   <div className="load-more-btns">
                     <button className="lm-btn lm-btn-page" onClick={()=>fetchPage(nextCursor)} disabled={loadingMore||loadingAll}>
-                      {loadingMore
-                        ? <><span className="lm-spin"/>불러오는 중...</>
-                        : <>⬇ 25개 더 불러오기</>}
+                      {loadingMore ? <><span className="lm-spin"/>불러오는 중...</> : <>⬇ 25개 더 불러오기</>}
                     </button>
                     <button className="lm-btn lm-btn-all" onClick={fetchAllRemaining} disabled={loadingMore||loadingAll}>
-                      {loadingAll
-                        ? <><span className="lm-spin"/>전체 불러오는 중...</>
-                        : <>⬇ 남은 {remainingCount!==null?`${remainingCount}개 `:""}전체 보기</>}
+                      {loadingAll ? <><span className="lm-spin"/>전체 불러오는 중...</> : <>⬇ 남은 {remainingCount!==null?`${remainingCount}개 `:""}전체 보기</>}
                     </button>
                   </div>
                 </div>
@@ -506,24 +724,29 @@ export default function AllPage() {
         .logo-bot-rule { width:380px; height:1px; background:#13274F; margin:0 auto; }
         .dark .logo-top-rule,.dark .logo-bot-rule { background:#475569; }
 
-        .page-title-wrap { text-align:center; margin:20px 0 28px; }
+        .page-title-wrap { text-align:center; margin:20px 0 16px; }
         .page-title { font-size:22px; font-weight:800; color:#13274F; margin-bottom:8px; }
         .dark .page-title { color:#e2e8f0; }
         .page-subtitle { font-size:13px; color:#6b7280; }
         .total-badge { background:#dbeafe; color:#1e40af; padding:2px 8px; border-radius:5px; font-weight:700; font-size:12px; margin-left:6px; }
         .dark .total-badge { background:#1e3a6e; color:#93c5fd; }
 
-        .results { width:100%; max-width:1200px; padding-bottom:60px; }
+        .results { width:100%; max-width:1300px; padding-bottom:60px; }
         .loading { display:flex; flex-direction:column; align-items:center; margin-top:60px; gap:16px; }
         .spinner { width:36px; height:36px; border:3px solid #d0d9f0; border-top:3px solid #1a3a8f; border-radius:50%; animation:spin .8s linear infinite; }
         .loading p { color:#6b7280; font-size:15px; }
         .error { color:#dc2626; text-align:center; margin-top:40px; }
         .no-result { text-align:center; margin-top:60px; }
         .no-icon { font-size:48px; } .no-text { font-size:18px; font-weight:600; margin-top:12px; }
-        .count { color:#6b7280; font-size:13px; margin-bottom:12px; }
 
+        .count-row { display:flex; align-items:center; justify-content:space-between; width:100%; margin-bottom:12px; gap:10px; flex-wrap:wrap; }
+        .count { color:#6b7280; font-size:13px; margin-bottom:0; }
+        .lock-guide { font-size:12px; font-weight:700; color:#d97706; }
+        .dark .lock-guide { color:#fbbf24; }
+
+        /* ── 테이블: 양방향 스크롤 + sticky 고정 ── */
         .table-outer { background:#fff; border-radius:16px; box-shadow:0 2px 16px rgba(26,58,143,0.08);
-          overflow-x:auto; border:1px solid #e5e9f5; }
+          overflow:auto; height:65vh; min-height:280px; border:1px solid #e5e9f5; }
         .dark .table-outer { background:#1e293b; border-color:#334155; }
         table { border-collapse:separate; border-spacing:0; font-size:13px; width:max-content; min-width:100%; }
 
@@ -532,8 +755,11 @@ export default function AllPage() {
           position:sticky; top:0; z-index:3; }
         th:last-child { border-right:none; }
         .dark th { background:#1e3a6e; }
-        th:first-child { position:sticky; left:0; top:0; z-index:5; background:#1a3a8f; border-right:2px solid rgba(255,255,255,0.3); }
-        .dark th:first-child { background:#1e3a6e; }
+
+        /* 문서 제목 th — left:COL_CHECK_W sticky */
+        .th-title { position:sticky; left:${COL_CHECK_W}px; top:0; z-index:5;
+          background:#1a3a8f; border-right:2px solid rgba(255,255,255,0.3) !important; }
+        .dark .th-title { background:#1e3a6e; }
 
         .result-row { transition:background .12s; }
         .result-row:hover td { background:#f0f4ff; }
@@ -543,18 +769,22 @@ export default function AllPage() {
           white-space:nowrap; text-align:center; vertical-align:middle; background:inherit; }
         td:last-child { border-right:none; }
         .dark td { border-bottom-color:#2a3a55; border-right-color:#222e42; }
-        td:first-child { position:sticky; left:0; z-index:2; background:#fff; border-right:2px solid #dde3f5; }
-        .dark td:first-child { background:#1e293b; border-right-color:#2a3a55; }
-        .result-row:hover td:first-child { background:#f0f4ff; }
-        .dark .result-row:hover td:first-child { background:#1e3a5f; }
-        .row-odd td:first-child { background:#f7f8ff; }
-        .dark .row-odd td:first-child { background:#172035; }
-        .row-odd { background:#f7f8ff; }
+
+        /* 문서 제목 td — left:COL_CHECK_W sticky */
+        .td-title-col { position:sticky; left:${COL_CHECK_W}px; z-index:2;
+          border-right:2px solid #dde3f5 !important; }
+        .dark .td-title-col { border-right-color:#2a3a55 !important; }
+        .row-even .td-title-col { background:#fff; }
+        .row-odd  .td-title-col { background:#f7f8ff; }
+        .dark .row-even .td-title-col { background:#1e293b; }
+        .dark .row-odd  .td-title-col { background:#172035; }
+        .result-row:hover .td-title-col { background:#f0f4ff !important; }
+        .dark .result-row:hover .td-title-col { background:#1e3a5f !important; }
+
+        .row-odd  { background:#f7f8ff; }
         .row-even { background:#fff; }
-        .dark .row-odd { background:#172035; }
+        .dark .row-odd  { background:#172035; }
         .dark .row-even { background:#1e293b; }
-        .row-odd:hover td:first-child,.row-even:hover td:first-child { background:#f0f4ff; }
-        .dark .row-odd:hover td:first-child,.dark .row-even:hover td:first-child { background:#1e3a5f; }
 
         .td-nowrap { vertical-align:middle; text-align:center; }
         .td-top { vertical-align:top; padding-top:10px; text-align:left; }
@@ -564,7 +794,6 @@ export default function AllPage() {
         .doc-title { color:#1a3a8f; font-weight:600; font-size:13px; cursor:pointer; text-decoration:underline; }
         .dark .doc-title { color:#93c5fd; }
         .doc-title:hover { opacity:0.75; }
-
         .badge { border-radius:5px; padding:2px 7px; font-size:11px; font-weight:700; display:inline-block; }
         .dash { color:#d1d5db; }
 
@@ -589,7 +818,6 @@ export default function AllPage() {
         .copy-btn.copied { background:#dcfce7; color:#166634; }
         .dark .copy-btn { background:#1e3a6e; color:#93c5fd; }
         .dark .copy-btn.copied { background:#14532d; color:#86efac; }
-
         .file-links { display:flex; flex-direction:column; gap:4px; }
         .file-link-wrap { position:relative; display:inline-block; }
         .file-link { font-size:12px; color:#1a3a8f; padding:3px 8px; background:#eef1fb; border-radius:5px;
@@ -598,7 +826,6 @@ export default function AllPage() {
         .dark .file-link { background:#1e3a6e; color:#93c5fd; }
         .dark .file-link:hover,.dark .file-link.active { background:#2a4a8e; }
 
-        /* ── 더보기 버튼 영역 ── */
         .load-more-area { margin-top:20px; padding:20px; background:#fff; border-radius:16px;
           border:1px solid #e5e9f5; box-shadow:0 2px 12px rgba(26,58,143,0.06); text-align:center; }
         .dark .load-more-area { background:#1e293b; border-color:#334155; }
