@@ -4,7 +4,7 @@ import { useRouter } from "next/router";
 
 // ─── 상태 옵션 ──
 const STATUS_OPTIONS = [
-  { key: "confirmed", label: "대표확인", short: "확인", color: "#16a34a", bg: "#f0fdf4", darkColor: "#4ade80", darkBg: "#14532d" },
+  { key: "confirmed", label: "대표확인", short: "확인다운", color: "#16a34a", bg: "#f0fdf4", darkColor: "#4ade80", darkBg: "#14532d" },
   { key: "rejected",  label: "대표반려", short: "반려", color: "#dc2626", bg: "#fff1f2", darkColor: "#f87171", darkBg: "#450a0a" },
   { key: "reviewing", label: "대표검토", short: "검토", color: "#d97706", bg: "#fffbeb", darkColor: "#fbbf24", darkBg: "#451a03" },
 ];
@@ -431,15 +431,23 @@ export default function Home() {
             ) : (
               <div className={`fade-wrap${tableVisible?" visible":""}`}>
                 <div className="count-row">
-                  <p className="count" style={{marginBottom:0}}>
-                    {isRecent
-                      ? <>🕐 최근 수정된 문서 20건 <span className="recent-hint">(여기에 없는 문서는 검색창을 이용해주세요)</span></>
-                      : `검색 결과 ${results.length}건`}
-                  </p>
+                  {/* 왼쪽: 잠금 해제 안내 (최근 문서일 때) 또는 검색 결과 수 */}
+                  {isRecent
+                    ? <p className="lock-guide">🔓 잠금 표시를 해제하고 버튼을 눌러주세요</p>
+                    : <p className="count">{`검색 결과 ${results.length}건`}</p>
+                  }
+
+                  {/* 오른쪽: 문서 수 + 버튼들 */}
                   {isRecent && (
-                    <div className="count-btns">
-                      <button className="nav-btn nav-btn-all"   onClick={()=>router.push("/all")}>📂 문서 전체 보기</button>
-                      <button className="nav-btn nav-btn-guide" onClick={()=>router.push("/guide")}>📋 문서 작성 방법 및 양식</button>
+                    <div className="count-right">
+                      <p className="count" style={{marginBottom:0}}>
+                        🕐 최근 수정된 문서 20건&nbsp;
+                        <span className="recent-hint">(여기에 없는 문서는 검색창을 이용해주세요)</span>
+                      </p>
+                      <div className="count-btns">
+                        <button className="nav-btn nav-btn-all"   onClick={()=>router.push("/all")}>📂 문서 전체 보기</button>
+                        <button className="nav-btn nav-btn-guide" onClick={()=>router.push("/guide")}>📋 문서 작성 방법 및 양식</button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -665,6 +673,11 @@ export default function Home() {
 
         .count-row  { display:flex; align-items:center; justify-content:space-between; width:100%; margin-bottom:12px; gap:10px; flex-wrap:wrap; }
         .count      { color:#6b7280; font-size:13px; margin-bottom:0; }
+        /* 잠금 해제 안내 — 왼쪽 */
+        .lock-guide { font-size:12px; font-weight:700; color:#d97706; letter-spacing:0.2px; }
+        .dark .lock-guide { color:#fbbf24; }
+        /* 오른쪽 그룹: 문서수 + 버튼 */
+        .count-right { display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:flex-end; }
         .recent-hint { font-style:italic; text-decoration:underline; color:#16a34a; font-size:12px; }
         .dark .recent-hint { color:#4ade80; }
         .count-btns { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
