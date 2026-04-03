@@ -78,21 +78,33 @@ export default function Home() {
   const [reviewStates, setReviewStates] = useState({});
   const [savingUrl,    setSavingUrl]    = useState(null);
   const [kvAvailable,  setKvAvailable]  = useState(true);
+  const [statesReady,  setStatesReady]  = useState(false); // localStorage 로드 완료 여부
 
-  // ── localStorage에서 검토 상태 복원 (마운트 시 1회) ──
+  const STORAGE_KEY = "gaip_reviews";
+
+  // ── 마운트 시 1회: localStorage에서 전체 상태 복원 ──
   useEffect(() => {
     try {
-      const stored = {};
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k && k.startsWith("gaip_review:")) {
-          const v = localStorage.getItem(k);
-          if (v) stored[k.slice(12)] = v;
-        }
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") setReviewStates(parsed);
       }
-      if (Object.keys(stored).length > 0) setReviewStates(stored);
     } catch {}
+    setStatesReady(true); // 로드 완료 표시
   }, []);
+
+  // ── reviewStates 변경될 때마다 자동 저장 (statesReady 이후에만) ──
+  // null/빈값은 저장 제외 → Redis가 null을 반환해도 localStorage 상태 보호
+  useEffect(() => {
+    if (!statesReady) return;
+    try {
+      const toSave = Object.fromEntries(
+        Object.entries(reviewStates).filter(([, v]) => v !== null && v !== undefined && v !== "")
+      );
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+    } catch {}
+  }, [reviewStates, statesReady]);
 
   const [checkLocked,   setCheckLocked]   = useState(true);
   const [lockCountdown, setLockCountdown] = useState(0);
@@ -141,7 +153,15 @@ export default function Home() {
       });
       const data = await res.json();
       setKvAvailable(data.kvAvailable !== false);
-      if (data.states) setReviewStates(p => ({ ...p, ...data.states }));
+      if (data.states) {
+        // null/undefined 값은 제외 → localStorage에 저장된 상태를 null로 덮어쓰지 않도록 보호
+        const validStates = Object.fromEntries(
+          Object.entries(data.states).filter(([, v]) => v !== null && v !== undefined && v !== "")
+        );
+        if (Object.keys(validStates).length > 0) {
+          setReviewStates(p => ({ ...p, ...validStates }));
+        }
+      }
     } catch { setKvAvailable(false); }
   }, []);
 
@@ -152,17 +172,10 @@ export default function Home() {
   const handleStatusSelect = useCallback(async (url, newStatus) => {
     if (checkLocked) return;
 
-    // 1. UI 즉시 반영
+    // 1. UI 즉시 반영 → watch useEffect가 자동으로 localStorage에 저장
     setReviewStates(p => ({ ...p, [url]: newStatus }));
 
-    // 2. localStorage에 즉시 저장 (새로고침/재접속 후에도 유지)
-    try {
-      const lsKey = `gaip_review:${url}`;
-      if (!newStatus) localStorage.removeItem(lsKey);
-      else            localStorage.setItem(lsKey, newStatus);
-    } catch {}
-
-    // 3. Redis API도 시도 (Upstash 설정된 경우 크로스 디바이스 동기화)
+    // 2. Redis API 시도 (Upstash 설정된 경우 크로스 디바이스 동기화)
     setSavingUrl(url);
     try {
       const res  = await fetch("/api/review", {
