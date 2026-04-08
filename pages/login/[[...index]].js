@@ -26,6 +26,7 @@ export default function Login() {
 
         {/* Clerk 로그인 컴포넌트 */}
         <SignIn
+          routing="hash"
           appearance={{
             variables: {
               colorPrimary: "#13274F",
