@@ -461,7 +461,14 @@ export default function Home() {
         <button className="theme-toggle" onClick={()=>setDark(!dark)} title={dark?"라이트":"다크"}>{dark?"☀️":"🌙"}</button>
         <button className="upload-btn" onClick={()=>router.push("/upload")} title="파일 업로드">📁</button>
         <div className="user-btn-wrap">
-          <UserButton afterSignOutUrl="/login" />
+          <UserButton
+            afterSignOutUrl="/login"
+            appearance={{
+              elements: {
+                avatarBox: { width: 28, height: 28 }
+              }
+            }}
+          />
         </div>
 
         <div className="logo-area" onClick={searched?handleClear:undefined} style={searched?{cursor:"pointer"}:{}}>
@@ -697,6 +704,7 @@ export default function Home() {
           display:flex; align-items:center; justify-content:center; transition:border-color .2s; }
         .dark .upload-btn { border-color:#475569; }
         .user-btn-wrap { position:absolute; top:20px; right:120px;
+          width:40px; height:40px;
           display:flex; align-items:center; justify-content:center; }
 
         .logo-area { margin-top:10vh; margin-bottom:32px; text-align:center; transition:margin .3s; }
