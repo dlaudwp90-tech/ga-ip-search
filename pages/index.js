@@ -79,33 +79,6 @@ export default function Home() {
   const [reviewStates, setReviewStates] = useState({});
   const [savingUrl,    setSavingUrl]    = useState(null);
   const [kvAvailable,  setKvAvailable]  = useState(true);
-  const [statesReady,  setStatesReady]  = useState(false); // localStorage 로드 완료 여부
-
-  const STORAGE_KEY = "gaip_reviews";
-
-  // ── 마운트 시 1회: localStorage에서 전체 상태 복원 ──
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed === "object") setReviewStates(parsed);
-      }
-    } catch {}
-    setStatesReady(true); // 로드 완료 표시
-  }, []);
-
-  // ── reviewStates 변경될 때마다 자동 저장 (statesReady 이후에만) ──
-  // null/빈값은 저장 제외 → Redis가 null을 반환해도 localStorage 상태 보호
-  useEffect(() => {
-    if (!statesReady) return;
-    try {
-      const toSave = Object.fromEntries(
-        Object.entries(reviewStates).filter(([, v]) => v !== null && v !== undefined && v !== "")
-      );
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
-    } catch {}
-  }, [reviewStates, statesReady]);
 
   const [checkLocked,   setCheckLocked]   = useState(true);
   const [lockCountdown, setLockCountdown] = useState(0);
@@ -155,25 +128,29 @@ export default function Home() {
       const data = await res.json();
       setKvAvailable(data.kvAvailable !== false);
       if (data.states) {
-        // null/undefined 값은 제외 → localStorage에 저장된 상태를 null로 덮어쓰지 않도록 보호
-        const validStates = Object.fromEntries(
-          Object.entries(data.states).filter(([, v]) => v !== null && v !== undefined && v !== "")
-        );
-        if (Object.keys(validStates).length > 0) {
-          setReviewStates(p => ({ ...p, ...validStates }));
-        }
+        // Redis가 단일 진실 원천 — Redis 값으로 완전 교체
+        setReviewStates(data.states);
       }
     } catch { setKvAvailable(false); }
   }, []);
 
+  // ── 검색 결과가 바뀔 때마다 Redis에서 상태 로드 ──
   useEffect(() => {
     if (results?.length) fetchReviewStates(results.map(r => r.url));
+  }, [results, fetchReviewStates]);
+
+  // ── 30초 폴링: 다른 기기 변경사항 실시간 반영 ──
+  useEffect(() => {
+    if (!results?.length) return;
+    const urls = results.map(r => r.url);
+    const id = setInterval(() => fetchReviewStates(urls), 30000);
+    return () => clearInterval(id);
   }, [results, fetchReviewStates]);
 
   const handleStatusSelect = useCallback(async (url, newStatus) => {
     if (checkLocked) return;
 
-    // 1. UI 즉시 반영 → watch useEffect가 자동으로 localStorage에 저장
+    // 1. UI 즉시 반영 (낙관적 업데이트)
     setReviewStates(p => ({ ...p, [url]: newStatus }));
 
     // 2. Redis API 시도 (Upstash 설정된 경우 크로스 디바이스 동기화)
@@ -325,7 +302,7 @@ export default function Home() {
             <span style={{ fontSize:10, color:"#fbbf24", fontWeight:700 }}>{fmtCountdown(lockCountdown)}</span>
           )}
           {!kvAvailable && (
-            <span title="Upstash Redis 미설정 — localStorage로 저장 중" style={{fontSize:11,color:"#fbbf24",cursor:"help"}}>⚠</span>
+            <span title="⚠ Upstash Redis 미설정 — 이 기기에서만 표시됩니다 (Vercel 환경변수 확인 필요)" style={{fontSize:11,color:"#ef4444",cursor:"help",fontWeight:700}}>⚠</span>
           )}
         </div>
         <span style={{ fontSize:10, color:"#fff", fontWeight:700, letterSpacing:"0.3px" }}>대표 검토</span>
