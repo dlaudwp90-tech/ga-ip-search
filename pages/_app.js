@@ -36,6 +36,9 @@ const clerkAppearance = {
     footerActionLink: { color: "#13274F", fontWeight: "600" },
     dividerLine: { background: "#e2e8f0" },
     dividerText: { color: "#94a3b8" },
+    // UserButton 정상화
+    userButtonAvatarBox: { width: "28px", height: "28px" },
+    userButtonPopoverCard: { boxShadow: "0 4px 24px rgba(0,0,0,0.12)", borderRadius: "12px" },
   },
 };
 
