@@ -764,6 +764,17 @@ export default function AllPage() {
               transition:"border-color .2s", flexShrink:0 }}>
             {dark?"☀️":"🌙"}
           </button>
+          {/* 뷰 토글 - 태블릿에서만 표시 */}
+          <button
+            className="view-toggle-btn"
+            title={viewMode==="mobile"?"PC 뷰로 전환":viewMode==="pc"?"자동 전환":"모바일 뷰로 전환"}
+            onClick={() => setViewMode(v => v==="auto"?"mobile":v==="mobile"?"pc":"auto")}
+            style={{ background:"none", border:"2px solid #d0d9f0", borderRadius:"50%",
+              width:40, height:40, fontSize:16, cursor:"pointer",
+              display:"flex", alignItems:"center", justifyContent:"center",
+              transition:"border-color .2s", flexShrink:0 }}>
+            {viewMode==="mobile"?"🖥️":viewMode==="pc"?"📱":"⇄"}
+          </button>
 
         </div>{/* ── 우측 버튼 묶음 끝 ── */}
 
@@ -883,7 +894,9 @@ export default function AllPage() {
                 <p className="lock-guide">🔓 잠금 표시를 해제하고 버튼을 눌러주세요</p>
               </div>
               {/* ── 모바일 카드 뷰 ── */}
-              <div className="mobile-cards">
+              <div className="mobile-cards" style={{
+                display: viewMode==="pc" ? "none" :
+                         viewMode==="mobile" ? "flex" : undefined }}>
                 {results.map((row, i) => (
                   <React.Fragment key={i}>
                     <div className="m-card"
@@ -1057,7 +1070,9 @@ export default function AllPage() {
               </div>
 
               {/* ── PC 테이블 뷰 ── */}
-              <div className="table-outer" ref={tableOuterRef}>
+              <div className="table-outer" ref={tableOuterRef} style={{
+                display: viewMode==="mobile" ? "none" :
+                         viewMode==="pc" ? "block" : undefined }}>
                 <table>
                   <thead>
                     <tr>
@@ -1399,6 +1414,9 @@ export default function AllPage() {
         .m-file-link { font-size:12px; color:#1a3a8f; background:#eef1fb; border-radius:5px;
           padding:3px 8px; text-decoration:none; display:inline-block; }
         .dark .m-file-link { background:#1e3a6e; color:#93c5fd; }
+        @media (min-width: 769px) {
+          .view-toggle-btn { display:none !important; }
+        }
         @media (max-width: 768px) {
           .mobile-cards { display:flex; }
           .table-outer { display:none; }
