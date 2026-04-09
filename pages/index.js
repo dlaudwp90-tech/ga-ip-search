@@ -497,7 +497,7 @@ export default function Home() {
         {userPopup && (
           <div
             style={{ position:"fixed", left:userBtnPos.x, top:userBtnPos.y+6, zIndex:500,
-              background:dark?"#1e293b":"#fff", border:,
+              background:dark?"#1e293b":"#fff", border:dark?"1.5px solid #334155":"1.5px solid #e5e9f5",
               borderRadius:10, boxShadow:"0 8px 24px rgba(19,39,79,0.18)",
               padding:6, minWidth:160, display:"flex", flexDirection:"column", gap:4 }}
             onMouseDown={e=>e.stopPropagation()}
