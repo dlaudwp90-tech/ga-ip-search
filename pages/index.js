@@ -1019,11 +1019,14 @@ export default function Home() {
                               transition:"max-height 0.42s cubic-bezier(0.4,0,0.2,1), opacity 0.3s ease",
                               marginTop: isOpen?"10px":0 }}>
                               <div style={{ borderTop:dark?"1px solid #334155":"1px solid #c7d2fe", paddingTop:10,
-                                display:"flex", flexDirection:"column", gap:8 }}>
+                                display:"flex", flexDirection:"column", gap:8,
+                                maxHeight:380, overflow:"hidden" }}>
                                 {panel.loading?(
                                   <div style={{fontSize:12,color:"#94a3b8"}}>불러오는 중...</div>
                                 ):panel.comments?.length>0?(
                                   <div style={{display:"flex",flexDirection:"column",gap:6,
+                                    flex:1, minHeight:0, overflowY:"auto",
+                                    marginBottom:8,
                                     opacity:panel.commentsVisible?1:0,transition:"opacity 0.3s ease"}}>
                                     {panel.comments.map((c,ci)=>(
                                       <div key={ci} style={{background:dark?"#1e293b":"#fff",borderRadius:8,
