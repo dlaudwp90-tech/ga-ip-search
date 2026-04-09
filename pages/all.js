@@ -697,10 +697,14 @@ export default function AllPage() {
             </span>
             <button
               onClick={() => {
-                const el = rowRefs.current[jumpTarget.idx];
-                const mEl = mobileCardRefs.current[jumpTarget.idx];
-                const target = mEl || el;
-                if (target) target.scrollIntoView({ behavior:"smooth", block:"center" });
+                const isMobile = window.innerWidth <= 768;
+                const target = isMobile
+                  ? mobileCardRefs.current[jumpTarget.idx]
+                  : rowRefs.current[jumpTarget.idx];
+                if (target) {
+                  const top = target.getBoundingClientRect().top + window.scrollY - 100;
+                  window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+                }
                 setJumpTarget(null);
               }}
               style={{ background:"#fff", color:"#13274F", border:"none", borderRadius:8,
@@ -712,12 +716,12 @@ export default function AllPage() {
           </div>
         )}
 
-        <button className="theme-toggle" onClick={()=>setDark(!dark)} title={dark?"라이트 모드":"다크 모드"}>
-          {dark?"☀️":"🌙"}
-        </button>
+        {/* ── 우측 상단 버튼 묶음 ── */}
+        <div style={{ position:"fixed", top:14, right:12, zIndex:400,
+          display:"flex", alignItems:"center", gap:8 }}>
 
-        {/* 알림 벨 */}
-        <div style={{ position:"fixed", top:16, right:120, zIndex:400, display:"inline-flex" }}>
+          {/* 알림 벨 */}
+          <div style={{ display:"inline-flex" }}>
           <button ref={notifBtnRef} title="댓글 알림"
             onClick={e => {
               const rect = e.currentTarget.getBoundingClientRect();
@@ -739,7 +743,33 @@ export default function AllPage() {
                 padding:"0 4px", border:"2px solid #fff", lineHeight:1 }}>N</span>
             )}
           </button>
-        </div>
+          </div>
+
+          {/* 유저 버튼 */}
+          <button ref={userBtnRef} title="계정"
+            onClick={e => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              setUserBtnPos({ x: rect.left, y: rect.bottom });
+              setUserPopup(p => !p);
+              setNotifOpen(false);
+            }}
+            style={{ background:"none", border:"2px solid #d0d9f0", borderRadius:"50%",
+              width:40, height:40, fontSize:18, cursor:"pointer",
+              display:"flex", alignItems:"center", justifyContent:"center",
+              transition:"border-color .2s", flexShrink:0 }}>
+            👤
+          </button>
+
+          {/* 테마 버튼 */}
+          <button onClick={()=>setDark(!dark)} title={dark?"라이트 모드":"다크 모드"}
+            style={{ background:"none", border:"2px solid #d0d9f0", borderRadius:"50%",
+              width:40, height:40, fontSize:18, cursor:"pointer",
+              display:"flex", alignItems:"center", justifyContent:"center",
+              transition:"border-color .2s", flexShrink:0 }}>
+            {dark?"☀️":"🌙"}
+          </button>
+
+        </div>{/* ── 우측 버튼 묶음 끝 ── */}
 
         {notifOpen && (
           <div style={{ position:"fixed", right:16, top:notifPos.y+6, zIndex:600,
@@ -779,23 +809,6 @@ export default function AllPage() {
             })}
           </div>
         )}
-
-        {/* 유저 버튼 */}
-        <div style={{ position:"fixed", top:16, right:70, zIndex:400, display:"flex", alignItems:"center" }}>
-          <button ref={userBtnRef} title="계정"
-            onClick={e => {
-              const rect = e.currentTarget.getBoundingClientRect();
-              setUserBtnPos({ x: rect.left, y: rect.bottom });
-              setUserPopup(p => !p);
-              setNotifOpen(false);
-            }}
-            style={{ background:"none", border:"2px solid #d0d9f0", borderRadius:"50%",
-              width:40, height:40, fontSize:18, cursor:"pointer",
-              display:"flex", alignItems:"center", justifyContent:"center",
-              transition:"border-color .2s" }}>
-            👤
-          </button>
-        </div>
 
         {userPopup && (
           <div style={{ position:"fixed", right:16, top:userBtnPos.y+6, zIndex:500,
