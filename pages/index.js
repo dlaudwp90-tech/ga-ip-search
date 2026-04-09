@@ -540,7 +540,7 @@ export default function Home() {
         return (
           <div ref={filePopupRef}
             style={{ position:"fixed",left:popupPos.x+14,top:popupPos.y-10,zIndex:500,
-              background:dark?"#1e293b":"#fff",border:`1.5px solid ${dark?"#334155":"#e5e9f5"}`,
+              background:dark?"#1e293b":"#fff",border:dark?"1.5px solid #334155":"1.5px solid #e5e9f5",
               borderRadius:10,boxShadow:"0 8px 24px rgba(19,39,79,0.18)",padding:6,minWidth:140,display:"flex",flexDirection:"column",gap:4 }}
             onMouseDown={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()}>
             <a href={link} target="_blank" rel="noreferrer"
@@ -731,7 +731,7 @@ export default function Home() {
                               <button
                                 onClick={e => { e.stopPropagation(); toggleCommentPanel(i, row.pageId); }}
                                 title="댓글"
-                                style={{ background:"none", border:`1px solid ${dark?"#334155":"#e0e7ff"}`,
+                                style={{ background:"none", border:dark?"1px solid #334155":"1px solid #e0e7ff",
                                   borderRadius:5, cursor:"pointer", padding:"1px 5px",
                                   fontSize:11, color:dark?"#94a3b8":"#6b7280", flexShrink:0,
                                   display: commentPanels[i]?.comments?.length > 0 ? "none" : "flex",
@@ -836,7 +836,7 @@ export default function Home() {
                             const panel = commentPanels[i] || {};
                             return (
                               <tr>
-                                <td colSpan={11} style={{ padding:0, borderBottom:`2px solid ${dark?"#1e3a6e":"#c7d2fe"}`, background:dark?"#0f172a":"#eef2ff" }}>
+                                <td colSpan={11} style={{ padding:0, borderBottom:dark?"2px solid #1e3a6e":"2px solid #c7d2fe", background:dark?"#0f172a":"#eef2ff" }}>
                                   <div style={{ padding:"12px 20px", display:"flex", flexDirection:"column", gap:10 }}>
                                     {/* 댓글 목록 */}
                                     {panel.loading ? (
@@ -844,14 +844,12 @@ export default function Home() {
                                     ) : panel.comments?.length > 0 ? (
                                       <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
                                         {panel.comments.map((c, ci) => {
-                                          const lines = c.text.split("
-");
+                                          const lines = c.text.split("\n");
                                           const header = lines[0];
-                                          const body = lines.slice(1).join("
-");
+                                          const body = lines.slice(1).join("\n");
                                           return (
                                             <div key={ci} style={{ background:dark?"#1e293b":"#fff", borderRadius:8,
-                                              padding:"8px 12px", border:`1px solid ${dark?"#334155":"#e0e7ff"}` }}>
+                                              padding:"8px 12px", border:dark?"1px solid #334155":"1px solid #e0e7ff" }}>
                                               <div style={{ fontSize:11, color:dark?"#94a3b8":"#6b7280", marginBottom:4, fontWeight:600 }}>{header}</div>
                                               <div style={{ fontSize:13, color:dark?"#e2e8f0":"#1f2937", whiteSpace:"pre-wrap" }}>{body}</div>
                                             </div>
@@ -871,7 +869,7 @@ export default function Home() {
                                         }}
                                         placeholder={"댓글 입력 (Enter 등록 / Shift+Enter 줄바꿈)"}
                                         rows={2}
-                                        style={{ flex:1, fontSize:13, border:`1.5px solid ${dark?"#334155":"#c7d2fe"}`,
+                                        style={{ flex:1, fontSize:13, border:dark?"1.5px solid #334155":"1.5px solid #c7d2fe",
                                           borderRadius:8, padding:"8px 10px", outline:"none", resize:"vertical",
                                           fontFamily:"inherit", background:dark?"#1e293b":"#fff", color:dark?"#e2e8f0":"#1f2937" }}
                                       />
