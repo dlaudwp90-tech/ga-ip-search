@@ -229,6 +229,26 @@ export default function AllPage() {
     if (results?.length) fetchReviewStates(results.map(r => r.url));
   }, [results, fetchReviewStates]);
 
+  // ── 댓글 수 미리 조회 (새로고침 후 즉시 표시)
+  useEffect(() => {
+    if (!results?.length) return;
+    results.forEach((row, i) => {
+      if (!row.pageId) return;
+      fetch("/api/comments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "get", pageId: row.pageId }),
+      }).then(r => r.json()).then(d => {
+        if (d.comments?.length > 0) {
+          setCommentPanels(prev => ({
+            ...prev,
+            [i]: { ...(prev[i] || {}), comments: d.comments }
+          }));
+        }
+      }).catch(() => {});
+    });
+  }, [results]);
+
   // ── 30초 폴링: 다른 기기 변경사항 실시간 반영 ──
   useEffect(() => {
     if (!results?.length) return;
