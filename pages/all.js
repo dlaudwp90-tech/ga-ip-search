@@ -768,18 +768,20 @@ export default function AllPage() {
           {/* 태블릿 뷰 토글 */}
           <button
             className="view-toggle-btn"
-            title="PC/모바일 뷰 전환"
+            title={tabView==="mobile"?"PC 뷰로 전환":tabView==="pc"?"자동 전환":"모바일 뷰로 전환"}
             onClick={() => {
-              const p = document.querySelector(".page") || document.body;
-              const cur = p.getAttribute("data-view") || "auto";
-              const next = cur === "auto" ? "mobile" : cur === "mobile" ? "pc" : "auto";
-              p.setAttribute("data-view", next);
+              setTabView(v => {
+                const next = v==="auto"?"mobile":v==="mobile"?"pc":"auto";
+                const p = document.querySelector(".page");
+                if (p) p.setAttribute("data-view", next);
+                return next;
+              });
             }}
             style={{ background:"none", border:"2px solid #d0d9f0", borderRadius:"50%",
-              width:40, height:40, fontSize:16, cursor:"pointer",
+              width:40, height:40, fontSize:18, cursor:"pointer",
               display:"flex", alignItems:"center", justifyContent:"center",
               transition:"border-color .2s", flexShrink:0 }}>
-            ⇄
+            {tabView==="mobile"?"🖥️":tabView==="pc"?"📱":"⇄"}
           </button>
 
         </div>{/* ── 우측 버튼 묶음 끝 ── */}
@@ -900,7 +902,8 @@ export default function AllPage() {
                 <p className="lock-guide">🔓 잠금 표시를 해제하고 버튼을 눌러주세요</p>
               </div>
               {/* ── 모바일 카드 뷰 ── */}
-              <div className="mobile-cards">
+              <div className="mobile-cards" style={{
+                display: tabView==="pc" ? "none" : tabView==="mobile" ? "flex" : undefined }}>
                 {results.map((row, i) => (
                   <React.Fragment key={i}>
                     <div className="m-card"
@@ -1074,7 +1077,8 @@ export default function AllPage() {
               </div>
 
               {/* ── PC 테이블 뷰 ── */}
-              <div className="table-outer" ref={tableOuterRef}>
+              <div className="table-outer" ref={tableOuterRef} style={{
+                display: tabView==="mobile" ? "none" : tabView==="pc" ? "block" : undefined }}>
                 <table>
                   <thead>
                     <tr>
