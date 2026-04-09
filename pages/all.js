@@ -184,15 +184,26 @@ export default function AllPage() {
     const { openComment } = router.query;
     if (!openComment || !results?.length) return;
     const idx = results.findIndex(r => r.pageId === openComment);
-    if (idx >= 0) {
-      setTimeout(() => {
-        const el = rowRefs.current[idx];
-        if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-        const mEl = mobileCardRefs.current[idx];
-        if (mEl) mEl.scrollIntoView({ behavior: "smooth", block: "center" });
-        toggleCommentPanel(idx, openComment);
-      }, 600);
-    }
+    if (idx < 0) return;
+
+    // 재시도 스크롤 함수 - 모바일은 렌더링 타이밍이 느릴 수 있어 반복 시도
+    let attempts = 0;
+    const maxAttempts = 8;
+    const tryScroll = () => {
+      attempts++;
+      const el = rowRefs.current[idx];
+      const mEl = mobileCardRefs.current[idx];
+      const target = mEl || el;
+      if (target) {
+        target.scrollIntoView({ behavior: attempts === 1 ? "auto" : "smooth", block: "center" });
+        if (attempts === 1) toggleCommentPanel(idx, openComment);
+        return;
+      }
+      if (attempts < maxAttempts) {
+        setTimeout(tryScroll, 200 * attempts);
+      }
+    };
+    setTimeout(tryScroll, 400);
   }, [router.query, results]);
 
   useEffect(() => {
