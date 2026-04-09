@@ -25,7 +25,8 @@ export default async function handler(req, res) {
       const match = line.match(/^\(.+?\)(https?:\/\/.+)$/);
       return match ? match[1] : line;
     }).join("\n");
-    return { title, typeItems, statusItem, categoryItems, docWorkStatusItem, appNum, appOwner, agentCode, deadline, url, fileLinks };
+    const pageId = page.id?.replace(/-/g, "") || "";
+    return { title, typeItems, statusItem, categoryItems, docWorkStatusItem, appNum, appOwner, agentCode, deadline, url, fileLinks, pageId };
   };
 
   const SORTS = [{ timestamp: "created_time", direction: "descending" }];
