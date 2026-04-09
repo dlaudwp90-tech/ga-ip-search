@@ -765,25 +765,6 @@ export default function AllPage() {
             {dark?"☀️":"🌙"}
           </button>
 
-          {/* 태블릿 뷰 토글 */}
-          <button
-            className="view-toggle-btn"
-            title={tabView==="mobile"?"PC 뷰로 전환":tabView==="pc"?"자동 전환":"모바일 뷰로 전환"}
-            onClick={() => {
-              setTabView(v => {
-                const next = v==="auto"?"mobile":v==="mobile"?"pc":"auto";
-                const p = document.querySelector(".page");
-                if (p) p.setAttribute("data-view", next);
-                return next;
-              });
-            }}
-            style={{ background:"none", border:"2px solid #d0d9f0", borderRadius:"50%",
-              width:40, height:40, fontSize:18, cursor:"pointer",
-              display:"flex", alignItems:"center", justifyContent:"center",
-              transition:"border-color .2s", flexShrink:0 }}>
-            {tabView==="mobile"?"🖥️":tabView==="pc"?"📱":"⇄"}
-          </button>
-
         </div>{/* ── 우측 버튼 묶음 끝 ── */}
 
         {notifOpen && (
@@ -902,8 +883,7 @@ export default function AllPage() {
                 <p className="lock-guide">🔓 잠금 표시를 해제하고 버튼을 눌러주세요</p>
               </div>
               {/* ── 모바일 카드 뷰 ── */}
-              <div className="mobile-cards" style={{
-                display: tabView==="pc" ? "none" : tabView==="mobile" ? "flex" : undefined }}>
+              <div className="mobile-cards">
                 {results.map((row, i) => (
                   <React.Fragment key={i}>
                     <div className="m-card"
@@ -1077,8 +1057,7 @@ export default function AllPage() {
               </div>
 
               {/* ── PC 테이블 뷰 ── */}
-              <div className="table-outer" ref={tableOuterRef} style={{
-                display: tabView==="mobile" ? "none" : tabView==="pc" ? "block" : undefined }}>
+              <div className="table-outer" ref={tableOuterRef}>
                 <table>
                   <thead>
                     <tr>
@@ -1420,17 +1399,6 @@ export default function AllPage() {
         .m-file-link { font-size:12px; color:#1a3a8f; background:#eef1fb; border-radius:5px;
           padding:3px 8px; text-decoration:none; display:inline-block; }
         .dark .m-file-link { background:#1e3a6e; color:#93c5fd; }
-        /* 태블릿 뷰 토글 */
-        @media (min-width: 769px) {
-          .view-toggle-btn { display:none; }
-        }
-        @media (min-width: 769px) and (max-width: 1024px) {
-          .view-toggle-btn { display:flex !important; }
-          [data-view="mobile"] .mobile-cards { display:flex !important; }
-          [data-view="mobile"] .table-outer { display:none !important; }
-          [data-view="pc"] .mobile-cards { display:none !important; }
-          [data-view="pc"] .table-outer { display:block !important; }
-        }
         @media (max-width: 768px) {
           .mobile-cards { display:flex; }
           .table-outer { display:none; }
