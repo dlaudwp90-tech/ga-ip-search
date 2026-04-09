@@ -1274,14 +1274,15 @@ export default function Home() {
                                     opacity: isOpen ? 1 : 0,
                                     transition: "max-height 0.42s cubic-bezier(0.4,0,0.2,1), opacity 0.3s ease, padding 0.42s ease",
                                     padding: isOpen ? "12px 16px" : "0 16px",
-                                    display:"flex", flexDirection:"column", gap:10,
+                                    display:"flex", flexDirection:"column",
                                     boxShadow: isOpen ? "0 4px 12px rgba(19,39,79,0.08)" : "none" }}>
                                     {/* 댓글 목록 */}
                                     {panel.loading ? (
                                       <div style={{ fontSize:12, color:"#94a3b8" }}>불러오는 중...</div>
                                     ) : panel.comments?.length > 0 ? (
                                       <div style={{ display:"flex", flexDirection:"column", gap:8,
-                                        maxHeight:240, overflowY:"auto",
+                                        maxHeight:220, overflowY:"auto", flexShrink:1,
+                                        marginBottom:8,
                                         opacity: panel.commentsVisible ? 1 : 0,
                                         transform: panel.commentsVisible ? "translateY(0)" : "translateY(-6px)",
                                         transition: "opacity 0.3s ease, transform 0.3s ease" }}>
@@ -1369,10 +1370,10 @@ export default function Home() {
                                         })}
                                       </div>
                                     ) : (
-                                      <div style={{ fontSize:12, color:"#94a3b8" }}>댓글이 없습니다.</div>
+                                      <div style={{ fontSize:12, color:"#94a3b8", marginBottom:8 }}>댓글이 없습니다.</div>
                                     )}
                                     {/* 입력창 */}
-                                    <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                                    <div style={{ display:"flex", flexDirection:"column", gap:6, flexShrink:0 }}>
                                       <textarea
                                         value={panel.input || ""}
                                         onChange={e => setCommentPanels(prev => ({ ...prev, [i]: { ...prev[i], input: e.target.value } }))}
