@@ -107,6 +107,14 @@ export default function Home() {
   const [userBtnPos,  setUserBtnPos]  = useState({ x: 0, y: 0 });
   const userBtnRef    = useRef(null);
 
+  // ── 알림 ──
+  const [notifOpen,   setNotifOpen]   = useState(false);
+  const [notifList,   setNotifList]   = useState([]);
+  const [lastRead,    setLastRead]    = useState(0);
+  const [notifPos,    setNotifPos]    = useState({ x: 0, y: 0 });
+  const notifBtnRef   = useRef(null);
+  const rowRefs       = useRef({});
+
   const startLockTimer = useCallback(() => {
     if (lockIntervalRef.current) clearInterval(lockIntervalRef.current);
     if (lockTimeoutRef.current)  clearTimeout(lockTimeoutRef.current);
@@ -219,6 +227,61 @@ export default function Home() {
     });
   }, [user]);
 
+  // 알림 로드
+  const loadNotifications = async () => {
+    if (!user?.primaryEmailAddress?.emailAddress) return;
+    const r = await fetch("/api/notifications", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "get", email: user.primaryEmailAddress.emailAddress }),
+    });
+    const d = await r.json();
+    setNotifList(d.notifications || []);
+    setLastRead(Number(d.lastRead) || 0);
+  };
+
+  useEffect(() => { loadNotifications(); }, [user]);
+
+  // 알림 읽음 처리
+  const markNotifRead = async () => {
+    if (!user?.primaryEmailAddress?.emailAddress) return;
+    await fetch("/api/notifications", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "markRead", email: user.primaryEmailAddress.emailAddress }),
+    });
+    setLastRead(Date.now());
+  };
+
+  // 알림 클릭 → 해당 행으로 이동 + 댓글 패널 열기
+  const handleNotifClick = async (notif) => {
+    setNotifOpen(false);
+    const idx = results?.findIndex(r => r.pageId === notif.pageId);
+    if (idx !== undefined && idx >= 0) {
+      // 이미 결과에 있으면 스크롤 + 패널 열기
+      const el = rowRefs.current[idx];
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+      await toggleCommentPanel(idx, notif.pageId);
+    } else {
+      // 없으면 검색 후 열기
+      setQuery(notif.docTitle);
+      setSearched(true);
+      setLoading(true);
+      const r = await fetch("/api/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: notif.docTitle }),
+      });
+      const d = await r.json();
+      setResults(d.results || []);
+      setLoading(false);
+      setTimeout(() => {
+        const ni = d.results?.findIndex(r => r.pageId === notif.pageId);
+        if (ni >= 0) toggleCommentPanel(ni, notif.pageId);
+      }, 500);
+    }
+  };
+
   useEffect(() => { fetchRecent(); }, []);
 
   // 결과 로드 시 댓글 수 미리 조회
@@ -280,6 +343,17 @@ export default function Home() {
     document.addEventListener('mousedown', handle);
     return () => document.removeEventListener('mousedown', handle);
   }, [userPopup]);
+
+  // 알림 드롭다운 외부 클릭 닫기
+  useEffect(() => {
+    if (!notifOpen) return;
+    const handle = (e) => {
+      if (notifBtnRef.current?.contains(e.target)) return;
+      setNotifOpen(false);
+    };
+    document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, [notifOpen]);
 
   const handleSearch = async () => {
     if (!query.trim()) return;
@@ -362,10 +436,11 @@ export default function Home() {
     const panel = commentPanels[idx] || {};
     if (!panel.input?.trim()) return;
     setCommentPanels(prev => ({ ...prev, [idx]: { ...prev[idx], saving: true } }));
+    const docTitle = results?.[idx]?.title || "";
     const r = await fetch("/api/comments", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "post", pageId, nickname: nickname || "익명", content: panel.input }),
+      body: JSON.stringify({ action: "post", pageId, nickname: nickname || "익명", content: panel.input, docTitle }),
     });
     const d = await r.json();
     if (d.ok) {
@@ -610,6 +685,77 @@ export default function Home() {
       <div className={`page${searched?" searched":""}${dark?" dark":""}`}>
         <button className="theme-toggle" onClick={()=>setDark(!dark)} title={dark?"라이트":"다크"}>{dark?"☀️":"🌙"}</button>
         <button className="upload-btn" onClick={()=>router.push("/upload")} title="파일 업로드">📁</button>
+        {/* 알림 벨 */}
+        <div style={{ position:"absolute", top:20, right:170, display:"inline-flex" }}>
+          <button ref={notifBtnRef} title="댓글 알림"
+            onClick={e => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              setNotifPos({ x: rect.left, y: rect.bottom });
+              if (!notifOpen) { markNotifRead(); loadNotifications(); }
+              setNotifOpen(p => !p);
+              setUserPopup(false);
+            }}
+            style={{ background:"none", border:"2px solid #d0d9f0", borderRadius:"50%",
+              width:40, height:40, fontSize:18, cursor:"pointer",
+              display:"flex", alignItems:"center", justifyContent:"center",
+              position:"relative", transition:"border-color .2s" }}>
+            🔔
+            {notifList.filter(n => n.ts > lastRead).length > 0 && (
+              <span style={{ position:"absolute", top:-4, right:-4,
+                background:"#ef4444", color:"#fff", fontSize:10, fontWeight:800,
+                minWidth:17, height:17, borderRadius:9999,
+                display:"flex", alignItems:"center", justifyContent:"center",
+                padding:"0 3px", border:"2px solid #fff", lineHeight:1 }}>
+                {Math.min(notifList.filter(n => n.ts > lastRead).length, 99)}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* 알림 드롭다운 */}
+        {notifOpen && (
+          <div style={{ position:"fixed", right:16, top:notifPos.y+6, zIndex:600,
+            background:dark?"#1e293b":"#fff",
+            border:dark?"1.5px solid #334155":"1.5px solid #e5e9f5",
+            borderRadius:12, boxShadow:"0 8px 32px rgba(19,39,79,0.18)",
+            width:300, maxHeight:420, overflowY:"auto",
+            display:"flex", flexDirection:"column" }}
+            onMouseDown={e=>e.stopPropagation()}>
+            <div style={{ padding:"12px 16px 8px", borderBottom:dark?"1px solid #334155":"1px solid #f1f5f9",
+              display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <span style={{ fontSize:13, fontWeight:700, color:dark?"#e2e8f0":"#13274F" }}>댓글 알림</span>
+              <button onClick={() => setNotifOpen(false)}
+                style={{ background:"none", border:"none", cursor:"pointer", fontSize:14, color:"#94a3b8" }}>✕</button>
+            </div>
+            {notifList.length === 0 ? (
+              <div style={{ padding:24, textAlign:"center", fontSize:13, color:"#94a3b8" }}>알림이 없습니다</div>
+            ) : (
+              notifList.map((n, ni) => {
+                const isNew = n.ts > lastRead;
+                return (
+                  <div key={n.id} onClick={() => handleNotifClick(n)}
+                    style={{ padding:"10px 16px", cursor:"pointer", borderBottom:dark?"1px solid #1e293b":"1px solid #f8faff",
+                      background: isNew ? (dark?"#1e3a6e22":"#eef2ff") : "transparent",
+                      transition:"background 0.15s" }}
+                    onMouseEnter={e => e.currentTarget.style.background = dark?"#334155":"#f1f5f9"}
+                    onMouseLeave={e => e.currentTarget.style.background = isNew?(dark?"#1e3a6e22":"#eef2ff"):"transparent"}>
+                    <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:3 }}>
+                      {isNew && <span style={{ width:6, height:6, borderRadius:"50%", background:"#ef4444", flexShrink:0 }}/>}
+                      <span style={{ fontSize:12, fontWeight:700, color:dark?"#93c5fd":"#1a3a8f" }}>{n.docTitle}</span>
+                    </div>
+                    <div style={{ fontSize:12, color:dark?"#94a3b8":"#6b7280", marginBottom:2 }}>
+                      <span style={{ fontWeight:600 }}>{n.nickname}</span> · {n.createdAt}
+                    </div>
+                    <div style={{ fontSize:12, color:dark?"#cbd5e1":"#374151",
+                      overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                      {n.content}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
         <div className="user-btn-wrap">
           <button
             ref={userBtnRef}
@@ -953,6 +1099,7 @@ export default function Home() {
                       {results.map((row, i) => (
                         <React.Fragment key={i}>
                         <tr
+                          ref={el => rowRefs.current[i] = el}
                           className={`result-row ${i%2===0?"row-even":"row-odd"}`}
                           onMouseEnter={()=>setHoveredRow(i)}
                           onMouseLeave={()=>setHoveredRow(null)}
