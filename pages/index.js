@@ -295,12 +295,11 @@ export default function Home() {
 
   // ── 댓글 패널 토글 ──
   const toggleCommentPanel = async (idx, pageId) => {
-    setCommentPanels(prev => {
-      const cur = prev[idx] || {};
-      if (cur.open) return { ...prev, [idx]: { ...cur, open: false } };
-      return { ...prev, [idx]: { ...cur, open: true } };
-    });
-    // 댓글 로드
+    const isOpen = commentPanels[idx]?.open;
+    if (isOpen) {
+      setCommentPanels(prev => ({ ...prev, [idx]: { ...prev[idx], open: false } }));
+      return;
+    }
     setCommentPanels(prev => ({ ...prev, [idx]: { ...(prev[idx]||{}), open: true, loading: true } }));
     try {
       const r = await fetch("/api/comments", {
@@ -580,10 +579,10 @@ export default function Home() {
 
         {userPopup && (
           <div
-            style={{ position:"fixed", left:userBtnPos.x, top:userBtnPos.y+6, zIndex:500,
+            style={{ position:"fixed", right: window.innerWidth - userBtnPos.x - 40, top:userBtnPos.y+6, zIndex:500,
               background:dark?"#1e293b":"#fff", border:dark?"1.5px solid #334155":"1.5px solid #e5e9f5",
               borderRadius:10, boxShadow:"0 8px 24px rgba(19,39,79,0.18)",
-              padding:6, minWidth:160, display:"flex", flexDirection:"column", gap:4 }}
+              padding:6, minWidth:200, maxWidth:260, display:"flex", flexDirection:"column", gap:4 }}
             onMouseDown={e=>e.stopPropagation()}
           >
             {user?.primaryEmailAddress?.emailAddress && (
@@ -719,25 +718,27 @@ export default function Home() {
                               <span className="doc-title" onClick={e=>handleTitleClick(e,row.url)}>
                                 {renderSingleLine(row.title)}
                               </span>
-                              {commentPanels[i]?.comments?.length > 0 && (
-                                <button
-                                  onClick={e => { e.stopPropagation(); toggleCommentPanel(i, row.pageId); }}
-                                  style={{ background:"none", border:"none", cursor:"pointer", padding:"0 2px",
-                                    fontSize:11, color:dark?"#818cf8":"#4f46e5", fontWeight:700,
-                                    display:"flex", alignItems:"center", gap:2, flexShrink:0 }}>
-                                  💬{commentPanels[i].comments.length}
-                                </button>
+                              {commentPanels[i]?.comments?.length > 0 ? (
+                                <span onClick={e => { e.stopPropagation(); toggleCommentPanel(i, row.pageId); }}
+                                  style={{ cursor:"pointer", flexShrink:0, position:"relative",
+                                    display:"inline-flex", alignItems:"flex-end", marginLeft:2 }}>
+                                  <span style={{ fontSize:18, lineHeight:1 }}>💬</span>
+                                  <span style={{ fontSize:10, fontWeight:800,
+                                    color:dark?"#818cf8":"#4f46e5", marginLeft:1 }}>
+                                    +{commentPanels[i].comments.length}
+                                  </span>
+                                </span>
+                              ) : (
+                                <span onClick={e => { e.stopPropagation(); toggleCommentPanel(i, row.pageId); }}
+                                  title="댓글 달기"
+                                  style={{ cursor:"pointer", flexShrink:0, fontSize:16,
+                                    opacity: commentPanels[i]?.open ? 0.6 : 0,
+                                    transition:"opacity 0.15s", marginLeft:2 }}
+                                  onMouseEnter={e => e.currentTarget.style.opacity="0.5"}
+                                  onMouseLeave={e => { if(!commentPanels[i]?.open) e.currentTarget.style.opacity="0"; }}>
+                                  💬
+                                </span>
                               )}
-                              <button
-                                onClick={e => { e.stopPropagation(); toggleCommentPanel(i, row.pageId); }}
-                                title="댓글"
-                                style={{ background:"none", border:dark?"1px solid #334155":"1px solid #e0e7ff",
-                                  borderRadius:5, cursor:"pointer", padding:"1px 5px",
-                                  fontSize:11, color:dark?"#94a3b8":"#6b7280", flexShrink:0,
-                                  display: commentPanels[i]?.comments?.length > 0 ? "none" : "flex",
-                                  alignItems:"center" }}>
-                                {commentPanels[i]?.open ? "▲" : "💬"}
-                              </button>
                             </div>
                           </td>
 
@@ -860,7 +861,7 @@ export default function Home() {
                                       <div style={{ fontSize:12, color:"#94a3b8" }}>댓글이 없습니다.</div>
                                     )}
                                     {/* 입력창 */}
-                                    <div style={{ display:"flex", gap:8, alignItems:"flex-end" }}>
+                                    <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
                                       <textarea
                                         value={panel.input || ""}
                                         onChange={e => setCommentPanels(prev => ({ ...prev, [i]: { ...prev[i], input: e.target.value } }))}
@@ -869,23 +870,25 @@ export default function Home() {
                                         }}
                                         placeholder={"댓글 입력 (Enter 등록 / Shift+Enter 줄바꿈)"}
                                         rows={2}
-                                        style={{ flex:1, fontSize:13, border:dark?"1.5px solid #334155":"1.5px solid #c7d2fe",
+                                        style={{ width:"100%", fontSize:13, border:dark?"1.5px solid #334155":"1.5px solid #c7d2fe",
                                           borderRadius:8, padding:"8px 10px", outline:"none", resize:"vertical",
-                                          fontFamily:"inherit", background:dark?"#1e293b":"#fff", color:dark?"#e2e8f0":"#1f2937" }}
+                                          fontFamily:"inherit", background:dark?"#1e293b":"#fff", color:dark?"#e2e8f0":"#1f2937",
+                                          boxSizing:"border-box" }}
                                       />
-                                      <button
-                                        onClick={() => handlePostComment(i, row.pageId)}
-                                        disabled={panel.saving}
-                                        style={{ padding:"8px 16px", background:"#13274F", color:"#fff",
-                                          border:"none", borderRadius:8, fontSize:13, fontWeight:700,
-                                          cursor:panel.saving?"not-allowed":"pointer", fontFamily:"inherit",
-                                          whiteSpace:"nowrap", flexShrink:0 }}>
-                                        {panel.saving ? "저장 중..." : "등록"}
-                                      </button>
+                                      <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                                        <button
+                                          onClick={() => handlePostComment(i, row.pageId)}
+                                          disabled={panel.saving}
+                                          style={{ padding:"6px 18px", background:"#13274F", color:"#fff",
+                                            border:"none", borderRadius:8, fontSize:13, fontWeight:700,
+                                            cursor:panel.saving?"not-allowed":"pointer", fontFamily:"inherit" }}>
+                                          {panel.saving ? "저장 중..." : "등록"}
+                                        </button>
+                                        {panel.saved && (
+                                          <span style={{ fontSize:11, color:"#16a34a", fontWeight:700 }}>✓ 저장됐습니다</span>
+                                        )}
+                                      </div>
                                     </div>
-                                    {panel.saved && (
-                                      <span style={{ fontSize:11, color:"#16a34a", fontWeight:700 }}>✓ 저장됐습니다</span>
-                                    )}
                                   </div>
                                 </td>
                               </tr>
