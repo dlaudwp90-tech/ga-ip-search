@@ -267,13 +267,23 @@ export default function Home() {
     // PC: 테이블 행에서 찾기
     const idx = results?.findIndex(r => r.pageId === notif.pageId);
     if (idx !== undefined && idx >= 0) {
-      // 테이블 행 스크롤
-      const el = rowRefs.current[idx];
-      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-      // 모바일 카드 스크롤
-      const mEl = mobileCardRefs.current[idx];
-      if (mEl) mEl.scrollIntoView({ behavior: "smooth", block: "center" });
       await toggleCommentPanel(idx, notif.pageId);
+      const scrollToTarget = () => {
+        const isMobile = window.innerWidth <= 768;
+        const target = isMobile ? mobileCardRefs.current[idx] : rowRefs.current[idx];
+        if (target) {
+          const top = target.getBoundingClientRect().top + window.scrollY - 80;
+          window.scrollTo({ top, behavior: "smooth" });
+          return true;
+        }
+        return false;
+      };
+      if (!scrollToTarget()) {
+        let tries = 0;
+        const retry = setInterval(() => {
+          if (scrollToTarget() || ++tries >= 8) clearInterval(retry);
+        }, 200);
+      }
     } else {
       // 현재 목록에 없으면 all.js로 이동하며 pageId 전달
       router.push(`/all?openComment=${notif.pageId}`);
