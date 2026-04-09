@@ -67,6 +67,7 @@ export default function Home() {
   const [error,        setError]        = useState(null);
   const [searched,     setSearched]     = useState(false);
   const [dark,         setDark]         = useState(false);
+  const [tabView,      setTabView]      = useState("auto"); // "auto"|"mobile"|"pc"
   const [popup,        setPopup]        = useState(null);
   const [copied,       setCopied]       = useState({});
   const [filePopup,    setFilePopup]    = useState(null);
@@ -693,6 +694,23 @@ export default function Home() {
       <div className={`page${searched?" searched":""}${dark?" dark":""}`}>
         <button className="theme-toggle" onClick={()=>setDark(!dark)} title={dark?"라이트":"다크"}>{dark?"☀️":"🌙"}</button>
         <button className="upload-btn" onClick={()=>router.push("/upload")} title="파일 업로드">📁</button>
+        {/* 태블릿 뷰 토글 */}
+        <button className="view-toggle-btn"
+          title={tabView==="mobile"?"PC 뷰로 전환":tabView==="pc"?"자동 전환":"모바일 뷰로 전환"}
+          onClick={() => {
+            setTabView(v => {
+              const next = v==="auto"?"mobile":v==="mobile"?"pc":"auto";
+              const p = document.querySelector(".page");
+              if (p) p.setAttribute("data-view", next);
+              return next;
+            });
+          }}
+          style={{ position:"absolute", top:20, right:220, background:"none",
+            border:"2px solid #d0d9f0", borderRadius:"50%", width:40, height:40,
+            fontSize:18, cursor:"pointer", display:"flex", alignItems:"center",
+            justifyContent:"center", transition:"border-color .2s" }}>
+          {tabView==="mobile"?"🖥️":tabView==="pc"?"📱":"⇄"}
+        </button>
         {/* 알림 벨 */}
         <div style={{ position:"absolute", top:20, right:170, display:"inline-flex" }}>
           <button ref={notifBtnRef} title="댓글 알림"
@@ -899,7 +917,8 @@ export default function Home() {
                 </div>
 
                 {/* ── 모바일 카드 뷰 ── */}
-                <div className="mobile-cards">
+                <div className="mobile-cards" style={{
+                display: tabView==="pc" ? "none" : tabView==="mobile" ? "flex" : undefined }}>
                   {results.map((row, i) => (
                     <React.Fragment key={i}>
                       <div className="m-card"
@@ -1101,7 +1120,8 @@ export default function Home() {
                 </div>
 
                 {/* ── PC 테이블 뷰 ── */}
-                <div className="table-outer" ref={tableOuterRef}>
+                <div className="table-outer" ref={tableOuterRef} style={{
+                display: tabView==="mobile" ? "none" : tabView==="pc" ? "block" : undefined }}>
                   <table>
                     <thead>
                       <tr>
@@ -1472,7 +1492,14 @@ export default function Home() {
           padding:3px 8px; text-decoration:none; display:inline-block; }
         .dark .m-file-link { background:#1e3a6e; color:#93c5fd; }
         .m-review-row { display:flex; gap:4px; align-items:center; }
+        @media (min-width: 769px) and (max-width: 1024px) {
+          .view-toggle-btn { display:flex !important; }
+        }
+        @media (min-width: 1025px) {
+          .view-toggle-btn { display:none !important; }
+        }
         @media (max-width: 768px) {
+          .view-toggle-btn { display:none !important; }
           .mobile-cards { display:flex; }
           .table-outer { display:none; }
           .count-btns { flex-wrap:wrap; }
