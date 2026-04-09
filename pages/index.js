@@ -698,7 +698,7 @@ export default function Home() {
           <div className="search-box">
             <span className="icon">🔍</span>
             <input ref={inputRef} type="text" placeholder="문서명, 출원번호, 출원인, 대리인 코드..."
-              value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={handleKeyDown} autoFocus />
+              value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={handleKeyDown} autoFocus={typeof window !== "undefined" && window.innerWidth > 768} />
             {query && <button className="clear-btn" onClick={handleClear}>✕</button>}
             <button className="search-btn" onClick={handleSearch}>검색</button>
           </div>
