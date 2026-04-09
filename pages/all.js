@@ -1,4 +1,6 @@
+import React from "react";
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useClerk, useUser } from "@clerk/nextjs";
 import Head from "next/head";
 import { useRouter } from "next/router";
 
@@ -10,6 +12,7 @@ const STATUS_OPTIONS = [
 ];
 const LOCK_SECONDS  = 600;
 const COL_CHECK_W   = 160;
+const COL_TITLE_L   = COL_CHECK_W;
 
 function fmtCountdown(s) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -91,6 +94,77 @@ export default function AllPage() {
   const tableOuterRef = useRef(null);
   const filePopupRef  = useRef(null);
   const bottomRef     = useRef(null);
+
+  const { signOut } = useClerk();
+  const { user } = useUser();
+  const [nickname, setNickname] = useState(null);
+  const [commentPanels, setCommentPanels] = useState({});
+
+  useEffect(() => {
+    if (!user?.primaryEmailAddress?.emailAddress) return;
+    fetch("/api/nickname", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: user.primaryEmailAddress.emailAddress }),
+    }).then(r => r.json()).then(d => setNickname(d.nickname || null));
+  }, [user]);
+
+  const toggleCommentPanel = async (idx, pageId) => {
+    const isOpen = commentPanels[idx]?.open;
+    if (isOpen) {
+      setCommentPanels(prev => ({ ...prev, [idx]: { ...prev[idx], closing: true } }));
+      setTimeout(() => setCommentPanels(prev => ({ ...prev, [idx]: { ...prev[idx], open: false, closing: false } })), 340);
+      return;
+    }
+    setCommentPanels(prev => ({ ...prev, [idx]: { ...(prev[idx]||{}), open: true, loading: true } }));
+    try {
+      const r = await fetch("/api/comments", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "get", pageId }),
+      });
+      const d = await r.json();
+      setCommentPanels(prev => ({ ...prev, [idx]: { ...(prev[idx]||{}), loading: false, comments: d.comments || [] } }));
+    } catch {
+      setCommentPanels(prev => ({ ...prev, [idx]: { ...(prev[idx]||{}), loading: false, comments: [] } }));
+    }
+  };
+
+  const handlePostComment = async (idx, pageId) => {
+    const panel = commentPanels[idx] || {};
+    if (!panel.input?.trim()) return;
+    setCommentPanels(prev => ({ ...prev, [idx]: { ...prev[idx], saving: true } }));
+    const r = await fetch("/api/comments", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "post", pageId, nickname: nickname || "익명", content: panel.input }),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      const r2 = await fetch("/api/comments", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "get", pageId }),
+      });
+      const d2 = await r2.json();
+      setCommentPanels(prev => ({ ...prev, [idx]: { ...prev[idx], saving: false, saved: true, input: "", comments: d2.comments || [] } }));
+      setTimeout(() => setCommentPanels(prev => ({ ...prev, [idx]: { ...prev[idx], saved: false } })), 3000);
+    } else {
+      setCommentPanels(prev => ({ ...prev, [idx]: { ...prev[idx], saving: false } }));
+    }
+  };
+
+  const handleEditComment = async (idx, pageId, commentId) => {
+    const panel = commentPanels[idx] || {};
+    if (!panel.editInput?.trim()) return;
+    await fetch("/api/comments", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "update", pageId, commentId, nickname: nickname || "익명", content: panel.editInput.trim() }),
+    });
+    const r2 = await fetch("/api/comments", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "get", pageId }),
+    });
+    const d2 = await r2.json();
+    setCommentPanels(prev => ({ ...prev, [idx]: { ...prev[idx], comments: d2.comments || [], editingId: null } }));
+  };
 
   const toggleRow = (idx) => setExpandedRows(prev => ({ ...prev, [idx]: !prev[idx] }));
 
@@ -520,7 +594,8 @@ export default function AllPage() {
                   </thead>
                   <tbody>
                     {results.map((row, i) => (
-                      <tr key={i}
+                      <React.Fragment key={i}>
+                      <tr
                         className={`result-row ${i%2===0?"row-even":"row-odd"}`}
                         onMouseEnter={()=>setHoveredRow(i)}
                         onMouseLeave={()=>setHoveredRow(null)}
@@ -533,6 +608,30 @@ export default function AllPage() {
                             <span className="doc-title" onClick={e=>handleTitleClick(e,row.url)}>
                               {renderSingleLine(row.title)}
                             </span>
+                            {commentPanels[i]?.open ? (
+                              <span onClick={e => { e.stopPropagation(); toggleCommentPanel(i, row.pageId); }}
+                                title="댓글 접기"
+                                style={{ cursor:"pointer", flexShrink:0, fontSize:14, color:dark?"#818cf8":"#4f46e5",
+                                  fontWeight:800, marginLeft:6, userSelect:"none" }}>▲</span>
+                            ) : (
+                              <span onClick={e => { e.stopPropagation(); toggleCommentPanel(i, row.pageId); }}
+                                style={{ cursor:"pointer", flexShrink:0, position:"relative", display:"inline-flex",
+                                  alignItems:"center", marginLeft:6,
+                                  opacity: commentPanels[i]?.comments?.length > 0 ? 1 : 0.2, transition:"opacity 0.15s" }}
+                                title={commentPanels[i]?.comments?.length > 0 ? "댓글 보기" : "댓글 달기"}
+                                onMouseEnter={e => e.currentTarget.style.opacity="0.75"}
+                                onMouseLeave={e => e.currentTarget.style.opacity = commentPanels[i]?.comments?.length > 0 ? "1" : "0.2"}>
+                                <span style={{ fontSize:26, lineHeight:1 }}>💬</span>
+                                {commentPanels[i]?.comments?.length > 0 && (
+                                  <span style={{ position:"absolute", top:-6, right:-10, background:"#ef4444", color:"#fff",
+                                    fontSize:10, fontWeight:800, minWidth:17, height:17, borderRadius:9999,
+                                    display:"flex", alignItems:"center", justifyContent:"center", padding:"0 4px",
+                                    boxShadow:"0 1px 4px rgba(0,0,0,0.25)", lineHeight:1, border:"1.5px solid #fff" }}>
+                                    {commentPanels[i].comments.length}
+                                  </span>
+                                )}
+                              </span>
+                            )}
                           </div>
                         </td>
 
@@ -647,6 +746,98 @@ export default function AllPage() {
                         </td>
 
                       </tr>
+
+                          {commentPanels[i]?.open && (() => {
+                            const panel = commentPanels[i] || {};
+                            return (
+                              <tr>
+                                <td colSpan={11} style={{ padding:0, background:"transparent", transition:"all 0.35s ease", borderBottom: commentPanels[i]?.open ? (dark?"2px solid #1e3a6e":"2px solid #c7d2fe") : "none" }}>
+                                  <div style={{ position:"sticky", left:0, width: COL_CHECK_W + 250,
+                                    background:dark?"#0f172a":"#eef2ff", borderRadius:"0 0 10px 10px",
+                                    overflow:"hidden",
+                                    maxHeight: commentPanels[i]?.closing ? "0" : "800px",
+                                    opacity: commentPanels[i]?.closing ? 0 : 1,
+                                    transition: "max-height 0.38s ease, opacity 0.3s ease",
+                                    padding: commentPanels[i]?.closing ? "0 16px" : "12px 16px",
+                                    display:"flex", flexDirection:"column", gap:10,
+                                    boxShadow:"0 4px 12px rgba(19,39,79,0.08)" }}>
+                                    {panel.loading ? (
+                                      <div style={{ fontSize:12, color:"#94a3b8" }}>불러오는 중...</div>
+                                    ) : panel.comments?.length > 0 ? (
+                                      <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                                        {panel.comments.map((c, ci) => {
+                                          const header = `[${c.nickname}] ${c.createdAt}${c.edited ? " [수정됨] "+c.editedAt : ""}`;
+                                          const body = c.content;
+                                          return (
+                                            <div key={ci} style={{ background:dark?"#1e293b":"#fff", borderRadius:8,
+                                              padding:"8px 12px", border:dark?"1px solid #334155":"1px solid #e0e7ff", textAlign:"left" }}>
+                                              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
+                                                <span style={{ fontSize:11, color:dark?"#94a3b8":"#6b7280", fontWeight:600 }}>{header}</span>
+                                                {(c.nickname === nickname || user?.primaryEmailAddress?.emailAddress === "dlaudwp90@gmail.com") && (
+                                                  <div style={{ display:"flex", gap:4 }}>
+                                                    <button onClick={() => setCommentPanels(prev => ({ ...prev, [i]: { ...prev[i], editingId: c.id, editInput: c.content } }))}
+                                                      style={{ fontSize:10, fontWeight:700, background:dark?"#14532d":"#f0fdf4", color:dark?"#86efac":"#166534",
+                                                        border:dark?"1px solid #166534":"1px solid #bbf7d0", borderRadius:4, padding:"2px 7px", cursor:"pointer", fontFamily:"inherit" }}>수정</button>
+                                                    <button onClick={async () => { if (!confirm("삭제하시겠습니까?")) return;
+                                                        await fetch("/api/comments", { method:"POST", headers:{"Content-Type":"application/json"},
+                                                          body: JSON.stringify({ action:"delete", pageId:row.pageId, commentId:c.id }) });
+                                                        const r2 = await fetch("/api/comments", { method:"POST", headers:{"Content-Type":"application/json"},
+                                                          body: JSON.stringify({ action:"get", pageId:row.pageId }) });
+                                                        const d2 = await r2.json();
+                                                        setCommentPanels(prev => ({ ...prev, [i]: { ...prev[i], comments: d2.comments || [] } })); }}
+                                                      style={{ fontSize:10, fontWeight:700, background:dark?"#450a0a":"#fff1f2", color:dark?"#f87171":"#dc2626",
+                                                        border:dark?"1px solid #dc2626":"1px solid #fecaca", borderRadius:4, padding:"2px 7px", cursor:"pointer", fontFamily:"inherit" }}>삭제</button>
+                                                  </div>
+                                                )}
+                                              </div>
+                                              <div style={{ fontSize:13, color:dark?"#e2e8f0":"#1f2937", whiteSpace:"pre-wrap", textAlign:"left",
+                                                borderTop:dark?"1px solid #334155":"1px solid #e0e7ff", paddingTop:6, marginTop:2 }}>{body}</div>
+                                              {commentPanels[i]?.editingId === c.id && (
+                                                <div style={{ marginTop:8, display:"flex", flexDirection:"column", gap:6 }}>
+                                                  <textarea value={commentPanels[i]?.editInput || ""}
+                                                    onChange={e => setCommentPanels(prev => ({ ...prev, [i]: { ...prev[i], editInput: e.target.value } }))}
+                                                    onKeyDown={e => { if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); handleEditComment(i, row.pageId, c.id); }}}
+                                                    rows={2} style={{ width:"100%", fontSize:13, border:dark?"1.5px solid #334155":"1.5px solid #c7d2fe",
+                                                      borderRadius:8, padding:"6px 10px", outline:"none", fontFamily:"inherit",
+                                                      background:dark?"#0f172a":"#fff", color:dark?"#e2e8f0":"#1f2937", boxSizing:"border-box" }} />
+                                                  <div style={{ display:"flex", gap:6 }}>
+                                                    <button onClick={() => handleEditComment(i, row.pageId, c.id)}
+                                                      style={{ fontSize:11, fontWeight:700, padding:"4px 12px", background:"#13274F", color:"#fff", border:"none", borderRadius:6, cursor:"pointer", fontFamily:"inherit" }}>수정 완료</button>
+                                                    <button onClick={() => setCommentPanels(prev => ({ ...prev, [i]: { ...prev[i], editingId: null } }))}
+                                                      style={{ fontSize:11, fontWeight:700, padding:"4px 12px", background:"none", border:dark?"1px solid #334155":"1px solid #e5e7eb", borderRadius:6, cursor:"pointer", color:dark?"#94a3b8":"#6b7280", fontFamily:"inherit" }}>취소</button>
+                                                  </div>
+                                                </div>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    ) : (
+                                      <div style={{ fontSize:12, color:"#94a3b8" }}>댓글이 없습니다.</div>
+                                    )}
+                                    <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                                      <textarea value={panel.input || ""}
+                                        onChange={e => setCommentPanels(prev => ({ ...prev, [i]: { ...prev[i], input: e.target.value } }))}
+                                        onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handlePostComment(i, row.pageId); } }}
+                                        placeholder="댓글 입력 (Enter 등록 / Shift+Enter 줄바꿈)" rows={2}
+                                        style={{ width:"100%", fontSize:13, border:dark?"1.5px solid #334155":"1.5px solid #c7d2fe",
+                                          borderRadius:8, padding:"8px 10px", outline:"none", resize:"vertical",
+                                          fontFamily:"inherit", background:dark?"#1e293b":"#fff", color:dark?"#e2e8f0":"#1f2937", boxSizing:"border-box" }} />
+                                      <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                                        <button onClick={() => handlePostComment(i, row.pageId)} disabled={panel.saving}
+                                          style={{ padding:"6px 18px", background:"#13274F", color:"#fff", border:"none", borderRadius:8, fontSize:13, fontWeight:700,
+                                            cursor:panel.saving?"not-allowed":"pointer", fontFamily:"inherit" }}>
+                                          {panel.saving ? "저장 중..." : "등록"}
+                                        </button>
+                                        {panel.saved && <span style={{ fontSize:11, color:"#16a34a", fontWeight:700 }}>✓ 저장됐습니다</span>}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })()}
+                      </React.Fragment>
                     ))}
                   </tbody>
                 </table>
