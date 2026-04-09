@@ -1283,7 +1283,7 @@ export default function Home() {
                                     {panel.loading ? (
                                       <div style={{ fontSize:12, color:"#94a3b8" }}>불러오는 중...</div>
                                     ) : panel.comments?.length > 0 ? (
-                                      <div style={{ display:"flex", flexDirection:"column", gap:8,
+                                      <div className="comment-scroll" style={{ display:"flex", flexDirection:"column", gap:8,
                                         maxHeight:220, overflowY:"auto", flexShrink:1,
                                         marginBottom:8,
                                         scrollbarWidth:"thin",
@@ -1449,6 +1449,10 @@ export default function Home() {
         body { font-family:'Noto Sans KR','Malgun Gothic',sans-serif; min-height:100vh; }
         @keyframes slideUpFade { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
         @keyframes commentFadeIn { from{opacity:0} to{opacity:1} }
+        .comment-scroll::-webkit-scrollbar { width: 6px; }
+        .comment-scroll::-webkit-scrollbar-track { background: #eef2ff; border-radius: 4px; }
+        .comment-scroll::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 4px; }
+        .comment-scroll::-webkit-scrollbar-thumb:hover { background: #64748b; }
         /* ── 모바일 카드 뷰 ── */
         .mobile-cards { display:none; flex-direction:column; gap:8px; width:100%; }
         .m-card { border-radius:12px; padding:12px 14px; border:1px solid #e5e9f5;
@@ -1482,6 +1486,9 @@ export default function Home() {
         .page { min-height:100vh; display:flex; flex-direction:column; align-items:center; padding:0 16px;
           background:linear-gradient(180deg,#ffffff 0%,#f4f6fc 100%); color:#1f2937;
           transition:background .3s,color .3s; position:relative; box-sizing:border-box; animation:slideUpFade .7s ease both; }
+        .dark .comment-scroll::-webkit-scrollbar-track { background: #1e293b; }
+        .dark .comment-scroll::-webkit-scrollbar-thumb { background: #475569; }
+        .dark .comment-scroll::-webkit-scrollbar-thumb:hover { background: #64748b; }
         .page.dark { background:linear-gradient(160deg,#0f172a 0%,#1e293b 100%); color:#e2e8f0; }
 
         .theme-toggle { position:absolute; top:20px; right:20px; background:none; border:2px solid #d0d9f0;
