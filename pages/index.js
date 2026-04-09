@@ -1375,7 +1375,8 @@ export default function Home() {
                                         value={panel.input || ""}
                                         onChange={e => setCommentPanels(prev => ({ ...prev, [i]: { ...prev[i], input: e.target.value } }))}
                                         onKeyDown={e => {
-                                          if (e.key === "Enter" && !e.shiftKey) {
+                                          const isMobile = window.matchMedia("(pointer:coarse)").matches;
+                                          if (e.key === "Enter" && !e.shiftKey && !isMobile) {
                                             e.preventDefault();
                                             e.stopPropagation();
                                             if (!panel.saving) handlePostComment(i, row.pageId);
