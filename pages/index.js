@@ -504,7 +504,7 @@ export default function Home() {
           >
             {user?.primaryEmailAddress?.emailAddress && (
               <div style={{ fontSize:11, color:dark?"#94a3b8":"#6b7280", padding:"6px 10px 4px",
-                borderBottom:, marginBottom:2, wordBreak:"break-all" }}>
+                borderBottom:dark?"1px solid #334155":"1px solid #e5e9f5", marginBottom:2, wordBreak:"break-all" }}>
                 {user.primaryEmailAddress.emailAddress}
               </div>
             )}
