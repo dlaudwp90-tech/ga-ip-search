@@ -170,13 +170,27 @@ export default function AllPage() {
     setNotifOpen(false);
     const idx = results?.findIndex(r => r.pageId === notif.pageId);
     if (idx !== undefined && idx >= 0) {
-      const el = rowRefs.current[idx];
-      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-      const mEl = mobileCardRefs.current[idx];
-      if (mEl) mEl.scrollIntoView({ behavior: "smooth", block: "center" });
+      // 댓글 패널 먼저 오픈
       await toggleCommentPanel(idx, notif.pageId);
+      // 스크롤: PC는 tr ref, 모바일은 카드 ref
+      const scrollToTarget = () => {
+        const isMobile = window.innerWidth <= 768;
+        const target = isMobile ? mobileCardRefs.current[idx] : rowRefs.current[idx];
+        if (target) {
+          const top = target.getBoundingClientRect().top + window.scrollY - 80;
+          window.scrollTo({ top, behavior: "smooth" });
+          return true;
+        }
+        return false;
+      };
+      // 즉시 시도 후, 실패하면 재시도
+      if (!scrollToTarget()) {
+        let tries = 0;
+        const retry = setInterval(() => {
+          if (scrollToTarget() || ++tries >= 8) clearInterval(retry);
+        }, 200);
+      }
     }
-    // all.js는 전체 목록이므로 못 찾으면 무시
   };
 
   // openComment 쿼리 파라미터 처리 (index.js에서 넘어올 때)
@@ -191,23 +205,22 @@ export default function AllPage() {
     // 댓글 패널 먼저 오픈
     toggleCommentPanel(idx, openComment);
 
-    // PC: 즉시 스크롤 시도
+    // 스크롤 시도 함수
     const tryScroll = (attempt = 0) => {
-      const el = rowRefs.current[idx];
-      const mEl = mobileCardRefs.current[idx];
-      const target = mEl || el;
+      const isMobile = window.innerWidth <= 768;
+      const target = isMobile ? mobileCardRefs.current[idx] : rowRefs.current[idx];
       if (target) {
-        target.scrollIntoView({ behavior: "smooth", block: "center" });
+        const top = target.getBoundingClientRect().top + window.scrollY - 80;
+        window.scrollTo({ top, behavior: "smooth" });
         setJumpTarget(null);
       } else if (attempt < 10) {
         setTimeout(() => tryScroll(attempt + 1), 200);
       } else {
-        // 스크롤 실패 시 모바일용 배너 표시
         const row = results[idx];
         setJumpTarget({ idx, pageId: openComment, title: row?.title || "문서" });
       }
     };
-    setTimeout(() => tryScroll(), 300);
+    setTimeout(() => tryScroll(), 400);
   }, [router.query, results]);
 
   useEffect(() => {
@@ -704,7 +717,7 @@ export default function AllPage() {
         </button>
 
         {/* 알림 벨 */}
-        <div style={{ position:"absolute", top:20, right:120, display:"inline-flex" }}>
+        <div style={{ position:"fixed", top:16, right:120, zIndex:400, display:"inline-flex" }}>
           <button ref={notifBtnRef} title="댓글 알림"
             onClick={e => {
               const rect = e.currentTarget.getBoundingClientRect();
@@ -768,7 +781,7 @@ export default function AllPage() {
         )}
 
         {/* 유저 버튼 */}
-        <div style={{ position:"absolute", top:20, right:70, display:"flex", alignItems:"center" }}>
+        <div style={{ position:"fixed", top:16, right:70, zIndex:400, display:"flex", alignItems:"center" }}>
           <button ref={userBtnRef} title="계정"
             onClick={e => {
               const rect = e.currentTarget.getBoundingClientRect();
@@ -1377,7 +1390,7 @@ export default function AllPage() {
           animation:slideUpFade .7s ease both; }
         .page.dark { background:linear-gradient(160deg,#0f172a 0%,#1e293b 100%); color:#e2e8f0; }
 
-        .theme-toggle { position:absolute; top:20px; right:20px; background:none; border:2px solid #d0d9f0;
+        .theme-toggle { position:fixed; top:16px; right:20px; z-index:400; background:none; border:2px solid #d0d9f0;
           border-radius:50%; width:40px; height:40px; font-size:18px; cursor:pointer;
           display:flex; align-items:center; justify-content:center; transition:border-color .2s; }
         .dark .theme-toggle { border-color:#475569; }
@@ -1543,6 +1556,7 @@ export default function AllPage() {
           .logo-sub-kr { font-size:14px; }
           .back-btn { top:12px; left:12px; width:34px; height:34px; font-size:15px; }
           .theme-toggle { top:12px; right:12px; width:34px; height:34px; font-size:15px; }
+          .dark .theme-toggle { border-color:#475569; }
         }
       `}</style>
     </>
