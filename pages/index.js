@@ -297,7 +297,8 @@ export default function Home() {
   const toggleCommentPanel = async (idx, pageId) => {
     const isOpen = commentPanels[idx]?.open;
     if (isOpen) {
-      setCommentPanels(prev => ({ ...prev, [idx]: { ...prev[idx], open: false } }));
+      setCommentPanels(prev => ({ ...prev, [idx]: { ...prev[idx], closing: true } }));
+      setTimeout(() => setCommentPanels(prev => ({ ...prev, [idx]: { ...prev[idx], open: false, closing: false } })), 340);
       return;
     }
     setCommentPanels(prev => ({ ...prev, [idx]: { ...(prev[idx]||{}), open: true, loading: true } }));
@@ -315,6 +316,31 @@ export default function Home() {
   };
 
   // ── 댓글 작성 ──
+  const handleEditComment = async (idx, pageId, commentId) => {
+    const panel = commentPanels[idx] || {};
+    if (!panel.editInput?.trim()) return;
+    const nick = nickname || "익명";
+    const now = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul", hour12: false });
+    // 기존 삭제 후 새 댓글 작성 (Notion API 수정 미지원)
+    await fetch("/api/comments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "delete", commentId }),
+    });
+    await fetch("/api/comments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "post", pageId, nickname: nick, content: panel.editInput.trim(), edited: true }),
+    });
+    const r2 = await fetch("/api/comments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "get", pageId }),
+    });
+    const d2 = await r2.json();
+    setCommentPanels(prev => ({ ...prev, [idx]: { ...prev[idx], comments: d2.comments || [], editingId: null } }));
+  };
+
   const handlePostComment = async (idx, pageId) => {
     const panel = commentPanels[idx] || {};
     if (!panel.input?.trim()) return;
@@ -718,25 +744,35 @@ export default function Home() {
                               <span className="doc-title" onClick={e=>handleTitleClick(e,row.url)}>
                                 {renderSingleLine(row.title)}
                               </span>
-                              <span onClick={e => { e.stopPropagation(); toggleCommentPanel(i, row.pageId); }}
-                                style={{ cursor:"pointer", flexShrink:0, position:"relative",
-                                  display:"inline-flex", alignItems:"flex-end", marginLeft:4,
-                                  opacity: commentPanels[i]?.comments?.length > 0 ? 1 : 0.25,
-                                  transition:"opacity 0.15s" }}
-                                title={commentPanels[i]?.comments?.length > 0 ? "댓글 보기" : "댓글 달기"}
-                                onMouseEnter={e => e.currentTarget.style.opacity="0.8"}
-                                onMouseLeave={e => e.currentTarget.style.opacity = commentPanels[i]?.comments?.length > 0 ? "1" : "0.25"}>
-                                <span style={{ fontSize:22, lineHeight:1 }}>💬</span>
-                                {commentPanels[i]?.comments?.length > 0 && (
-                                  <span style={{ fontSize:10, fontWeight:800,
-                                    color:dark?"#818cf8":"#4f46e5",
-                                    position:"absolute", bottom:-1, right:-10,
-                                    background:dark?"#1e293b":"#fff",
-                                    borderRadius:4, padding:"0 2px", lineHeight:1.4 }}>
-                                    +{commentPanels[i].comments.length}
-                                  </span>
-                                )}
-                              </span>
+                              {commentPanels[i]?.open ? (
+                                <span onClick={e => { e.stopPropagation(); toggleCommentPanel(i, row.pageId); }}
+                                  title="댓글 접기"
+                                  style={{ cursor:"pointer", flexShrink:0, fontSize:13,
+                                    color:dark?"#818cf8":"#4f46e5", fontWeight:700,
+                                    marginLeft:4, userSelect:"none", transition:"all 0.2s" }}>
+                                  ▲
+                                </span>
+                              ) : (
+                                <span onClick={e => { e.stopPropagation(); toggleCommentPanel(i, row.pageId); }}
+                                  style={{ cursor:"pointer", flexShrink:0, position:"relative",
+                                    display:"inline-flex", alignItems:"flex-end", marginLeft:4,
+                                    opacity: commentPanels[i]?.comments?.length > 0 ? 1 : 0.25,
+                                    transition:"opacity 0.15s" }}
+                                  title={commentPanels[i]?.comments?.length > 0 ? "댓글 보기" : "댓글 달기"}
+                                  onMouseEnter={e => e.currentTarget.style.opacity="0.8"}
+                                  onMouseLeave={e => e.currentTarget.style.opacity = commentPanels[i]?.comments?.length > 0 ? "1" : "0.25"}>
+                                  <span style={{ fontSize:22, lineHeight:1 }}>💬</span>
+                                  {commentPanels[i]?.comments?.length > 0 && (
+                                    <span style={{ fontSize:10, fontWeight:800,
+                                      color:dark?"#818cf8":"#4f46e5",
+                                      position:"absolute", bottom:-1, right:-10,
+                                      background:dark?"#1e293b":"#fff",
+                                      borderRadius:4, padding:"0 2px", lineHeight:1.4 }}>
+                                      +{commentPanels[i].comments.length}
+                                    </span>
+                                  )}
+                                </span>
+                              )}
                             </div>
                           </td>
 
@@ -840,7 +876,7 @@ export default function Home() {
                                     background:dark?"#0f172a":"#eef2ff", borderRadius:"0 0 10px 10px",
                                     padding:"12px 16px", display:"flex", flexDirection:"column", gap:10,
                                     boxShadow:"0 4px 12px rgba(19,39,79,0.08)",
-                                    animation:"commentSlide 0.2s ease" }}>
+                                    animation: commentPanels[i]?.closing ? "commentSlideOut 0.35s ease forwards" : "commentSlide 0.35s ease" }}>
                                     {/* 댓글 목록 */}
                                     {panel.loading ? (
                                       <div style={{ fontSize:12, color:"#94a3b8" }}>불러오는 중...</div>
@@ -858,30 +894,70 @@ export default function Home() {
                                                 <span style={{ fontSize:11, color:dark?"#94a3b8":"#6b7280", fontWeight:600 }}>{header}</span>
                                                 {/* 작성자 또는 관리자만 삭제 가능 */}
                                                 {(header.startsWith(`[${nickname}]`) || user?.primaryEmailAddress?.emailAddress === "dlaudwp90@gmail.com") && (
-                                                  <button
-                                                    onClick={async () => {
-                                                      if (!confirm("댓글을 삭제하시겠습니까?")) return;
-                                                      await fetch("/api/comments", {
-                                                        method: "POST",
-                                                        headers: { "Content-Type": "application/json" },
-                                                        body: JSON.stringify({ action: "delete", commentId: c.id }),
-                                                      });
-                                                      const r2 = await fetch("/api/comments", {
-                                                        method: "POST",
-                                                        headers: { "Content-Type": "application/json" },
-                                                        body: JSON.stringify({ action: "get", pageId: row.pageId }),
-                                                      });
-                                                      const d2 = await r2.json();
-                                                      setCommentPanels(prev => ({ ...prev, [i]: { ...prev[i], comments: d2.comments || [] } }));
-                                                    }}
-                                                    style={{ fontSize:10, background:"none", border:"none", cursor:"pointer",
-                                                      color:dark?"#f87171":"#dc2626", padding:"1px 4px", borderRadius:4,
-                                                      fontFamily:"inherit" }}>
-                                                    삭제
-                                                  </button>
+                                                  <div style={{ display:"flex", gap:4 }}>
+                                                    <button
+                                                      onClick={() => {
+                                                        setCommentPanels(prev => ({ ...prev, [i]: { ...prev[i],
+                                                          editingId: commentPanels[i]?.editingId === c.id ? null : c.id,
+                                                          editInput: body,
+                                                        }}));
+                                                      }}
+                                                      style={{ fontSize:10, fontWeight:700, background:dark?"#14532d":"#f0fdf4",
+                                                        color:dark?"#86efac":"#166534", border:dark?"1px solid #166534":"1px solid #bbf7d0",
+                                                        borderRadius:4, padding:"2px 7px", cursor:"pointer", fontFamily:"inherit" }}>
+                                                      수정
+                                                    </button>
+                                                    <button
+                                                      onClick={async () => {
+                                                        if (!confirm("댓글을 삭제하시겠습니까?")) return;
+                                                        await fetch("/api/comments", {
+                                                          method: "POST",
+                                                          headers: { "Content-Type": "application/json" },
+                                                          body: JSON.stringify({ action: "delete", commentId: c.id }),
+                                                        });
+                                                        const r2 = await fetch("/api/comments", {
+                                                          method: "POST",
+                                                          headers: { "Content-Type": "application/json" },
+                                                          body: JSON.stringify({ action: "get", pageId: row.pageId }),
+                                                        });
+                                                        const d2 = await r2.json();
+                                                        setCommentPanels(prev => ({ ...prev, [i]: { ...prev[i], comments: d2.comments || [] } }));
+                                                      }}
+                                                      style={{ fontSize:10, fontWeight:700, background:dark?"#450a0a":"#fff1f2",
+                                                        color:dark?"#f87171":"#dc2626", border:dark?"1px solid #dc2626":"1px solid #fecaca",
+                                                        borderRadius:4, padding:"2px 7px", cursor:"pointer", fontFamily:"inherit" }}>
+                                                      삭제
+                                                    </button>
+                                                  </div>
                                                 )}
                                               </div>
                                               <div style={{ fontSize:13, color:dark?"#e2e8f0":"#1f2937", whiteSpace:"pre-wrap", textAlign:"left" }}>{body}</div>
+                                              {commentPanels[i]?.editingId === c.id && (
+                                                <div style={{ marginTop:8, display:"flex", flexDirection:"column", gap:6 }}>
+                                                  <textarea
+                                                    value={commentPanels[i]?.editInput || ""}
+                                                    onChange={e => setCommentPanels(prev => ({ ...prev, [i]: { ...prev[i], editInput: e.target.value } }))}
+                                                    onKeyDown={e => { if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); handleEditComment(i, row.pageId, c.id); }}}
+                                                    rows={2}
+                                                    style={{ width:"100%", fontSize:13, border:dark?"1.5px solid #334155":"1.5px solid #c7d2fe",
+                                                      borderRadius:8, padding:"6px 10px", outline:"none", fontFamily:"inherit",
+                                                      background:dark?"#0f172a":"#fff", color:dark?"#e2e8f0":"#1f2937", boxSizing:"border-box" }}
+                                                  />
+                                                  <div style={{ display:"flex", gap:6 }}>
+                                                    <button onClick={() => handleEditComment(i, row.pageId, c.id)}
+                                                      style={{ fontSize:11, fontWeight:700, padding:"4px 12px", background:"#13274F",
+                                                        color:"#fff", border:"none", borderRadius:6, cursor:"pointer", fontFamily:"inherit" }}>
+                                                      수정 완료
+                                                    </button>
+                                                    <button onClick={() => setCommentPanels(prev => ({ ...prev, [i]: { ...prev[i], editingId: null } }))}
+                                                      style={{ fontSize:11, fontWeight:700, padding:"4px 12px", background:"none",
+                                                        border:dark?"1px solid #334155":"1px solid #e5e7eb", borderRadius:6, cursor:"pointer",
+                                                        color:dark?"#94a3b8":"#6b7280", fontFamily:"inherit" }}>
+                                                      취소
+                                                    </button>
+                                                  </div>
+                                                </div>
+                                              )}
                                             </div>
                                           );
                                         })}
@@ -960,7 +1036,8 @@ export default function Home() {
         * { box-sizing:border-box; margin:0; padding:0; }
         body { font-family:'Noto Sans KR','Malgun Gothic',sans-serif; min-height:100vh; }
         @keyframes slideUpFade { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
-        @keyframes commentSlide { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes commentSlide { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes commentSlideOut { from{opacity:1;transform:translateY(0)} to{opacity:0;transform:translateY(-8px)} }
         @keyframes spin { to{transform:rotate(360deg)} }
         .fade-wrap { opacity:0; transform:translateY(8px); transition:opacity .3s ease,transform .3s ease; }
         .fade-wrap.visible { opacity:1; transform:translateY(0); }
