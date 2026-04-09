@@ -30,9 +30,8 @@ export default async function handler(req, res) {
     const id = `c_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const now = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul", hour12: false });
     const comment = { id, nickname: nickname || "익명", content, createdAt: now, edited: false };
-    await pipeline([["RPUSH", listKey, JSON.stringify(comment)]]);
 
-    // 알림 저장
+    // 알림 객체
     const notif = {
       id: `n_${Date.now()}`,
       nickname: nickname || "익명",
@@ -42,11 +41,13 @@ export default async function handler(req, res) {
       createdAt: now,
       ts: Date.now(),
     };
-    await fetch(`${req.headers.origin || "https://staff.markangel.co.kr"}/api/notifications`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "add", notification: notif }),
-    }).catch(() => {});
+
+    // 댓글 저장 + 알림 저장 동시에
+    await pipeline([
+      ["RPUSH", listKey, JSON.stringify(comment)],
+      ["LPUSH", "notif_list", JSON.stringify(notif)],
+      ["LTRIM", "notif_list", "0", "99"],
+    ]);
 
     return res.json({ ok: true });
   }
