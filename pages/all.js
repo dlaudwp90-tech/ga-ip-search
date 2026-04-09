@@ -99,6 +99,7 @@ export default function AllPage() {
   const { user } = useUser();
   const [nickname, setNickname] = useState(null);
   const [commentPanels, setCommentPanels] = useState({});
+  const [viewMode,     setViewMode]     = useState(null);
 
   // ── 유저 팝업 ──
   const [userPopup,    setUserPopup]    = useState(false);
@@ -900,8 +901,7 @@ export default function AllPage() {
               </div>
               {/* ── 모바일 카드 뷰 ── */}
               <div className="mobile-cards" style={{
-                display: (viewMode==="pc") ? "none" :
-                         (viewMode==="mobile") ? "flex" : undefined }}>
+                display: viewMode ? ((viewMode==="pc") ? "none" : (viewMode==="mobile") ? "flex" : undefined) : undefined }}>
                 {results.map((row, i) => (
                   <React.Fragment key={i}>
                     <div className="m-card"
@@ -1076,8 +1076,7 @@ export default function AllPage() {
 
               {/* ── PC 테이블 뷰 ── */}
               <div className="table-outer" ref={tableOuterRef} style={{
-                display: (viewMode==="mobile") ? "none" :
-                         (viewMode==="pc") ? "block" : undefined }}>
+                display: viewMode ? ((viewMode==="mobile") ? "none" : (viewMode==="pc") ? "block" : undefined) : undefined }}>
                 <table>
                   <thead>
                     <tr>
