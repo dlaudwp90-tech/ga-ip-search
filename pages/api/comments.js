@@ -1,7 +1,7 @@
 const NOTION_KEY = process.env.NOTION_API_KEY;
 
 export default async function handler(req, res) {
-  const { action, pageId, nickname, content, commentId } = req.body || {};
+  const { action, pageId, nickname, content, commentId, edited } = req.body || {};
 
   // 댓글 목록 조회
   if (action === "get") {
@@ -26,7 +26,8 @@ export default async function handler(req, res) {
     if (!pageId || !content) return res.status(400).json({ error: "pageId, content required" });
     const nick = nickname || "익명";
     const now = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul", hour12: false });
-    const fullText = `[${nick}] ${now}\n${content}`;
+    const editedTag = edited ? " [수정됨]" : "";
+    const fullText = `[${nick}] ${now}${editedTag}\n${content}`;
     const r = await fetch("https://api.notion.com/v1/comments", {
       method: "POST",
       headers: {
@@ -44,7 +45,7 @@ export default async function handler(req, res) {
     return res.json({ ok: true });
   }
 
-  // 댓글 삭제 (Notion API는 댓글 삭제를 블록 삭제로 처리)
+  // 댓글 삭제 (블록 아카이브)
   if (action === "delete") {
     if (!commentId) return res.status(400).json({ error: "commentId required" });
     const r = await fetch(`https://api.notion.com/v1/blocks/${commentId}`, {
@@ -54,7 +55,20 @@ export default async function handler(req, res) {
         "Notion-Version": "2022-06-28",
       },
     });
-    if (!r.ok) return res.status(500).json({ error: "삭제 실패" });
+    if (!r.ok) {
+      // 블록 삭제 실패 시 내용을 [삭제됨]으로 대체
+      await fetch(`https://api.notion.com/v1/comments/${commentId}`, {
+        method: "PATCH",
+        headers: {
+          "Authorization": `Bearer ${NOTION_KEY}`,
+          "Notion-Version": "2022-06-28",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          rich_text: [{ text: { content: "[삭제된 댓글]" } }],
+        }),
+      });
+    }
     return res.json({ ok: true });
   }
 
