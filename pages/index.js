@@ -112,8 +112,15 @@ export default function Home() {
   const [notifList,   setNotifList]   = useState([]);
   const [lastRead,    setLastRead]    = useState(0);
   const [notifPos,    setNotifPos]    = useState({ x: 0, y: 0 });
+  const [nowTs,       setNowTs]       = useState(Date.now());
   const notifBtnRef   = useRef(null);
   const rowRefs       = useRef({});
+
+  // 1분마다 현재 시각 갱신 (1시간 뱃지 자동 소멸)
+  useEffect(() => {
+    const id = setInterval(() => setNowTs(Date.now()), 60000);
+    return () => clearInterval(id);
+  }, []);
 
   const startLockTimer = useCallback(() => {
     if (lockIntervalRef.current) clearInterval(lockIntervalRef.current);
@@ -700,13 +707,14 @@ export default function Home() {
               display:"flex", alignItems:"center", justifyContent:"center",
               position:"relative", transition:"border-color .2s" }}>
             🔔
-            {notifList.filter(n => n.ts > lastRead).length > 0 && (
+            {notifList.some(n => nowTs - n.ts < 3600000) && (
               <span style={{ position:"absolute", top:-4, right:-4,
-                background:"#ef4444", color:"#fff", fontSize:10, fontWeight:800,
-                minWidth:17, height:17, borderRadius:9999,
+                background:"#ef4444", color:"#fff", fontSize:11, fontWeight:900,
+                minWidth:18, height:18, borderRadius:9999,
                 display:"flex", alignItems:"center", justifyContent:"center",
-                padding:"0 3px", border:"2px solid #fff", lineHeight:1 }}>
-                {Math.min(notifList.filter(n => n.ts > lastRead).length, 99)}
+                padding:"0 4px", border:"2px solid #fff", lineHeight:1,
+                fontFamily:"sans-serif", letterSpacing:0 }}>
+                N
               </span>
             )}
           </button>
@@ -731,17 +739,20 @@ export default function Home() {
               <div style={{ padding:24, textAlign:"center", fontSize:13, color:"#94a3b8" }}>알림이 없습니다</div>
             ) : (
               notifList.map((n, ni) => {
-                const isNew = n.ts > lastRead;
+                const isNew = (nowTs - n.ts) < 3600000;
                 return (
                   <div key={n.id} onClick={() => handleNotifClick(n)}
                     style={{ padding:"10px 16px", cursor:"pointer", borderBottom:dark?"1px solid #1e293b":"1px solid #f8faff",
-                      background: isNew ? (dark?"#1e3a6e22":"#eef2ff") : "transparent",
+                      background: isNew ? (dark?"rgba(30,58,110,0.2)":"#eef2ff") : "transparent",
                       transition:"background 0.15s" }}
                     onMouseEnter={e => e.currentTarget.style.background = dark?"#334155":"#f1f5f9"}
-                    onMouseLeave={e => e.currentTarget.style.background = isNew?(dark?"#1e3a6e22":"#eef2ff"):"transparent"}>
-                    <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:3 }}>
-                      {isNew && <span style={{ width:6, height:6, borderRadius:"50%", background:"#ef4444", flexShrink:0 }}/>}
+                    onMouseLeave={e => e.currentTarget.style.background = isNew?(dark?"rgba(30,58,110,0.2)":"#eef2ff"):"transparent"}>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:3 }}>
                       <span style={{ fontSize:12, fontWeight:700, color:dark?"#93c5fd":"#1a3a8f" }}>{n.docTitle}</span>
+                      {isNew && (
+                        <span style={{ background:"#ef4444", color:"#fff", fontSize:10, fontWeight:900,
+                          borderRadius:9999, padding:"1px 5px", lineHeight:1.4, flexShrink:0 }}>N</span>
+                      )}
                     </div>
                     <div style={{ fontSize:12, color:dark?"#94a3b8":"#6b7280", marginBottom:2 }}>
                       <span style={{ fontWeight:600 }}>{n.nickname}</span> · {n.createdAt}
