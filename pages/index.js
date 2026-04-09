@@ -67,7 +67,6 @@ export default function Home() {
   const [error,        setError]        = useState(null);
   const [searched,     setSearched]     = useState(false);
   const [dark,         setDark]         = useState(false);
-  const [viewMode,     setViewMode]     = useState(null); // null|"auto"|"mobile"|"pc"
   const [popup,        setPopup]        = useState(null);
   const [copied,       setCopied]       = useState({});
   const [filePopup,    setFilePopup]    = useState(null);
@@ -290,9 +289,6 @@ export default function Home() {
       router.push(`/all?openComment=${notif.pageId}`);
     }
   };
-
-  // viewMode 클라이언트 초기화 (SSR 오류 방지)
-  useEffect(() => { setViewMode("auto"); }, []);
 
   useEffect(() => { fetchRecent(); }, []);
 
@@ -903,8 +899,7 @@ export default function Home() {
                 </div>
 
                 {/* ── 모바일 카드 뷰 ── */}
-                <div className="mobile-cards" style={{
-                display: viewMode ? ((viewMode==="pc") ? "none" : (viewMode==="mobile") ? "flex" : undefined) : undefined }}>
+                <div className="mobile-cards">
                   {results.map((row, i) => (
                     <React.Fragment key={i}>
                       <div className="m-card"
@@ -1106,8 +1101,7 @@ export default function Home() {
                 </div>
 
                 {/* ── PC 테이블 뷰 ── */}
-                <div className="table-outer" ref={tableOuterRef} style={{
-                display: viewMode ? ((viewMode==="mobile") ? "none" : (viewMode==="pc") ? "block" : undefined) : undefined }}>
+                <div className="table-outer" ref={tableOuterRef}>
                   <table>
                     <thead>
                       <tr>
@@ -1478,9 +1472,6 @@ export default function Home() {
           padding:3px 8px; text-decoration:none; display:inline-block; }
         .dark .m-file-link { background:#1e3a6e; color:#93c5fd; }
         .m-review-row { display:flex; gap:4px; align-items:center; }
-        @media (min-width: 769px) {
-          .view-toggle-btn { display:none !important; }
-        }
         @media (max-width: 768px) {
           .mobile-cards { display:flex; }
           .table-outer { display:none; }
