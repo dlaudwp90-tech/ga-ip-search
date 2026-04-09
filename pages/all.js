@@ -769,13 +769,19 @@ export default function AllPage() {
 
         {/* 유저 버튼 */}
         <div style={{ position:"absolute", top:20, right:70, display:"flex", alignItems:"center" }}>
-          <button ref={userBtnRef} className="user-icon-btn" title="계정"
+          <button ref={userBtnRef} title="계정"
             onClick={e => {
               const rect = e.currentTarget.getBoundingClientRect();
               setUserBtnPos({ x: rect.left, y: rect.bottom });
               setUserPopup(p => !p);
               setNotifOpen(false);
-            }}>👤</button>
+            }}
+            style={{ background:"none", border:"2px solid #d0d9f0", borderRadius:"50%",
+              width:40, height:40, fontSize:18, cursor:"pointer",
+              display:"flex", alignItems:"center", justifyContent:"center",
+              transition:"border-color .2s" }}>
+            👤
+          </button>
         </div>
 
         {userPopup && (
