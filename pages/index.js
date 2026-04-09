@@ -1011,7 +1011,11 @@ export default function Home() {
                                         value={panel.input || ""}
                                         onChange={e => setCommentPanels(prev => ({ ...prev, [i]: { ...prev[i], input: e.target.value } }))}
                                         onKeyDown={e => {
-                                          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handlePostComment(i, row.pageId); }
+                                          if (e.key === "Enter" && !e.shiftKey) {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            if (!panel.saving) handlePostComment(i, row.pageId);
+                                          }
                                         }}
                                         placeholder={"댓글 입력 (Enter 등록 / Shift+Enter 줄바꿈)"}
                                         rows={2}
