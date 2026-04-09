@@ -114,7 +114,8 @@ export default function Home() {
   const [notifPos,    setNotifPos]    = useState({ x: 0, y: 0 });
   const [nowTs,       setNowTs]       = useState(Date.now());
   const notifBtnRef   = useRef(null);
-  const rowRefs       = useRef({});
+  const rowRefs        = useRef({});
+  const mobileCardRefs = useRef({});
 
   // 1분마다 현재 시각 갱신 (1시간 뱃지 자동 소멸)
   useEffect(() => {
@@ -263,29 +264,19 @@ export default function Home() {
   // 알림 클릭 → 해당 행으로 이동 + 댓글 패널 열기
   const handleNotifClick = async (notif) => {
     setNotifOpen(false);
+    // PC: 테이블 행에서 찾기
     const idx = results?.findIndex(r => r.pageId === notif.pageId);
     if (idx !== undefined && idx >= 0) {
-      // 이미 결과에 있으면 스크롤 + 패널 열기
+      // 테이블 행 스크롤
       const el = rowRefs.current[idx];
       if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+      // 모바일 카드 스크롤
+      const mEl = mobileCardRefs.current[idx];
+      if (mEl) mEl.scrollIntoView({ behavior: "smooth", block: "center" });
       await toggleCommentPanel(idx, notif.pageId);
     } else {
-      // 없으면 검색 후 열기
-      setQuery(notif.docTitle);
-      setSearched(true);
-      setLoading(true);
-      const r = await fetch("/api/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: notif.docTitle }),
-      });
-      const d = await r.json();
-      setResults(d.results || []);
-      setLoading(false);
-      setTimeout(() => {
-        const ni = d.results?.findIndex(r => r.pageId === notif.pageId);
-        if (ni >= 0) toggleCommentPanel(ni, notif.pageId);
-      }, 500);
+      // 현재 목록에 없으면 all.js로 이동하며 pageId 전달
+      router.push(`/all?openComment=${notif.pageId}`);
     }
   };
 
@@ -902,6 +893,7 @@ export default function Home() {
                   {results.map((row, i) => (
                     <React.Fragment key={i}>
                       <div className="m-card"
+                        ref={el => mobileCardRefs.current[i] = el}
                         style={{ background: dark ? (i%2===0?"#1e293b":"#172035") : (i%2===0?"#fff":"#f7f8ff") }}>
                         {/* 제목 행 */}
                         <div className="m-card-top">
