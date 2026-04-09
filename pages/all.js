@@ -180,30 +180,34 @@ export default function AllPage() {
   };
 
   // openComment 쿼리 파라미터 처리 (index.js에서 넘어올 때)
+  const [jumpTarget, setJumpTarget] = useState(null); // 모바일용 이동 배너
+
   useEffect(() => {
     const { openComment } = router.query;
     if (!openComment || !results?.length) return;
     const idx = results.findIndex(r => r.pageId === openComment);
     if (idx < 0) return;
 
-    // 재시도 스크롤 함수 - 모바일은 렌더링 타이밍이 느릴 수 있어 반복 시도
-    let attempts = 0;
-    const maxAttempts = 8;
-    const tryScroll = () => {
-      attempts++;
+    // 댓글 패널 먼저 오픈
+    toggleCommentPanel(idx, openComment);
+
+    // PC: 즉시 스크롤 시도
+    const tryScroll = (attempt = 0) => {
       const el = rowRefs.current[idx];
       const mEl = mobileCardRefs.current[idx];
       const target = mEl || el;
       if (target) {
-        target.scrollIntoView({ behavior: attempts === 1 ? "auto" : "smooth", block: "center" });
-        if (attempts === 1) toggleCommentPanel(idx, openComment);
-        return;
-      }
-      if (attempts < maxAttempts) {
-        setTimeout(tryScroll, 200 * attempts);
+        target.scrollIntoView({ behavior: "smooth", block: "center" });
+        setJumpTarget(null);
+      } else if (attempt < 10) {
+        setTimeout(() => tryScroll(attempt + 1), 200);
+      } else {
+        // 스크롤 실패 시 모바일용 배너 표시
+        const row = results[idx];
+        setJumpTarget({ idx, pageId: openComment, title: row?.title || "문서" });
       }
     };
-    setTimeout(tryScroll, 400);
+    setTimeout(() => tryScroll(), 300);
   }, [router.query, results]);
 
   useEffect(() => {
@@ -669,12 +673,38 @@ export default function AllPage() {
 
       <div className={`page${dark?" dark":""}`}>
 
+        {/* 댓글 이동 배너 (모바일 스크롤 실패 시) */}
+        {jumpTarget && (
+          <div style={{ position:"fixed", top:0, left:0, right:0, zIndex:700,
+            background:"#13274F", color:"#fff", padding:"10px 16px",
+            display:"flex", alignItems:"center", justifyContent:"space-between",
+            boxShadow:"0 2px 12px rgba(0,0,0,0.3)" }}>
+            <span style={{ fontSize:13 }}>
+              💬 <strong>{jumpTarget.title}</strong>의 댓글
+            </span>
+            <button
+              onClick={() => {
+                const el = rowRefs.current[jumpTarget.idx];
+                const mEl = mobileCardRefs.current[jumpTarget.idx];
+                const target = mEl || el;
+                if (target) target.scrollIntoView({ behavior:"smooth", block:"center" });
+                setJumpTarget(null);
+              }}
+              style={{ background:"#fff", color:"#13274F", border:"none", borderRadius:8,
+                padding:"6px 14px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+              댓글로 이동 ↓
+            </button>
+            <button onClick={() => setJumpTarget(null)}
+              style={{ background:"none", border:"none", color:"#fff", fontSize:18, cursor:"pointer", padding:"0 4px" }}>✕</button>
+          </div>
+        )}
+
         <button className="theme-toggle" onClick={()=>setDark(!dark)} title={dark?"라이트 모드":"다크 모드"}>
           {dark?"☀️":"🌙"}
         </button>
 
         {/* 알림 벨 */}
-        <div style={{ position:"absolute", top:20, right:170, display:"inline-flex" }}>
+        <div style={{ position:"absolute", top:20, right:120, display:"inline-flex" }}>
           <button ref={notifBtnRef} title="댓글 알림"
             onClick={e => {
               const rect = e.currentTarget.getBoundingClientRect();
@@ -738,7 +768,7 @@ export default function AllPage() {
         )}
 
         {/* 유저 버튼 */}
-        <div style={{ position:"absolute", top:20, right:120, display:"flex", alignItems:"center" }}>
+        <div style={{ position:"absolute", top:20, right:70, display:"flex", alignItems:"center" }}>
           <button ref={userBtnRef} className="user-icon-btn" title="계정"
             onClick={e => {
               const rect = e.currentTarget.getBoundingClientRect();
