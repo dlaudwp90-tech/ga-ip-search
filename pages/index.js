@@ -1,3 +1,4 @@
+import React from "react";
 import { useClerk, useUser } from "@clerk/nextjs";
 import { useState, useRef, useEffect, useCallback } from "react";
 import Head from "next/head";
@@ -704,7 +705,8 @@ export default function Home() {
                     </thead>
                     <tbody>
                       {results.map((row, i) => (
-                        <tr key={i}
+                        <React.Fragment key={i}>
+                        <tr
                           className={`result-row ${i%2===0?"row-even":"row-odd"}`}
                           onMouseEnter={()=>setHoveredRow(i)}
                           onMouseLeave={()=>setHoveredRow(null)}
@@ -833,7 +835,7 @@ export default function Home() {
                           {commentPanels[i]?.open && (() => {
                             const panel = commentPanels[i] || {};
                             return (
-                              <tr key={`comment-${i}`}>
+                              <tr>
                                 <td colSpan={11} style={{ padding:0, borderBottom:`2px solid ${dark?"#1e3a6e":"#c7d2fe"}`, background:dark?"#0f172a":"#eef2ff" }}>
                                   <div style={{ padding:"12px 20px", display:"flex", flexDirection:"column", gap:10 }}>
                                     {/* 댓글 목록 */}
@@ -891,6 +893,7 @@ export default function Home() {
                               </tr>
                             );
                           })()}
+                        </React.Fragment>
                       ))}
                     </tbody>
                   </table>
