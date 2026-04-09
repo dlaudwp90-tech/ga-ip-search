@@ -835,8 +835,12 @@ export default function Home() {
                             const panel = commentPanels[i] || {};
                             return (
                               <tr>
-                                <td colSpan={11} style={{ padding:0, borderBottom:dark?"2px solid #1e3a6e":"2px solid #c7d2fe", background:dark?"#0f172a":"#eef2ff" }}>
-                                  <div style={{ padding:"12px 20px", display:"flex", flexDirection:"column", gap:10 }}>
+                                <td colSpan={11} style={{ padding:0, borderBottom:dark?"2px solid #1e3a6e":"2px solid #c7d2fe", background:"transparent" }}>
+                                  <div style={{ position:"sticky", left:0, width: COL_CHECK_W + COL_TITLE_L + 220,
+                                    background:dark?"#0f172a":"#eef2ff", borderRadius:"0 0 10px 10px",
+                                    padding:"12px 16px", display:"flex", flexDirection:"column", gap:10,
+                                    boxShadow:"0 4px 12px rgba(19,39,79,0.08)",
+                                    animation:"commentSlide 0.2s ease" }}>
                                     {/* 댓글 목록 */}
                                     {panel.loading ? (
                                       <div style={{ fontSize:12, color:"#94a3b8" }}>불러오는 중...</div>
@@ -848,9 +852,36 @@ export default function Home() {
                                           const body = lines.slice(1).join("\n");
                                           return (
                                             <div key={ci} style={{ background:dark?"#1e293b":"#fff", borderRadius:8,
-                                              padding:"8px 12px", border:dark?"1px solid #334155":"1px solid #e0e7ff" }}>
-                                              <div style={{ fontSize:11, color:dark?"#94a3b8":"#6b7280", marginBottom:4, fontWeight:600 }}>{header}</div>
-                                              <div style={{ fontSize:13, color:dark?"#e2e8f0":"#1f2937", whiteSpace:"pre-wrap" }}>{body}</div>
+                                              padding:"8px 12px", border:dark?"1px solid #334155":"1px solid #e0e7ff",
+                                              textAlign:"left" }}>
+                                              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
+                                                <span style={{ fontSize:11, color:dark?"#94a3b8":"#6b7280", fontWeight:600 }}>{header}</span>
+                                                {/* 작성자 또는 관리자만 삭제 가능 */}
+                                                {(header.startsWith(`[${nickname}]`) || user?.primaryEmailAddress?.emailAddress === "dlaudwp90@gmail.com") && (
+                                                  <button
+                                                    onClick={async () => {
+                                                      if (!confirm("댓글을 삭제하시겠습니까?")) return;
+                                                      await fetch("/api/comments", {
+                                                        method: "POST",
+                                                        headers: { "Content-Type": "application/json" },
+                                                        body: JSON.stringify({ action: "delete", commentId: c.id }),
+                                                      });
+                                                      const r2 = await fetch("/api/comments", {
+                                                        method: "POST",
+                                                        headers: { "Content-Type": "application/json" },
+                                                        body: JSON.stringify({ action: "get", pageId: row.pageId }),
+                                                      });
+                                                      const d2 = await r2.json();
+                                                      setCommentPanels(prev => ({ ...prev, [i]: { ...prev[i], comments: d2.comments || [] } }));
+                                                    }}
+                                                    style={{ fontSize:10, background:"none", border:"none", cursor:"pointer",
+                                                      color:dark?"#f87171":"#dc2626", padding:"1px 4px", borderRadius:4,
+                                                      fontFamily:"inherit" }}>
+                                                    삭제
+                                                  </button>
+                                                )}
+                                              </div>
+                                              <div style={{ fontSize:13, color:dark?"#e2e8f0":"#1f2937", whiteSpace:"pre-wrap", textAlign:"left" }}>{body}</div>
                                             </div>
                                           );
                                         })}
@@ -929,6 +960,7 @@ export default function Home() {
         * { box-sizing:border-box; margin:0; padding:0; }
         body { font-family:'Noto Sans KR','Malgun Gothic',sans-serif; min-height:100vh; }
         @keyframes slideUpFade { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes commentSlide { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
         @keyframes spin { to{transform:rotate(360deg)} }
         .fade-wrap { opacity:0; transform:translateY(8px); transition:opacity .3s ease,transform .3s ease; }
         .fade-wrap.visible { opacity:1; transform:translateY(0); }
