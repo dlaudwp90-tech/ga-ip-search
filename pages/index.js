@@ -904,8 +904,7 @@ export default function Home() {
 
                 {/* ── 모바일 카드 뷰 ── */}
                 <div className="mobile-cards" style={{
-                display: (viewMode==="pc") ? "none" :
-                         (viewMode==="mobile") ? "flex" : undefined }}>
+                display: viewMode ? ((viewMode==="pc") ? "none" : (viewMode==="mobile") ? "flex" : undefined) : undefined }}>
                   {results.map((row, i) => (
                     <React.Fragment key={i}>
                       <div className="m-card"
@@ -1108,8 +1107,7 @@ export default function Home() {
 
                 {/* ── PC 테이블 뷰 ── */}
                 <div className="table-outer" ref={tableOuterRef} style={{
-                display: (viewMode==="mobile") ? "none" :
-                         (viewMode==="pc") ? "block" : undefined }}>
+                display: viewMode ? ((viewMode==="mobile") ? "none" : (viewMode==="pc") ? "block" : undefined) : undefined }}>
                   <table>
                     <thead>
                       <tr>
