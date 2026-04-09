@@ -1027,7 +1027,17 @@ export default function AllPage() {
                               <div style={{display:"flex",flexDirection:"column",gap:6}}>
                                 <textarea value={panel.input||""} rows={2} placeholder="댓글 입력"
                                   enterKeyHint="enter"
-                                  onKeyDown={e => { if(e.key==="Enter") e.stopPropagation(); }}
+                                  onKeyDown={e => {
+                                    if (e.key === "Enter") {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      const pos = e.target.selectionStart;
+                                      const val = panel.input || "";
+                                      const next = val.slice(0, pos) + "\n" + val.slice(e.target.selectionEnd);
+                                      setCommentPanels(prev => ({ ...prev, [i]: { ...prev[i], input: next } }));
+                                      requestAnimationFrame(() => { e.target.selectionStart = e.target.selectionEnd = pos + 1; });
+                                    }
+                                  }}
                                   onChange={e=>setCommentPanels(prev=>({...prev,[i]:{...prev[i],input:e.target.value}}))}
                                   
                                   style={{width:"100%",fontSize:13,border:"1.5px solid #c7d2fe",borderRadius:8,
@@ -1309,7 +1319,17 @@ export default function AllPage() {
                                         
                                         placeholder="댓글 입력"
                                   enterKeyHint="enter"
-                                  onKeyDown={e => { if(e.key==="Enter") e.stopPropagation(); }} rows={2}
+                                  onKeyDown={e => {
+                                    if (e.key === "Enter") {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      const pos = e.target.selectionStart;
+                                      const val = panel.input || "";
+                                      const next = val.slice(0, pos) + "\n" + val.slice(e.target.selectionEnd);
+                                      setCommentPanels(prev => ({ ...prev, [i]: { ...prev[i], input: next } }));
+                                      requestAnimationFrame(() => { e.target.selectionStart = e.target.selectionEnd = pos + 1; });
+                                    }
+                                  }} rows={2}
                                         style={{ width:"100%", fontSize:13, border:dark?"1.5px solid #334155":"1.5px solid #c7d2fe",
                                           borderRadius:8, padding:"8px 10px", outline:"none", resize:"vertical",
                                           fontFamily:"inherit", background:dark?"#1e293b":"#fff", color:dark?"#e2e8f0":"#1f2937", boxSizing:"border-box" }} />
