@@ -1341,7 +1341,7 @@ export default function Home() {
                                                   <textarea
                                                     value={commentPanels[i]?.editInput || ""}
                                                     onChange={e => setCommentPanels(prev => ({ ...prev, [i]: { ...prev[i], editInput: e.target.value } }))}
-                                                    onKeyDown={e => { if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); handleEditComment(i, row.pageId, c.id); }}}
+                                                    onKeyDown={e => { /* Enter=줄바꿈 */ }}
                                                     rows={2}
                                                     style={{ width:"100%", fontSize:13, border:dark?"1.5px solid #334155":"1.5px solid #c7d2fe",
                                                       borderRadius:8, padding:"6px 10px", outline:"none", fontFamily:"inherit",
@@ -1374,14 +1374,7 @@ export default function Home() {
                                       <textarea
                                         value={panel.input || ""}
                                         onChange={e => setCommentPanels(prev => ({ ...prev, [i]: { ...prev[i], input: e.target.value } }))}
-                                        onKeyDown={e => {
-                                          const isMobile = window.matchMedia("(pointer:coarse)").matches;
-                                          if (e.key === "Enter" && !e.shiftKey && !isMobile) {
-                                            e.preventDefault();
-                                            e.stopPropagation();
-                                            if (!panel.saving) handlePostComment(i, row.pageId);
-                                          }
-                                        }}
+                                        onKeyDown={e => { /* Enter=줄바꿈, 등록은 버튼으로만 */ }}
                                         placeholder={"댓글 입력 (Enter 등록 / Shift+Enter 줄바꿈)"}
                                         rows={2}
                                         style={{ width:"100%", fontSize:13, border:dark?"1.5px solid #334155":"1.5px solid #c7d2fe",
