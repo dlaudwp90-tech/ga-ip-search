@@ -892,12 +892,16 @@ export default function Home() {
                             const panel = commentPanels[i] || {};
                             return (
                               <tr>
-                                <td colSpan={11} style={{ padding:0, borderBottom:dark?"2px solid #1e3a6e":"2px solid #c7d2fe", background:"transparent" }}>
-                                  <div style={{ position:"sticky", left:0, width: COL_CHECK_W + COL_TITLE_L + 220,
+                                <td colSpan={11} style={{ padding:0, background:"transparent", transition:"all 0.35s ease", borderBottom: commentPanels[i]?.open ? (dark?"2px solid #1e3a6e":"2px solid #c7d2fe") : "none" }}>
+                                  <div style={{ position:"sticky", left:0, width: COL_CHECK_W + 250,
                                     background:dark?"#0f172a":"#eef2ff", borderRadius:"0 0 10px 10px",
-                                    padding:"12px 16px", display:"flex", flexDirection:"column", gap:10,
-                                    boxShadow:"0 4px 12px rgba(19,39,79,0.08)",
-                                    animation: commentPanels[i]?.closing ? "commentSlideOut 0.35s ease forwards" : "commentSlide 0.35s ease" }}>
+                                    overflow:"hidden",
+                                    maxHeight: commentPanels[i]?.closing ? "0" : "800px",
+                                    opacity: commentPanels[i]?.closing ? 0 : 1,
+                                    transition: "max-height 0.38s ease, opacity 0.3s ease",
+                                    padding: commentPanels[i]?.closing ? "0 16px" : "12px 16px",
+                                    display:"flex", flexDirection:"column", gap:10,
+                                    boxShadow:"0 4px 12px rgba(19,39,79,0.08)" }}>
                                     {/* 댓글 목록 */}
                                     {panel.loading ? (
                                       <div style={{ fontSize:12, color:"#94a3b8" }}>불러오는 중...</div>
@@ -951,7 +955,9 @@ export default function Home() {
                                                   </div>
                                                 )}
                                               </div>
-                                              <div style={{ fontSize:13, color:dark?"#e2e8f0":"#1f2937", whiteSpace:"pre-wrap", textAlign:"left" }}>{body}</div>
+                                              <div style={{ fontSize:13, color:dark?"#e2e8f0":"#1f2937", whiteSpace:"pre-wrap", textAlign:"left",
+                                                borderTop:dark?"1px solid #334155":"1px solid #e0e7ff",
+                                                paddingTop:6, marginTop:2 }}>{body}</div>
                                               {commentPanels[i]?.editingId === c.id && (
                                                 <div style={{ marginTop:8, display:"flex", flexDirection:"column", gap:6 }}>
                                                   <textarea
@@ -1056,8 +1062,7 @@ export default function Home() {
         * { box-sizing:border-box; margin:0; padding:0; }
         body { font-family:'Noto Sans KR','Malgun Gothic',sans-serif; min-height:100vh; }
         @keyframes slideUpFade { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
-        @keyframes commentSlide { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:translateY(0)} }
-        @keyframes commentSlideOut { from{opacity:1;transform:translateY(0)} to{opacity:0;transform:translateY(-8px)} }
+        @keyframes commentFadeIn { from{opacity:0} to{opacity:1} }
         @keyframes spin { to{transform:rotate(360deg)} }
         .fade-wrap { opacity:0; transform:translateY(8px); transition:opacity .3s ease,transform .3s ease; }
         .fade-wrap.visible { opacity:1; transform:translateY(0); }
