@@ -977,7 +977,7 @@ export default function AllPage() {
                                 <div style={{fontSize:12,color:"#94a3b8"}}>불러오는 중...</div>
                               ):panel.comments?.length>0?(
                                 <div style={{display:"flex",flexDirection:"column",gap:6,
-                                  maxHeight:200, overflowY:"auto", flexShrink:1,
+                                  flex:1, minHeight:0, overflowY:"auto",
                                   marginBottom:8,
                                   opacity:panel.commentsVisible?1:0,transition:"opacity 0.3s ease"}}>
                                   {panel.comments.map((c,ci)=>(
@@ -1026,7 +1026,7 @@ export default function AllPage() {
                               ):(
                                 <div style={{fontSize:12,color:"#94a3b8"}}>댓글이 없습니다.</div>
                               )}
-                              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                              <div style={{display:"flex",flexDirection:"column",gap:6,flexShrink:0}}>
                                 <textarea value={panel.input||""} rows={2} placeholder="댓글 입력"
                                   enterKeyHint="enter"
                                   onKeyDown={e => { if(e.key==="Enter") e.stopPropagation(); }}
