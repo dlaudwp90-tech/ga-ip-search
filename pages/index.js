@@ -67,7 +67,7 @@ export default function Home() {
   const [error,        setError]        = useState(null);
   const [searched,     setSearched]     = useState(false);
   const [dark,         setDark]         = useState(false);
-  const [viewMode,     setViewMode]     = useState("auto"); // "auto"|"mobile"|"pc"
+  const [viewMode,     setViewMode]     = useState(null); // null|"auto"|"mobile"|"pc"
   const [popup,        setPopup]        = useState(null);
   const [copied,       setCopied]       = useState({});
   const [filePopup,    setFilePopup]    = useState(null);
@@ -290,6 +290,9 @@ export default function Home() {
       router.push(`/all?openComment=${notif.pageId}`);
     }
   };
+
+  // viewMode 클라이언트 초기화 (SSR 오류 방지)
+  useEffect(() => { setViewMode("auto"); }, []);
 
   useEffect(() => { fetchRecent(); }, []);
 
@@ -901,8 +904,8 @@ export default function Home() {
 
                 {/* ── 모바일 카드 뷰 ── */}
                 <div className="mobile-cards" style={{
-                display: viewMode==="pc" ? "none" :
-                         viewMode==="mobile" ? "flex" : undefined }}>
+                display: (viewMode==="pc") ? "none" :
+                         (viewMode==="mobile") ? "flex" : undefined }}>
                   {results.map((row, i) => (
                     <React.Fragment key={i}>
                       <div className="m-card"
@@ -1105,8 +1108,8 @@ export default function Home() {
 
                 {/* ── PC 테이블 뷰 ── */}
                 <div className="table-outer" ref={tableOuterRef} style={{
-                display: viewMode==="mobile" ? "none" :
-                         viewMode==="pc" ? "block" : undefined }}>
+                display: (viewMode==="mobile") ? "none" :
+                         (viewMode==="pc") ? "block" : undefined }}>
                   <table>
                     <thead>
                       <tr>
