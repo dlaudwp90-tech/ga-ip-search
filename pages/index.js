@@ -317,11 +317,13 @@ export default function Home() {
   const toggleCommentPanel = async (idx, pageId) => {
     const isOpen = commentPanels[idx]?.open;
     if (isOpen) {
+      // 접기: closing 애니메이션 후 닫기
       setCommentPanels(prev => ({ ...prev, [idx]: { ...prev[idx], closing: true } }));
-      setTimeout(() => setCommentPanels(prev => ({ ...prev, [idx]: { ...prev[idx], open: false, closing: false } })), 340);
+      setTimeout(() => setCommentPanels(prev => ({ ...prev, [idx]: { ...prev[idx], open: false, closing: false } })), 380);
       return;
     }
-    setCommentPanels(prev => ({ ...prev, [idx]: { ...(prev[idx]||{}), open: true, loading: true } }));
+    // 열기 1단계: 빈 패널 먼저 펼치기
+    setCommentPanels(prev => ({ ...prev, [idx]: { ...(prev[idx]||{}), open: true, loading: true, commentsVisible: false } }));
     try {
       const r = await fetch("/api/comments", {
         method: "POST",
@@ -329,9 +331,12 @@ export default function Home() {
         body: JSON.stringify({ action: "get", pageId }),
       });
       const d = await r.json();
-      setCommentPanels(prev => ({ ...prev, [idx]: { ...(prev[idx]||{}), loading: false, comments: d.comments || [] } }));
+      // 열기 2단계: 패널 펼쳐진 후 댓글 fade-in
+      setTimeout(() => {
+        setCommentPanels(prev => ({ ...prev, [idx]: { ...(prev[idx]||{}), loading: false, comments: d.comments || [], commentsVisible: true } }));
+      }, 320);
     } catch {
-      setCommentPanels(prev => ({ ...prev, [idx]: { ...(prev[idx]||{}), loading: false, comments: [] } }));
+      setCommentPanels(prev => ({ ...prev, [idx]: { ...(prev[idx]||{}), loading: false, comments: [], commentsVisible: true } }));
     }
   };
 
@@ -906,16 +911,21 @@ export default function Home() {
                                     {panel.loading ? (
                                       <div style={{ fontSize:12, color:"#94a3b8" }}>불러오는 중...</div>
                                     ) : panel.comments?.length > 0 ? (
-                                      <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                                      <div style={{ display:"flex", flexDirection:"column", gap:8,
+                                        opacity: panel.commentsVisible ? 1 : 0,
+                                        transform: panel.commentsVisible ? "translateY(0)" : "translateY(-6px)",
+                                        transition: "opacity 0.3s ease, transform 0.3s ease" }}>
                                         {panel.comments.map((c, ci) => {
-                                          const header = `[${c.nickname}] ${c.createdAt}${c.edited ? " [수정됨] "+c.editedAt : ""}`;
                                           const body = c.content;
                                           return (
                                             <div key={ci} style={{ background:dark?"#1e293b":"#fff", borderRadius:8,
                                               padding:"8px 12px", border:dark?"1px solid #334155":"1px solid #e0e7ff",
                                               textAlign:"left" }}>
-                                              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
-                                                <span style={{ fontSize:11, color:dark?"#94a3b8":"#6b7280", fontWeight:600 }}>{header}</span>
+                                              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:4 }}>
+                                                <div style={{ display:"flex", flexDirection:"column", gap:1 }}>
+                                                  <span style={{ fontSize:11, color:dark?"#94a3b8":"#6b7280", fontWeight:600 }}>[{c.nickname}] {c.createdAt}</span>
+                                                  {c.edited && <span style={{ fontSize:10, color:dark?"#6b7280":"#9ca3af" }}>[수정됨] {c.editedAt}</span>}
+                                                </div>
                                                 {/* 작성자 또는 관리자만 삭제 가능 */}
                                                 {(c.nickname === nickname || user?.primaryEmailAddress?.emailAddress === "dlaudwp90@gmail.com") && (
                                                   <div style={{ display:"flex", gap:4 }}>
