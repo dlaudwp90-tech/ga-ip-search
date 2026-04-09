@@ -498,7 +498,13 @@ export default function AllPage() {
 
       {/* 파일 팝업 */}
       {filePopup && results && (() => {
-        const [ri, ci] = filePopup.split("-").map(Number);
+        let ri, ci;
+        if (filePopup.startsWith("m_")) {
+          const parts = filePopup.split("_");
+          ri = Number(parts[1]); ci = Number(parts[2]);
+        } else {
+          [ri, ci] = filePopup.split("-").map(Number);
+        }
         const row = results[ri];
         if (!row?.fileLinks) return null;
         const links = row.fileLinks.split("\n").filter(Boolean);
@@ -597,6 +603,202 @@ export default function AllPage() {
                 <p className="count">📄 {results.length}건 표시 중{hasMore ? ` (전체 ${totalCount??'…'}건)` : ` / 전체 ${results.length}건`}</p>
                 <p className="lock-guide">🔓 잠금 표시를 해제하고 버튼을 눌러주세요</p>
               </div>
+              {/* ── 모바일 카드 뷰 ── */}
+              <div className="mobile-cards">
+                {results.map((row, i) => (
+                  <React.Fragment key={i}>
+                    <div className="m-card"
+                      style={{ background: dark ? (i%2===0?"#1e293b":"#172035") : (i%2===0?"#fff":"#f7f8ff") }}>
+                      {/* 제목 행 */}
+                      <div className="m-card-top">
+                        <span className="m-card-icon">📄</span>
+                        <span className="m-card-title" onClick={e=>handleTitleClick(e,row.url)}>{renderSingleLine(row.title)}</span>
+                        <span onClick={e=>{e.stopPropagation();toggleCommentPanel(i,row.pageId)}}
+                          style={{cursor:"pointer",flexShrink:0,position:"relative",display:"inline-flex",
+                            alignItems:"center",marginLeft:4,opacity:commentPanels[i]?.comments?.length>0?1:0.2}}>
+                          <span style={{fontSize:20}}>💬</span>
+                          {commentPanels[i]?.comments?.length>0&&(
+                            <span style={{position:"absolute",top:-4,right:-8,background:"#ef4444",color:"#fff",
+                              fontSize:9,fontWeight:800,minWidth:15,height:15,borderRadius:9999,
+                              display:"flex",alignItems:"center",justifyContent:"center",padding:"0 3px",
+                              border:"1.5px solid #fff"}}>
+                              {commentPanels[i].comments.length}
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                      {/* 대표검토 버튼 */}
+                      <div className="m-review-row">
+                        {STATUS_OPTIONS.map(opt => {
+                          const isActive = (reviewStates[row.url] ?? null) === opt.key;
+                          const c = dark ? opt.darkColor : opt.color;
+                          const obg = dark ? opt.darkBg : opt.bg;
+                          return (
+                            <button key={opt.key}
+                              onClick={() => handleStatusSelect(row.url, isActive ? null : opt.key)}
+                              disabled={checkLocked || savingUrl === row.url}
+                              title={checkLocked ? "🔒 잠금 해제 후 선택" : opt.label}
+                              style={{ display:"flex", alignItems:"center", gap:4, flex:1,
+                                background: isActive ? obg : "transparent",
+                                border:`1.5px solid ${isActive ? c : (dark?"#334155":"#e5e7eb")}`,
+                                borderRadius:7, padding:"5px 6px", cursor:(checkLocked||savingUrl===row.url)?"not-allowed":"pointer",
+                                fontFamily:"inherit", opacity:checkLocked?0.6:1, transition:"all 0.15s" }}>
+                              <span style={{ width:8, height:8, borderRadius:"50%", flexShrink:0,
+                                border:`1.5px solid ${c}`, background:isActive?c:"transparent", display:"inline-block" }}/>
+                              <span style={{ fontSize:11, fontWeight:700,
+                                color:isActive?c:(dark?"#94a3b8":"#6b7280") }}>{opt.short}</span>
+                            </button>
+                          );
+                        })}
+                        <button onClick={handleLockToggle}
+                          style={{ background:"none", border:`1.5px solid ${checkLocked?"#e5e7eb":"#fbbf24"}`,
+                            borderRadius:7, padding:"5px 8px", cursor:"pointer", fontSize:14, lineHeight:1,
+                            backgroundColor:checkLocked?"transparent":"rgba(251,191,36,0.1)" }}>
+                          {checkLocked?"🔒":"🔓"}
+                        </button>
+                      </div>
+                      {/* 배지 행 */}
+                      <div className="m-card-badges">
+                        {row.statusItem&&<span className="badge" style={notionBadgeStyle(row.statusItem.color,dark)}>{row.statusItem.name}</span>}
+                        {row.docWorkStatusItem&&<span className="badge" style={notionBadgeStyle(row.docWorkStatusItem.color,dark)}>{row.docWorkStatusItem.name}</span>}
+                        {row.typeItems?.map((t,k)=><span key={k} className="badge" style={notionBadgeStyle(t.color,dark)}>{t.name}</span>)}
+                      </div>
+                      {/* 출원번호 / 출원인 */}
+                      {(row.appNum||row.appOwner)&&(
+                        <div className="m-card-info">
+                          {row.appNum&&<span className="m-info-item">📋 {renderSingleLine(row.appNum)}</span>}
+                          {row.appOwner&&<span className="m-info-item">👤 {renderSingleLine(row.appOwner)}</span>}
+                        </div>
+                      )}
+                      {/* 파일 - 팝업 포함 */}
+                      {row.fileLinks&&(()=>{
+                        const mFiles = row.fileLinks.split("\n").filter(Boolean);
+                        const mLimit = 1;
+                        const mExpanded = !!expandedRows[`m_${i}`];
+                        const mShow = mExpanded ? mFiles : mFiles.slice(0, mLimit);
+                        return (
+                          <div className="m-card-files">
+                            {mShow.map((link, j) => {
+                              const fn = decodeURIComponent(link.split("/").pop());
+                              const mpk = `m_${i}_${j}`;
+                              const isOpen = filePopup === mpk;
+                              return (
+                                <div key={j} style={{ position:"relative" }}>
+                                  <span className={`m-file-link${isOpen?" active":""}`}
+                                    style={{ cursor:"pointer", userSelect:"none", display:"inline-block" }}
+                                    onMouseDown={e => {
+                                      e.stopPropagation();
+                                      if (isOpen) { setFilePopup(null); return; }
+                                      const rect = e.currentTarget.getBoundingClientRect();
+                                      const x = Math.min(e.clientX, window.innerWidth - 160);
+                                      const y = rect.bottom + 4;
+                                      setPopupPos({ x, y });
+                                      setFilePopup(mpk);
+                                    }}>
+                                    📄 {fn} ▾
+                                  </span>
+                                </div>
+                              );
+                            })}
+                            {mFiles.length > mLimit && (
+                              <button className="expand-btn"
+                                onClick={e => { e.stopPropagation(); setExpandedRows(p => ({ ...p, [`m_${i}`]: !p[`m_${i}`] })); }}>
+                                {mExpanded ? "↑ 접기" : `+${mFiles.length - mLimit} 파일더보기`}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })()}
+                      {/* 댓글 패널 */}
+                      {(() => {
+                        const panel = commentPanels[i] || {};
+                        const isOpen = panel.open && !panel.closing;
+                        const isClosing = panel.closing;
+                        return (
+                          <div style={{ overflow:"hidden",
+                            maxHeight:(isOpen||isClosing)?(isClosing?"0px":"600px"):"0px",
+                            opacity:isOpen?1:0,
+                            transition:"max-height 0.42s cubic-bezier(0.4,0,0.2,1), opacity 0.3s ease",
+                            marginTop:isOpen?"10px":0 }}>
+                            <div style={{ borderTop:dark?"1px solid #334155":"1px solid #c7d2fe", paddingTop:10,
+                              display:"flex", flexDirection:"column", gap:8 }}>
+                              {panel.loading?(
+                                <div style={{fontSize:12,color:"#94a3b8"}}>불러오는 중...</div>
+                              ):panel.comments?.length>0?(
+                                <div style={{display:"flex",flexDirection:"column",gap:6,
+                                  opacity:panel.commentsVisible?1:0,transition:"opacity 0.3s ease"}}>
+                                  {panel.comments.map((c,ci)=>(
+                                    <div key={ci} style={{background:dark?"#1e293b":"#fff",borderRadius:8,
+                                      padding:"8px 10px",border:dark?"1px solid #334155":"1px solid #e0e7ff"}}>
+                                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}>
+                                        <div style={{display:"flex",flexDirection:"column",gap:1}}>
+                                          <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280",fontWeight:600}}>[{c.nickname}] {c.createdAt}</span>
+                                          {c.edited&&<span style={{fontSize:10,color:"#9ca3af"}}>[수정됨] {c.editedAt}</span>}
+                                        </div>
+                                        {(c.nickname===nickname||user?.primaryEmailAddress?.emailAddress==="dlaudwp90@gmail.com")&&(
+                                          <div style={{display:"flex",gap:3}}>
+                                            <button onClick={()=>setCommentPanels(prev=>({...prev,[i]:{...prev[i],editingId:c.id,editInput:c.content}}))}
+                                              style={{fontSize:9,fontWeight:700,background:dark?"#14532d":"#f0fdf4",color:dark?"#86efac":"#166534",
+                                                border:"1px solid #bbf7d0",borderRadius:4,padding:"2px 5px",cursor:"pointer",fontFamily:"inherit"}}>수정</button>
+                                            <button onClick={async()=>{if(!confirm("삭제?"))return;
+                                              await fetch("/api/comments",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"delete",pageId:row.pageId,commentId:c.id})});
+                                              const r2=await fetch("/api/comments",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"get",pageId:row.pageId})});
+                                              const d2=await r2.json();
+                                              setCommentPanels(prev=>({...prev,[i]:{...prev[i],comments:d2.comments||[]}}));}}
+                                              style={{fontSize:9,fontWeight:700,background:dark?"#450a0a":"#fff1f2",color:dark?"#f87171":"#dc2626",
+                                                border:"1px solid #fecaca",borderRadius:4,padding:"2px 5px",cursor:"pointer",fontFamily:"inherit"}}>삭제</button>
+                                          </div>
+                                        )}
+                                      </div>
+                                      <div style={{fontSize:13,color:dark?"#e2e8f0":"#1f2937",whiteSpace:"pre-wrap",
+                                        borderTop:dark?"1px solid #334155":"1px solid #e0e7ff",paddingTop:4,marginTop:2}}>{c.content}</div>
+                                      {panel.editingId===c.id&&(
+                                        <div style={{marginTop:6,display:"flex",flexDirection:"column",gap:4}}>
+                                          <textarea value={panel.editInput||""} rows={2}
+                                            onChange={e=>setCommentPanels(prev=>({...prev,[i]:{...prev[i],editInput:e.target.value}}))}
+                                            style={{width:"100%",fontSize:12,border:"1.5px solid #c7d2fe",borderRadius:6,
+                                              padding:"6px 8px",outline:"none",fontFamily:"inherit",
+                                              background:dark?"#0f172a":"#fff",color:dark?"#e2e8f0":"#1f2937",boxSizing:"border-box"}}/>
+                                          <div style={{display:"flex",gap:4}}>
+                                            <button onClick={()=>handleEditComment(i,row.pageId,c.id)}
+                                              style={{fontSize:11,fontWeight:700,padding:"4px 10px",background:"#13274F",color:"#fff",border:"none",borderRadius:6,cursor:"pointer",fontFamily:"inherit"}}>수정완료</button>
+                                            <button onClick={()=>setCommentPanels(prev=>({...prev,[i]:{...prev[i],editingId:null}}))}
+                                              style={{fontSize:11,padding:"4px 10px",background:"none",border:"1px solid #e5e7eb",borderRadius:6,cursor:"pointer",color:"#6b7280",fontFamily:"inherit"}}>취소</button>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              ):(
+                                <div style={{fontSize:12,color:"#94a3b8"}}>댓글이 없습니다.</div>
+                              )}
+                              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                                <textarea value={panel.input||""} rows={2} placeholder="댓글 입력 (Enter 등록 / Shift+Enter 줄바꿈)"
+                                  onChange={e=>setCommentPanels(prev=>({...prev,[i]:{...prev[i],input:e.target.value}}))}
+                                  onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();if(!panel.saving)handlePostComment(i,row.pageId);}}}
+                                  style={{width:"100%",fontSize:13,border:"1.5px solid #c7d2fe",borderRadius:8,
+                                    padding:"8px 10px",outline:"none",fontFamily:"inherit",
+                                    background:dark?"#1e293b":"#fff",color:dark?"#e2e8f0":"#1f2937",boxSizing:"border-box"}}/>
+                                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                                  <button onClick={()=>{if(!panel.saving)handlePostComment(i,row.pageId);}} disabled={panel.saving}
+                                    style={{padding:"6px 16px",background:"#13274F",color:"#fff",border:"none",borderRadius:8,
+                                      fontSize:13,fontWeight:700,cursor:panel.saving?"not-allowed":"pointer",fontFamily:"inherit"}}>
+                                    {panel.saving?"저장 중...":"등록"}
+                                  </button>
+                                  {panel.saved&&<span style={{fontSize:11,color:"#16a34a",fontWeight:700}}>✓ 저장됐습니다</span>}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </React.Fragment>
+                ))}
+              </div>
+
+              {/* ── PC 테이블 뷰 ── */}
               <div className="table-outer" ref={tableOuterRef}>
                 <table>
                   <thead>
@@ -913,6 +1115,28 @@ export default function AllPage() {
         * { box-sizing:border-box; margin:0; padding:0; }
         body { font-family:'Noto Sans KR','Malgun Gothic',sans-serif; min-height:100vh; }
         @keyframes spin { to { transform:rotate(360deg); } }
+        .mobile-cards { display:none; flex-direction:column; gap:8px; width:100%; }
+        .m-card { border-radius:12px; padding:12px 14px; border:1px solid #e5e9f5;
+          box-shadow:0 1px 6px rgba(19,39,79,0.07); display:flex; flex-direction:column; gap:6px; }
+        .dark .m-card { border-color:#334155; }
+        .m-card-top { display:flex; align-items:center; gap:6px; }
+        .m-card-icon { font-size:14px; flex-shrink:0; }
+        .m-card-title { color:#1a3a8f; font-weight:700; font-size:14px; cursor:pointer;
+          text-decoration:underline; flex:1; line-height:1.3; }
+        .dark .m-card-title { color:#93c5fd; }
+        .m-review-row { display:flex; gap:4px; align-items:center; }
+        .m-card-badges { display:flex; flex-wrap:wrap; gap:4px; }
+        .m-card-info { display:flex; flex-direction:column; gap:2px; }
+        .m-info-item { font-size:12px; color:#6b7280; }
+        .dark .m-info-item { color:#94a3b8; }
+        .m-card-files { display:flex; flex-direction:column; gap:3px; }
+        .m-file-link { font-size:12px; color:#1a3a8f; background:#eef1fb; border-radius:5px;
+          padding:3px 8px; text-decoration:none; display:inline-block; }
+        .dark .m-file-link { background:#1e3a6e; color:#93c5fd; }
+        @media (max-width: 768px) {
+          .mobile-cards { display:flex; }
+          .table-outer { display:none; }
+        }
         @keyframes slideUpFade { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
         .fade-wrap { opacity:0; transform:translateY(8px); transition:opacity .3s ease,transform .3s ease; }
         .fade-wrap.visible { opacity:1; transform:translateY(0); }
