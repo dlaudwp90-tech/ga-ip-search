@@ -1,4 +1,4 @@
-import { useClerk } from "@clerk/nextjs";
+import { useClerk, useUser } from "@clerk/nextjs";
 import { useState, useRef, useEffect, useCallback } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
@@ -92,6 +92,10 @@ export default function Home() {
   const filePopupRef  = useRef(null);
   const router        = useRouter();
   const { signOut }   = useClerk();
+  const { user }      = useUser();
+  const [userPopup,   setUserPopup]   = useState(false);
+  const [userBtnPos,  setUserBtnPos]  = useState({ x: 0, y: 0 });
+  const userBtnRef    = useRef(null);
 
   const startLockTimer = useCallback(() => {
     if (lockIntervalRef.current) clearInterval(lockIntervalRef.current);
@@ -222,6 +226,17 @@ export default function Home() {
     document.addEventListener("touchstart", handle);
     return () => { document.removeEventListener("mousedown", handle); document.removeEventListener("touchstart", handle); };
   }, [filePopup]);
+
+  // 유저 팝업 외부 클릭 닫기
+  useEffect(() => {
+    if (!userPopup) return;
+    const handle = (e) => {
+      if (userBtnRef.current?.contains(e.target)) return;
+      setUserPopup(false);
+    };
+    document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, [userPopup]);
 
   const handleSearch = async () => {
     if (!query.trim()) return;
@@ -464,10 +479,45 @@ export default function Home() {
         <button className="theme-toggle" onClick={()=>setDark(!dark)} title={dark?"라이트":"다크"}>{dark?"☀️":"🌙"}</button>
         <button className="upload-btn" onClick={()=>router.push("/upload")} title="파일 업로드">📁</button>
         <div className="user-btn-wrap">
-          <button className="signout-btn" onClick={() => signOut({ redirectUrl: "/login" })} title="로그아웃">
-            로그아웃
+          <button
+            ref={userBtnRef}
+            className="user-icon-btn"
+            title="계정"
+            onClick={e => {
+              e.stopPropagation();
+              const rect = e.currentTarget.getBoundingClientRect();
+              setUserBtnPos({ x: rect.left, y: rect.bottom });
+              setUserPopup(p => !p);
+            }}
+          >
+            👤
           </button>
         </div>
+
+        {userPopup && (
+          <div
+            style={{ position:"fixed", left:userBtnPos.x, top:userBtnPos.y+6, zIndex:500,
+              background:dark?"#1e293b":"#fff", border:,
+              borderRadius:10, boxShadow:"0 8px 24px rgba(19,39,79,0.18)",
+              padding:6, minWidth:160, display:"flex", flexDirection:"column", gap:4 }}
+            onMouseDown={e=>e.stopPropagation()}
+          >
+            {user?.primaryEmailAddress?.emailAddress && (
+              <div style={{ fontSize:11, color:dark?"#94a3b8":"#6b7280", padding:"6px 10px 4px",
+                borderBottom:, marginBottom:2, wordBreak:"break-all" }}>
+                {user.primaryEmailAddress.emailAddress}
+              </div>
+            )}
+            <button
+              style={{ fontSize:12, fontWeight:700, padding:"8px 14px", borderRadius:7, textAlign:"center",
+                background:dark?"#450a0a":"#fff1f2", color:dark?"#f87171":"#dc2626",
+                border:"none", cursor:"pointer", fontFamily:"inherit" }}
+              onClick={() => { setUserPopup(false); signOut({ redirectUrl: "/login" }); }}
+            >
+              🚪 로그아웃
+            </button>
+          </div>
+        )}
 
         <div className="logo-area" onClick={searched?handleClear:undefined} style={searched?{cursor:"pointer"}:{}}>
           <div className="logo-wrap">
@@ -703,11 +753,12 @@ export default function Home() {
         .dark .upload-btn { border-color:#475569; }
         .user-btn-wrap { position:absolute; top:20px; right:120px;
           display:flex; align-items:center; justify-content:center; }
-        .signout-btn { background:none; border:1.5px solid #d0d9f0; border-radius:8px;
-          padding:6px 14px; font-size:13px; color:#13274F; cursor:pointer; font-family:inherit; }
-        .signout-btn:hover { background:#f1f5f9; }
-        .dark .signout-btn { border-color:#475569; color:#e2e8f0; }
-        .dark .signout-btn:hover { background:#1e293b; }
+        .user-icon-btn { background:none; border:2px solid #d0d9f0; border-radius:50%;
+          width:40px; height:40px; font-size:18px; cursor:pointer;
+          display:flex; align-items:center; justify-content:center; transition:border-color .2s; }
+        .user-icon-btn:hover { background:#f1f5f9; }
+        .dark .user-icon-btn { border-color:#475569; }
+        .dark .user-icon-btn:hover { background:#1e293b; }
 
         .logo-area { margin-top:10vh; margin-bottom:32px; text-align:center; transition:margin .3s; }
         .searched .logo-area { margin-top:24px; margin-bottom:16px; }
