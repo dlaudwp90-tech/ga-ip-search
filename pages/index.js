@@ -1072,7 +1072,9 @@ export default function Home() {
                                   <div style={{fontSize:12,color:"#94a3b8"}}>댓글이 없습니다.</div>
                                 )}
                                 <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                                  <textarea value={panel.input||""} rows={2} placeholder="댓글 입력 (Enter 등록 / Shift+Enter 줄바꿈)"
+                                  <textarea value={panel.input||""} rows={2} placeholder="댓글 입력"
+                                  enterKeyHint="enter"
+                                  onKeyDown={e => { if(e.key==="Enter") e.stopPropagation(); }}
                                     onChange={e=>setCommentPanels(prev=>({...prev,[i]:{...prev[i],input:e.target.value}}))}
                                     onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();if(!panel.saving)handlePostComment(i,row.pageId);}}}
                                     style={{width:"100%",fontSize:13,border:dark?"1.5px solid #334155":"1.5px solid #c7d2fe",
@@ -1375,7 +1377,9 @@ export default function Home() {
                                         value={panel.input || ""}
                                         onChange={e => setCommentPanels(prev => ({ ...prev, [i]: { ...prev[i], input: e.target.value } }))}
                                         
-                                        placeholder={"댓글 입력 (Enter 등록 / Shift+Enter 줄바꿈)"}
+                                        placeholder={"댓글 입력"}
+                                        enterKeyHint="enter"
+                                        onKeyDown={e => { if(e.key==="Enter") e.stopPropagation(); }}
                                         rows={2}
                                         style={{ width:"100%", fontSize:13, border:dark?"1.5px solid #334155":"1.5px solid #c7d2fe",
                                           borderRadius:8, padding:"8px 10px", outline:"none", resize:"vertical",
