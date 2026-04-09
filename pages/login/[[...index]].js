@@ -28,15 +28,6 @@ export default function Login() {
         <SignIn
           routing="hash"
           appearance={{
-            variables: {
-              colorPrimary: "#13274F",
-              colorText: "#13274F",
-              colorBackground: "#ffffff",
-              colorInputBackground: "#f8faff",
-              colorInputText: "#13274F",
-              borderRadius: "10px",
-              fontFamily: "'Noto Sans KR', sans-serif",
-            },
             elements: {
               rootBox: { width: "100%", maxWidth: "420px" },
               card: {
@@ -60,7 +51,6 @@ export default function Login() {
                 fontFamily: "'Noto Sans KR', sans-serif",
                 fontWeight: "700",
                 fontSize: "15px",
-                "&:hover": { background: "#0d1e3d" },
               },
               formFieldInput: {
                 borderRadius: "10px",
@@ -100,47 +90,25 @@ export default function Login() {
           gap: 36px;
           animation: slideUp 0.6s ease both;
         }
-
-        /* 로고 */
-        .logo-wrap {
-          display: inline-block;
-          text-align: center;
-        }
-        .logo-top-rule {
-          width: 340px; height: 1px;
-          background: #13274F;
-          margin: 0 auto 16px;
-        }
+        .logo-wrap { display: inline-block; text-align: center; }
+        .logo-top-rule { width: 340px; height: 1px; background: #13274F; margin: 0 auto 16px; }
         .logo-main {
           font-family: 'EB Garamond', 'Georgia', serif;
           font-size: 38px; font-weight: 700;
-          color: #13274F;
-          letter-spacing: -0.5px; line-height: 1.15;
-          margin: 0;
+          color: #13274F; letter-spacing: -0.5px; line-height: 1.15; margin: 0;
         }
         .logo-sub-en {
           font-size: 11px; font-weight: 400;
           color: #13274F; letter-spacing: 5px;
-          margin: 8px 0 10px;
-          text-transform: uppercase;
+          margin: 8px 0 10px; text-transform: uppercase;
         }
-        .logo-mid-rule {
-          width: 200px; height: 1px;
-          background: #13274F;
-          margin: 0 auto 10px;
-        }
+        .logo-mid-rule { width: 200px; height: 1px; background: #13274F; margin: 0 auto 10px; }
         .logo-sub-kr {
           font-family: 'Noto Serif KR', serif;
           font-size: 18px; font-weight: 700;
-          color: #13274F; letter-spacing: 2px;
-          margin: 0 0 10px;
+          color: #13274F; letter-spacing: 2px; margin: 0 0 10px;
         }
-        .logo-bot-rule {
-          width: 340px; height: 1px;
-          background: #13274F;
-          margin: 0 auto;
-        }
-
+        .logo-bot-rule { width: 340px; height: 1px; background: #13274F; margin: 0 auto; }
         @media (max-width: 400px) {
           .logo-main { font-size: 28px; }
           .logo-top-rule, .logo-bot-rule { width: 260px; }
