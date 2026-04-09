@@ -980,7 +980,7 @@ export default function AllPage() {
                                   flex:1, minHeight:0, overflowY:"auto",
                                   marginBottom:8,
                                   scrollbarWidth:"thin",
-                                  scrollbarColor:dark?"#475569 #1e293b":"#cbd5e1 #eef2ff",
+                                  scrollbarColor:dark?"#475569 #1e293b":"#94a3b8 #eef2ff",
                                   opacity:panel.commentsVisible?1:0,transition:"opacity 0.3s ease"}}>
                                   {panel.comments.map((c,ci)=>(
                                     <div key={ci} style={{background:dark?"#1e293b":"#fff",borderRadius:8,
@@ -1255,7 +1255,7 @@ export default function AllPage() {
                                         maxHeight:220, overflowY:"auto", flexShrink:1,
                                         marginBottom:8,
                                         scrollbarWidth:"thin",
-                                        scrollbarColor:dark?"#475569 #1e293b":"#cbd5e1 #eef2ff",
+                                        scrollbarColor:dark?"#475569 #1e293b":"#94a3b8 #eef2ff",
                                         opacity: panel.commentsVisible ? 1 : 0,
                                         transform: panel.commentsVisible ? "translateY(0)" : "translateY(-6px)",
                                         transition: "opacity 0.3s ease, transform 0.3s ease" }}>
