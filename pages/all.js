@@ -123,6 +123,9 @@ export default function AllPage() {
     return () => clearInterval(id);
   }, []);
 
+  // viewMode 클라이언트 초기화 (SSR 오류 방지)
+  useEffect(() => { setViewMode("auto"); }, []);
+
   useEffect(() => {
     if (!user?.primaryEmailAddress?.emailAddress) return;
     fetch("/api/nickname", {
@@ -764,17 +767,19 @@ export default function AllPage() {
               transition:"border-color .2s", flexShrink:0 }}>
             {dark?"☀️":"🌙"}
           </button>
-          {/* 뷰 토글 - 태블릿에서만 표시 */}
-          <button
-            className="view-toggle-btn"
-            title={viewMode==="mobile"?"PC 뷰로 전환":viewMode==="pc"?"자동 전환":"모바일 뷰로 전환"}
-            onClick={() => setViewMode(v => v==="auto"?"mobile":v==="mobile"?"pc":"auto")}
-            style={{ background:"none", border:"2px solid #d0d9f0", borderRadius:"50%",
-              width:40, height:40, fontSize:16, cursor:"pointer",
-              display:"flex", alignItems:"center", justifyContent:"center",
-              transition:"border-color .2s", flexShrink:0 }}>
-            {viewMode==="mobile"?"🖥️":viewMode==="pc"?"📱":"⇄"}
-          </button>
+          {/* 뷰 토글 - 클라이언트에서만 렌더 */}
+          {viewMode !== null && (
+            <button
+              className="view-toggle-btn"
+              title={viewMode==="mobile"?"PC 뷰로 전환":viewMode==="pc"?"자동 전환":"모바일 뷰로 전환"}
+              onClick={() => setViewMode(v => v==="auto"?"mobile":v==="mobile"?"pc":"auto")}
+              style={{ background:"none", border:"2px solid #d0d9f0", borderRadius:"50%",
+                width:40, height:40, fontSize:16, cursor:"pointer",
+                display:"flex", alignItems:"center", justifyContent:"center",
+                transition:"border-color .2s", flexShrink:0 }}>
+              {viewMode==="mobile"?"🖥️":viewMode==="pc"?"📱":"⇄"}
+            </button>
+          )}
 
         </div>{/* ── 우측 버튼 묶음 끝 ── */}
 
@@ -895,8 +900,8 @@ export default function AllPage() {
               </div>
               {/* ── 모바일 카드 뷰 ── */}
               <div className="mobile-cards" style={{
-                display: viewMode==="pc" ? "none" :
-                         viewMode==="mobile" ? "flex" : undefined }}>
+                display: (viewMode==="pc") ? "none" :
+                         (viewMode==="mobile") ? "flex" : undefined }}>
                 {results.map((row, i) => (
                   <React.Fragment key={i}>
                     <div className="m-card"
@@ -1071,8 +1076,8 @@ export default function AllPage() {
 
               {/* ── PC 테이블 뷰 ── */}
               <div className="table-outer" ref={tableOuterRef} style={{
-                display: viewMode==="mobile" ? "none" :
-                         viewMode==="pc" ? "block" : undefined }}>
+                display: (viewMode==="mobile") ? "none" :
+                         (viewMode==="pc") ? "block" : undefined }}>
                 <table>
                   <thead>
                     <tr>
