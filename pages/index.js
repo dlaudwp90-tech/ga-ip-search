@@ -1,4 +1,4 @@
-import { UserButton } from "@clerk/nextjs";
+import { useClerk } from "@clerk/nextjs";
 import { useState, useRef, useEffect, useCallback } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
@@ -91,6 +91,7 @@ export default function Home() {
   const tableOuterRef = useRef(null);
   const filePopupRef  = useRef(null);
   const router        = useRouter();
+  const { signOut }   = useClerk();
 
   const startLockTimer = useCallback(() => {
     if (lockIntervalRef.current) clearInterval(lockIntervalRef.current);
@@ -463,22 +464,9 @@ export default function Home() {
         <button className="theme-toggle" onClick={()=>setDark(!dark)} title={dark?"라이트":"다크"}>{dark?"☀️":"🌙"}</button>
         <button className="upload-btn" onClick={()=>router.push("/upload")} title="파일 업로드">📁</button>
         <div className="user-btn-wrap">
-          <UserButton
-            afterSignOutUrl="/login"
-            appearance={{
-              elements: {
-                userButtonAvatarBox: { width: 28, height: 28 },
-                userButtonPopoverCard: {
-                  boxShadow: "0 4px 24px rgba(0,0,0,0.12)",
-                  borderRadius: "12px",
-                  fontSize: "14px",
-                },
-                userButtonPopoverActionButton: {
-                  fontSize: "14px",
-                },
-              }
-            }}
-          />
+          <button className="signout-btn" onClick={() => signOut({ redirectUrl: "/login" })} title="로그아웃">
+            로그아웃
+          </button>
         </div>
 
         <div className="logo-area" onClick={searched?handleClear:undefined} style={searched?{cursor:"pointer"}:{}}>
@@ -714,8 +702,12 @@ export default function Home() {
           display:flex; align-items:center; justify-content:center; transition:border-color .2s; }
         .dark .upload-btn { border-color:#475569; }
         .user-btn-wrap { position:absolute; top:20px; right:120px;
-          width:40px; height:40px;
           display:flex; align-items:center; justify-content:center; }
+        .signout-btn { background:none; border:1.5px solid #d0d9f0; border-radius:8px;
+          padding:6px 14px; font-size:13px; color:#13274F; cursor:pointer; font-family:inherit; }
+        .signout-btn:hover { background:#f1f5f9; }
+        .dark .signout-btn { border-color:#475569; color:#e2e8f0; }
+        .dark .signout-btn:hover { background:#1e293b; }
 
         .logo-area { margin-top:10vh; margin-bottom:32px; text-align:center; transition:margin .3s; }
         .searched .logo-area { margin-top:24px; margin-bottom:16px; }
