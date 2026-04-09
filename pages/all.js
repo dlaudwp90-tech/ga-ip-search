@@ -113,19 +113,21 @@ export default function AllPage() {
     const isOpen = commentPanels[idx]?.open;
     if (isOpen) {
       setCommentPanels(prev => ({ ...prev, [idx]: { ...prev[idx], closing: true } }));
-      setTimeout(() => setCommentPanels(prev => ({ ...prev, [idx]: { ...prev[idx], open: false, closing: false } })), 340);
+      setTimeout(() => setCommentPanels(prev => ({ ...prev, [idx]: { ...prev[idx], open: false, closing: false } })), 380);
       return;
     }
-    setCommentPanels(prev => ({ ...prev, [idx]: { ...(prev[idx]||{}), open: true, loading: true } }));
+    setCommentPanels(prev => ({ ...prev, [idx]: { ...(prev[idx]||{}), open: true, loading: true, commentsVisible: false } }));
     try {
       const r = await fetch("/api/comments", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "get", pageId }),
       });
       const d = await r.json();
-      setCommentPanels(prev => ({ ...prev, [idx]: { ...(prev[idx]||{}), loading: false, comments: d.comments || [] } }));
+      setTimeout(() => {
+        setCommentPanels(prev => ({ ...prev, [idx]: { ...(prev[idx]||{}), loading: false, comments: d.comments || [], commentsVisible: true } }));
+      }, 320);
     } catch {
-      setCommentPanels(prev => ({ ...prev, [idx]: { ...(prev[idx]||{}), loading: false, comments: [] } }));
+      setCommentPanels(prev => ({ ...prev, [idx]: { ...(prev[idx]||{}), loading: false, comments: [], commentsVisible: true } }));
     }
   };
 
@@ -755,7 +757,7 @@ export default function AllPage() {
                                   <div style={{ position:"sticky", left:0, width: COL_CHECK_W + 250,
                                     background:dark?"#0f172a":"#eef2ff", borderRadius:"0 0 10px 10px",
                                     overflow:"hidden",
-                                    maxHeight: commentPanels[i]?.closing ? "0" : "800px",
+                                    maxHeight: commentPanels[i]?.closing ? "0" : "900px",
                                     opacity: commentPanels[i]?.closing ? 0 : 1,
                                     transition: "max-height 0.38s ease, opacity 0.3s ease",
                                     padding: commentPanels[i]?.closing ? "0 16px" : "12px 16px",
@@ -764,15 +766,20 @@ export default function AllPage() {
                                     {panel.loading ? (
                                       <div style={{ fontSize:12, color:"#94a3b8" }}>불러오는 중...</div>
                                     ) : panel.comments?.length > 0 ? (
-                                      <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                                      <div style={{ display:"flex", flexDirection:"column", gap:8,
+                                        opacity: panel.commentsVisible ? 1 : 0,
+                                        transform: panel.commentsVisible ? "translateY(0)" : "translateY(-6px)",
+                                        transition: "opacity 0.3s ease, transform 0.3s ease" }}>
                                         {panel.comments.map((c, ci) => {
-                                          const header = `[${c.nickname}] ${c.createdAt}${c.edited ? " [수정됨] "+c.editedAt : ""}`;
                                           const body = c.content;
                                           return (
                                             <div key={ci} style={{ background:dark?"#1e293b":"#fff", borderRadius:8,
                                               padding:"8px 12px", border:dark?"1px solid #334155":"1px solid #e0e7ff", textAlign:"left" }}>
                                               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
-                                                <span style={{ fontSize:11, color:dark?"#94a3b8":"#6b7280", fontWeight:600 }}>{header}</span>
+                                                <div style={{ display:"flex", flexDirection:"column", gap:1 }}>
+                                                  <span style={{ fontSize:11, color:dark?"#94a3b8":"#6b7280", fontWeight:600 }}>[{c.nickname}] {c.createdAt}</span>
+                                                  {c.edited && <span style={{ fontSize:10, color:dark?"#6b7280":"#9ca3af" }}>[수정됨] {c.editedAt}</span>}
+                                                </div>
                                                 {(c.nickname === nickname || user?.primaryEmailAddress?.emailAddress === "dlaudwp90@gmail.com") && (
                                                   <div style={{ display:"flex", gap:4 }}>
                                                     <button onClick={() => setCommentPanels(prev => ({ ...prev, [i]: { ...prev[i], editingId: c.id, editInput: c.content } }))}
