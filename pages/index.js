@@ -319,18 +319,10 @@ export default function Home() {
   const handleEditComment = async (idx, pageId, commentId) => {
     const panel = commentPanels[idx] || {};
     if (!panel.editInput?.trim()) return;
-    const nick = nickname || "익명";
-    const now = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul", hour12: false });
-    // 기존 삭제 후 새 댓글 작성 (Notion API 수정 미지원)
     await fetch("/api/comments", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "delete", commentId }),
-    });
-    await fetch("/api/comments", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "post", pageId, nickname: nick, content: panel.editInput.trim(), edited: true }),
+      body: JSON.stringify({ action: "update", pageId, commentId, nickname: nickname || "익명", content: panel.editInput.trim() }),
     });
     const r2 = await fetch("/api/comments", {
       method: "POST",
@@ -883,9 +875,8 @@ export default function Home() {
                                     ) : panel.comments?.length > 0 ? (
                                       <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
                                         {panel.comments.map((c, ci) => {
-                                          const lines = c.text.split("\n");
-                                          const header = lines[0];
-                                          const body = lines.slice(1).join("\n");
+                                          const header = `[${c.nickname}] ${c.createdAt}${c.edited ? " [수정됨] "+c.editedAt : ""}`;
+                                          const body = c.content;
                                           return (
                                             <div key={ci} style={{ background:dark?"#1e293b":"#fff", borderRadius:8,
                                               padding:"8px 12px", border:dark?"1px solid #334155":"1px solid #e0e7ff",
@@ -893,13 +884,13 @@ export default function Home() {
                                               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
                                                 <span style={{ fontSize:11, color:dark?"#94a3b8":"#6b7280", fontWeight:600 }}>{header}</span>
                                                 {/* 작성자 또는 관리자만 삭제 가능 */}
-                                                {(header.startsWith(`[${nickname}]`) || user?.primaryEmailAddress?.emailAddress === "dlaudwp90@gmail.com") && (
+                                                {(c.nickname === nickname || user?.primaryEmailAddress?.emailAddress === "dlaudwp90@gmail.com") && (
                                                   <div style={{ display:"flex", gap:4 }}>
                                                     <button
                                                       onClick={() => {
                                                         setCommentPanels(prev => ({ ...prev, [i]: { ...prev[i],
                                                           editingId: commentPanels[i]?.editingId === c.id ? null : c.id,
-                                                          editInput: body,
+                                                          editInput: c.content,
                                                         }}));
                                                       }}
                                                       style={{ fontSize:10, fontWeight:700, background:dark?"#14532d":"#f0fdf4",
@@ -913,7 +904,7 @@ export default function Home() {
                                                         await fetch("/api/comments", {
                                                           method: "POST",
                                                           headers: { "Content-Type": "application/json" },
-                                                          body: JSON.stringify({ action: "delete", commentId: c.id }),
+                                                          body: JSON.stringify({ action: "delete", pageId: row.pageId, commentId: c.id }),
                                                         });
                                                         const r2 = await fetch("/api/comments", {
                                                           method: "POST",
