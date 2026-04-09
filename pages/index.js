@@ -893,20 +893,24 @@ export default function Home() {
                         </tr>
 
                           {/* 댓글 패널 */}
-                          {commentPanels[i]?.open && (() => {
+                          {(() => {
                             const panel = commentPanels[i] || {};
+                            const isOpen = panel.open && !panel.closing;
+                            const isClosing = panel.closing;
                             return (
                               <tr>
-                                <td colSpan={11} style={{ padding:0, background:"transparent", transition:"all 0.35s ease", borderBottom: commentPanels[i]?.open ? (dark?"2px solid #1e3a6e":"2px solid #c7d2fe") : "none" }}>
+                                <td colSpan={11} style={{ padding:0, background:"transparent",
+                                  borderBottom: (panel.open || isClosing) ? (dark?"2px solid #1e3a6e":"2px solid #c7d2fe") : "none",
+                                  transition:"border-bottom 0.1s ease" }}>
                                   <div style={{ position:"sticky", left:0, width: COL_CHECK_W + 250,
                                     background:dark?"#0f172a":"#eef2ff", borderRadius:"0 0 10px 10px",
                                     overflow:"hidden",
-                                    maxHeight: commentPanels[i]?.closing ? "0" : "800px",
-                                    opacity: commentPanels[i]?.closing ? 0 : 1,
-                                    transition: "max-height 0.38s ease, opacity 0.3s ease",
-                                    padding: commentPanels[i]?.closing ? "0 16px" : "12px 16px",
+                                    maxHeight: (isOpen || isClosing) ? (isClosing ? "0px" : "900px") : "0px",
+                                    opacity: isOpen ? 1 : 0,
+                                    transition: "max-height 0.42s cubic-bezier(0.4,0,0.2,1), opacity 0.3s ease, padding 0.42s ease",
+                                    padding: isOpen ? "12px 16px" : "0 16px",
                                     display:"flex", flexDirection:"column", gap:10,
-                                    boxShadow:"0 4px 12px rgba(19,39,79,0.08)" }}>
+                                    boxShadow: isOpen ? "0 4px 12px rgba(19,39,79,0.08)" : "none" }}>
                                     {/* 댓글 목록 */}
                                     {panel.loading ? (
                                       <div style={{ fontSize:12, color:"#94a3b8" }}>불러오는 중...</div>
