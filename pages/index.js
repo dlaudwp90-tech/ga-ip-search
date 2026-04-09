@@ -467,7 +467,15 @@ export default function Home() {
             afterSignOutUrl="/login"
             appearance={{
               elements: {
-                avatarBox: { width: 28, height: 28 }
+                userButtonAvatarBox: { width: 28, height: 28 },
+                userButtonPopoverCard: {
+                  boxShadow: "0 4px 24px rgba(0,0,0,0.12)",
+                  borderRadius: "12px",
+                  fontSize: "14px",
+                },
+                userButtonPopoverActionButton: {
+                  fontSize: "14px",
+                },
               }
             }}
           />
