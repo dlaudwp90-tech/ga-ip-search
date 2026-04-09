@@ -571,7 +571,13 @@ export default function Home() {
 
       {/* 파일 팝업 */}
       {filePopup && results && (() => {
-        const [ri, ci] = filePopup.split("-").map(Number);
+        let ri, ci;
+        if (filePopup.startsWith("m_")) {
+          const parts = filePopup.split("_");
+          ri = Number(parts[1]); ci = Number(parts[2]);
+        } else {
+          [ri, ci] = filePopup.split("-").map(Number);
+        }
         const row = results[ri];
         if (!row?.fileLinks) return null;
         const links = row.fileLinks.split("\n").filter(Boolean);
@@ -803,15 +809,45 @@ export default function Home() {
                             {row.appOwner&&<span className="m-info-item">👤 {renderSingleLine(row.appOwner)}</span>}
                           </div>
                         )}
-                        {/* 파일 */}
-                        {row.fileLinks&&(
-                          <div className="m-card-files">
-                            {row.fileLinks.split("\n").filter(Boolean).slice(0,2).map((link,j)=>{
-                              const fn=decodeURIComponent(link.split("/").pop());
-                              return <a key={j} href={link} target="_blank" rel="noreferrer" className="m-file-link">📄 {fn}</a>;
-                            })}
-                          </div>
-                        )}
+                        {/* 파일 - 팝업 포함 */}
+                        {row.fileLinks&&(()=>{
+                          const mFiles = row.fileLinks.split("\n").filter(Boolean);
+                          const mLimit = 1;
+                          const mExpanded = !!expandedRows[`m_${i}`];
+                          const mShow = mExpanded ? mFiles : mFiles.slice(0, mLimit);
+                          return (
+                            <div className="m-card-files">
+                              {mShow.map((link, j) => {
+                                const fn = decodeURIComponent(link.split("/").pop());
+                                const mpk = `m_${i}_${j}`;
+                                const isOpen = filePopup === mpk;
+                                return (
+                                  <div key={j} style={{ position:"relative" }}>
+                                    <span className={`m-file-link${isOpen?" active":""}`}
+                                      style={{ cursor:"pointer", userSelect:"none", display:"inline-block" }}
+                                      onMouseDown={e => {
+                                        e.stopPropagation();
+                                        if (isOpen) { setFilePopup(null); return; }
+                                        const rect = e.currentTarget.getBoundingClientRect();
+                                        const x = Math.min(e.clientX, window.innerWidth - 160);
+                                        const y = rect.bottom + 4;
+                                        setPopupPos({ x, y });
+                                        setFilePopup(mpk);
+                                      }}>
+                                      📄 {fn} ▾
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                              {mFiles.length > mLimit && (
+                                <button className="expand-btn"
+                                  onClick={e => { e.stopPropagation(); setExpandedRows(p => ({ ...p, [`m_${i}`]: !p[`m_${i}`] })); }}>
+                                  {mExpanded ? "↑ 접기" : `+${mFiles.length - mLimit} 파일더보기`}
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })()}
                         {/* 댓글 패널 */}
                         {(() => {
                           const panel = commentPanels[i] || {};
