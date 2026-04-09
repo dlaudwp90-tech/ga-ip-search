@@ -100,14 +100,114 @@ export default function AllPage() {
   const [nickname, setNickname] = useState(null);
   const [commentPanels, setCommentPanels] = useState({});
 
+  // ── 유저 팝업 ──
+  const [userPopup,    setUserPopup]    = useState(false);
+  const [userBtnPos,   setUserBtnPos]   = useState({ x: 0, y: 0 });
+  const [nickInput,    setNickInput]    = useState("");
+  const [nickEditing,  setNickEditing]  = useState(false);
+  const [nickSaving,   setNickSaving]   = useState(false);
+  const userBtnRef     = useRef(null);
+
+  // ── 알림 ──
+  const [notifOpen,    setNotifOpen]    = useState(false);
+  const [notifList,    setNotifList]    = useState([]);
+  const [lastRead,     setLastRead]     = useState(0);
+  const [notifPos,     setNotifPos]     = useState({ x: 0, y: 0 });
+  const [nowTs,        setNowTs]        = useState(Date.now());
+  const notifBtnRef    = useRef(null);
+  const rowRefs        = useRef({});
+  const mobileCardRefs = useRef({});
+
+  useEffect(() => {
+    const id = setInterval(() => setNowTs(Date.now()), 60000);
+    return () => clearInterval(id);
+  }, []);
+
   useEffect(() => {
     if (!user?.primaryEmailAddress?.emailAddress) return;
     fetch("/api/nickname", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: user.primaryEmailAddress.emailAddress }),
-    }).then(r => r.json()).then(d => setNickname(d.nickname || null));
+    }).then(r => r.json()).then(d => { setNickname(d.nickname || null); setNickInput(d.nickname || ""); });
   }, [user]);
+
+  const loadNotifications = async () => {
+    if (!user?.primaryEmailAddress?.emailAddress) return;
+    const r = await fetch("/api/notifications", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "get", email: user.primaryEmailAddress.emailAddress }),
+    });
+    const d = await r.json();
+    setNotifList(d.notifications || []);
+    setLastRead(Number(d.lastRead) || 0);
+  };
+  useEffect(() => { loadNotifications(); }, [user]);
+
+  const markNotifRead = async () => {
+    if (!user?.primaryEmailAddress?.emailAddress) return;
+    await fetch("/api/notifications", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "markRead", email: user.primaryEmailAddress.emailAddress }),
+    });
+    setLastRead(Date.now());
+  };
+
+  const handleSaveNick = async () => {
+    if (!nickInput.trim()) return;
+    setNickSaving(true);
+    await fetch("/api/nickname", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: user.primaryEmailAddress.emailAddress, nickname: nickInput.trim() }),
+    });
+    setNickname(nickInput.trim());
+    setNickEditing(false);
+    setNickSaving(false);
+  };
+
+  // 알림 클릭 → 해당 행 스크롤 + 댓글 패널
+  const handleNotifClick = async (notif) => {
+    setNotifOpen(false);
+    const idx = results?.findIndex(r => r.pageId === notif.pageId);
+    if (idx !== undefined && idx >= 0) {
+      const el = rowRefs.current[idx];
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+      const mEl = mobileCardRefs.current[idx];
+      if (mEl) mEl.scrollIntoView({ behavior: "smooth", block: "center" });
+      await toggleCommentPanel(idx, notif.pageId);
+    }
+    // all.js는 전체 목록이므로 못 찾으면 무시
+  };
+
+  // openComment 쿼리 파라미터 처리 (index.js에서 넘어올 때)
+  useEffect(() => {
+    const { openComment } = router.query;
+    if (!openComment || !results?.length) return;
+    const idx = results.findIndex(r => r.pageId === openComment);
+    if (idx >= 0) {
+      setTimeout(() => {
+        const el = rowRefs.current[idx];
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+        const mEl = mobileCardRefs.current[idx];
+        if (mEl) mEl.scrollIntoView({ behavior: "smooth", block: "center" });
+        toggleCommentPanel(idx, openComment);
+      }, 600);
+    }
+  }, [router.query, results]);
+
+  useEffect(() => {
+    if (!userPopup) return;
+    const h = e => { if (userBtnRef.current?.contains(e.target)) return; setUserPopup(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [userPopup]);
+
+  useEffect(() => {
+    if (!notifOpen) return;
+    const h = e => { if (notifBtnRef.current?.contains(e.target)) return; setNotifOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [notifOpen]);
 
   const toggleCommentPanel = async (idx, pageId) => {
     const isOpen = commentPanels[idx]?.open;
@@ -498,13 +598,7 @@ export default function AllPage() {
 
       {/* 파일 팝업 */}
       {filePopup && results && (() => {
-        let ri, ci;
-        if (filePopup.startsWith("m_")) {
-          const parts = filePopup.split("_");
-          ri = Number(parts[1]); ci = Number(parts[2]);
-        } else {
-          [ri, ci] = filePopup.split("-").map(Number);
-        }
+        const [ri, ci] = filePopup.split("-").map(Number);
         const row = results[ri];
         if (!row?.fileLinks) return null;
         const links = row.fileLinks.split("\n").filter(Boolean);
@@ -567,6 +661,122 @@ export default function AllPage() {
         <button className="theme-toggle" onClick={()=>setDark(!dark)} title={dark?"라이트 모드":"다크 모드"}>
           {dark?"☀️":"🌙"}
         </button>
+
+        {/* 알림 벨 */}
+        <div style={{ position:"absolute", top:20, right:170, display:"inline-flex" }}>
+          <button ref={notifBtnRef} title="댓글 알림"
+            onClick={e => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              setNotifPos({ x: rect.left, y: rect.bottom });
+              if (!notifOpen) { markNotifRead(); loadNotifications(); }
+              setNotifOpen(p => !p);
+              setUserPopup(false);
+            }}
+            style={{ background:"none", border:"2px solid #d0d9f0", borderRadius:"50%",
+              width:40, height:40, fontSize:18, cursor:"pointer",
+              display:"flex", alignItems:"center", justifyContent:"center",
+              position:"relative", transition:"border-color .2s" }}>
+            🔔
+            {notifList.some(n => nowTs - n.ts < 3600000) && (
+              <span style={{ position:"absolute", top:-4, right:-4,
+                background:"#ef4444", color:"#fff", fontSize:11, fontWeight:900,
+                minWidth:18, height:18, borderRadius:9999,
+                display:"flex", alignItems:"center", justifyContent:"center",
+                padding:"0 4px", border:"2px solid #fff", lineHeight:1 }}>N</span>
+            )}
+          </button>
+        </div>
+
+        {notifOpen && (
+          <div style={{ position:"fixed", right:16, top:notifPos.y+6, zIndex:600,
+            background:dark?"#1e293b":"#fff", border:dark?"1.5px solid #334155":"1.5px solid #e5e9f5",
+            borderRadius:12, boxShadow:"0 8px 32px rgba(19,39,79,0.18)",
+            width:300, maxHeight:420, overflowY:"auto", display:"flex", flexDirection:"column" }}
+            onMouseDown={e=>e.stopPropagation()}>
+            <div style={{ padding:"12px 16px 8px", borderBottom:dark?"1px solid #334155":"1px solid #f1f5f9",
+              display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <span style={{ fontSize:13, fontWeight:700, color:dark?"#e2e8f0":"#13274F" }}>댓글 알림</span>
+              <button onClick={() => setNotifOpen(false)}
+                style={{ background:"none", border:"none", cursor:"pointer", fontSize:14, color:"#94a3b8" }}>✕</button>
+            </div>
+            {notifList.length === 0 ? (
+              <div style={{ padding:24, textAlign:"center", fontSize:13, color:"#94a3b8" }}>알림이 없습니다</div>
+            ) : notifList.map((n, ni) => {
+              const isNew = (nowTs - n.ts) < 3600000;
+              return (
+                <div key={n.id} onClick={() => handleNotifClick(n)}
+                  style={{ padding:"10px 16px", cursor:"pointer",
+                    borderBottom:dark?"1px solid #1e293b":"1px solid #f8faff",
+                    background: isNew ? (dark?"rgba(30,58,110,0.2)":"#eef2ff") : "transparent" }}
+                  onMouseEnter={e => e.currentTarget.style.background = dark?"#334155":"#f1f5f9"}
+                  onMouseLeave={e => e.currentTarget.style.background = isNew?(dark?"rgba(30,58,110,0.2)":"#eef2ff"):"transparent"}>
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:3 }}>
+                    <span style={{ fontSize:12, fontWeight:700, color:dark?"#93c5fd":"#1a3a8f" }}>{n.docTitle}</span>
+                    {isNew && <span style={{ background:"#ef4444", color:"#fff", fontSize:10, fontWeight:900,
+                      borderRadius:9999, padding:"1px 5px", lineHeight:1.4, flexShrink:0 }}>N</span>}
+                  </div>
+                  <div style={{ fontSize:12, color:dark?"#94a3b8":"#6b7280", marginBottom:2 }}>
+                    <span style={{ fontWeight:600 }}>{n.nickname}</span> · {n.createdAt}
+                  </div>
+                  <div style={{ fontSize:12, color:dark?"#cbd5e1":"#374151",
+                    overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{n.content}</div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* 유저 버튼 */}
+        <div style={{ position:"absolute", top:20, right:120, display:"flex", alignItems:"center" }}>
+          <button ref={userBtnRef} className="user-icon-btn" title="계정"
+            onClick={e => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              setUserBtnPos({ x: rect.left, y: rect.bottom });
+              setUserPopup(p => !p);
+              setNotifOpen(false);
+            }}>👤</button>
+        </div>
+
+        {userPopup && (
+          <div style={{ position:"fixed", right:16, top:userBtnPos.y+6, zIndex:500,
+            background:dark?"#1e293b":"#fff", border:dark?"1.5px solid #334155":"1.5px solid #e5e9f5",
+            borderRadius:10, boxShadow:"0 8px 24px rgba(19,39,79,0.18)",
+            padding:6, minWidth:200, maxWidth:260, display:"flex", flexDirection:"column", gap:4 }}
+            onMouseDown={e=>e.stopPropagation()}>
+            {user?.primaryEmailAddress?.emailAddress && (
+              <div style={{ fontSize:11, color:dark?"#94a3b8":"#6b7280", padding:"6px 10px 4px",
+                borderBottom:dark?"1px solid #334155":"1px solid #e5e9f5", marginBottom:2, wordBreak:"break-all" }}>
+                {user.primaryEmailAddress.emailAddress}
+              </div>
+            )}
+            {nickEditing ? (
+              <div style={{ display:"flex", gap:4, padding:"4px 6px" }}>
+                <input autoFocus value={nickInput} onChange={e => setNickInput(e.target.value)}
+                  onKeyDown={e => { if(e.key==="Enter") handleSaveNick(); if(e.key==="Escape") setNickEditing(false); }}
+                  style={{ flex:1, fontSize:12, border:"1.5px solid #cbd5e1", borderRadius:6,
+                    padding:"4px 8px", outline:"none", fontFamily:"inherit",
+                    background:dark?"#0f172a":"#f8faff", color:dark?"#e2e8f0":"#13274F" }} placeholder="닉네임 입력" />
+                <button onClick={handleSaveNick} disabled={nickSaving}
+                  style={{ fontSize:11, fontWeight:700, padding:"4px 8px", borderRadius:6,
+                    background:"#13274F", color:"#fff", border:"none", cursor:"pointer", fontFamily:"inherit" }}>
+                  {nickSaving?"…":"저장"}
+                </button>
+              </div>
+            ) : (
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
+                padding:"6px 10px", fontSize:12, color:dark?"#e2e8f0":"#13274F" }}>
+                <span>👤 {nickname || "닉네임 없음"}</span>
+                <button onClick={() => setNickEditing(true)}
+                  style={{ fontSize:11, background:"none", border:"1px solid #cbd5e1", borderRadius:5,
+                    padding:"2px 7px", cursor:"pointer", color:dark?"#94a3b8":"#6b7280", fontFamily:"inherit" }}>변경</button>
+              </div>
+            )}
+            <button onClick={() => { setUserPopup(false); signOut({ redirectUrl: "/login" }); }}
+              style={{ fontSize:12, fontWeight:700, padding:"8px 14px", borderRadius:7, textAlign:"center",
+                background:dark?"#450a0a":"#fff1f2", color:dark?"#f87171":"#dc2626",
+                border:"none", cursor:"pointer", fontFamily:"inherit" }}>🚪 로그아웃</button>
+          </div>
+        )}
         <button className="back-btn" onClick={()=>router.push("/")} title="홈으로">←</button>
 
         <div className="logo-area" onClick={()=>router.push("/")} style={{cursor:"pointer"}}>
@@ -670,45 +880,15 @@ export default function AllPage() {
                           {row.appOwner&&<span className="m-info-item">👤 {renderSingleLine(row.appOwner)}</span>}
                         </div>
                       )}
-                      {/* 파일 - 팝업 포함 */}
-                      {row.fileLinks&&(()=>{
-                        const mFiles = row.fileLinks.split("\n").filter(Boolean);
-                        const mLimit = 1;
-                        const mExpanded = !!expandedRows[`m_${i}`];
-                        const mShow = mExpanded ? mFiles : mFiles.slice(0, mLimit);
-                        return (
-                          <div className="m-card-files">
-                            {mShow.map((link, j) => {
-                              const fn = decodeURIComponent(link.split("/").pop());
-                              const mpk = `m_${i}_${j}`;
-                              const isOpen = filePopup === mpk;
-                              return (
-                                <div key={j} style={{ position:"relative" }}>
-                                  <span className={`m-file-link${isOpen?" active":""}`}
-                                    style={{ cursor:"pointer", userSelect:"none", display:"inline-block" }}
-                                    onMouseDown={e => {
-                                      e.stopPropagation();
-                                      if (isOpen) { setFilePopup(null); return; }
-                                      const rect = e.currentTarget.getBoundingClientRect();
-                                      const x = Math.min(e.clientX, window.innerWidth - 160);
-                                      const y = rect.bottom + 4;
-                                      setPopupPos({ x, y });
-                                      setFilePopup(mpk);
-                                    }}>
-                                    📄 {fn} ▾
-                                  </span>
-                                </div>
-                              );
-                            })}
-                            {mFiles.length > mLimit && (
-                              <button className="expand-btn"
-                                onClick={e => { e.stopPropagation(); setExpandedRows(p => ({ ...p, [`m_${i}`]: !p[`m_${i}`] })); }}>
-                                {mExpanded ? "↑ 접기" : `+${mFiles.length - mLimit} 파일더보기`}
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })()}
+                      {/* 파일 */}
+                      {row.fileLinks&&(
+                        <div className="m-card-files">
+                          {row.fileLinks.split("\n").filter(Boolean).slice(0,2).map((link,j)=>{
+                            const fn=decodeURIComponent(link.split("/").pop());
+                            return <a key={j} href={link} target="_blank" rel="noreferrer" className="m-file-link">📄 {fn}</a>;
+                          })}
+                        </div>
+                      )}
                       {/* 댓글 패널 */}
                       {(() => {
                         const panel = commentPanels[i] || {};
@@ -820,6 +1000,7 @@ export default function AllPage() {
                     {results.map((row, i) => (
                       <React.Fragment key={i}>
                       <tr
+                        ref={el => rowRefs.current[i] = el}
                         className={`result-row ${i%2===0?"row-even":"row-odd"}`}
                         onMouseEnter={()=>setHoveredRow(i)}
                         onMouseLeave={()=>setHoveredRow(null)}
