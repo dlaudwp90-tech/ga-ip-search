@@ -165,30 +165,30 @@ export default function AllPage() {
     setNickSaving(false);
   };
 
+  // id 기반 스크롤 함수
+  const scrollToIdx = (idx) => {
+    const isMobile = window.innerWidth <= 768;
+    const id = isMobile ? `m-card-${idx}` : `pc-row-${idx}`;
+    const el = document.getElementById(id);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      return true;
+    }
+    return false;
+  };
+
   // 알림 클릭 → 해당 행 스크롤 + 댓글 패널
   const handleNotifClick = async (notif) => {
     setNotifOpen(false);
     const idx = results?.findIndex(r => r.pageId === notif.pageId);
     if (idx !== undefined && idx >= 0) {
-      // 댓글 패널 먼저 오픈
       await toggleCommentPanel(idx, notif.pageId);
-      // 스크롤: PC는 tr ref, 모바일은 카드 ref
-      const scrollToTarget = () => {
-        const isMobile = window.innerWidth <= 768;
-        const target = isMobile ? mobileCardRefs.current[idx] : rowRefs.current[idx];
-        if (target) {
-          const top = target.getBoundingClientRect().top + window.scrollY - 80;
-          window.scrollTo({ top, behavior: "smooth" });
-          return true;
-        }
-        return false;
-      };
-      // 즉시 시도 후, 실패하면 재시도
-      if (!scrollToTarget()) {
+      // id 기반 스크롤 - 즉시 + 재시도
+      if (!scrollToIdx(idx)) {
         let tries = 0;
         const retry = setInterval(() => {
-          if (scrollToTarget() || ++tries >= 8) clearInterval(retry);
-        }, 200);
+          if (scrollToIdx(idx) || ++tries >= 10) clearInterval(retry);
+        }, 150);
       }
     }
   };
@@ -205,22 +205,22 @@ export default function AllPage() {
     // 댓글 패널 먼저 오픈
     toggleCommentPanel(idx, openComment);
 
-    // 스크롤 시도 함수
+    // id 기반 스크롤 시도
     const tryScroll = (attempt = 0) => {
       const isMobile = window.innerWidth <= 768;
-      const target = isMobile ? mobileCardRefs.current[idx] : rowRefs.current[idx];
-      if (target) {
-        const top = target.getBoundingClientRect().top + window.scrollY - 80;
-        window.scrollTo({ top, behavior: "smooth" });
+      const id = isMobile ? `m-card-${idx}` : `pc-row-${idx}`;
+      const el = document.getElementById(id);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
         setJumpTarget(null);
-      } else if (attempt < 10) {
-        setTimeout(() => tryScroll(attempt + 1), 200);
+      } else if (attempt < 12) {
+        setTimeout(() => tryScroll(attempt + 1), 150);
       } else {
         const row = results[idx];
         setJumpTarget({ idx, pageId: openComment, title: row?.title || "문서" });
       }
     };
-    setTimeout(() => tryScroll(), 400);
+    setTimeout(() => tryScroll(), 300);
   }, [router.query, results]);
 
   useEffect(() => {
@@ -698,13 +698,9 @@ export default function AllPage() {
             <button
               onClick={() => {
                 const isMobile = window.innerWidth <= 768;
-                const target = isMobile
-                  ? mobileCardRefs.current[jumpTarget.idx]
-                  : rowRefs.current[jumpTarget.idx];
-                if (target) {
-                  const top = target.getBoundingClientRect().top + window.scrollY - 100;
-                  window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
-                }
+                const id = isMobile ? `m-card-${jumpTarget.idx}` : `pc-row-${jumpTarget.idx}`;
+                const el = document.getElementById(id);
+                if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
                 setJumpTarget(null);
               }}
               style={{ background:"#fff", color:"#13274F", border:"none", borderRadius:8,
@@ -891,6 +887,8 @@ export default function AllPage() {
                 {results.map((row, i) => (
                   <React.Fragment key={i}>
                     <div className="m-card"
+                      id={`m-card-${i}`}
+                      ref={el => mobileCardRefs.current[i] = el}
                       style={{ background: dark ? (i%2===0?"#1e293b":"#172035") : (i%2===0?"#fff":"#f7f8ff") }}>
                       {/* 제목 행 */}
                       <div className="m-card-top">
@@ -1073,6 +1071,7 @@ export default function AllPage() {
                     {results.map((row, i) => (
                       <React.Fragment key={i}>
                       <tr
+                        id={`pc-row-${i}`}
                         ref={el => rowRefs.current[i] = el}
                         className={`result-row ${i%2===0?"row-even":"row-odd"}`}
                         onMouseEnter={()=>setHoveredRow(i)}
