@@ -220,6 +220,26 @@ export default function Home() {
   }, [user]);
 
   useEffect(() => { fetchRecent(); }, []);
+
+  // 결과 로드 시 댓글 수 미리 조회
+  useEffect(() => {
+    if (!results?.length) return;
+    results.forEach((row, i) => {
+      if (!row.pageId) return;
+      fetch("/api/comments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "get", pageId: row.pageId }),
+      }).then(r => r.json()).then(d => {
+        if (d.comments?.length > 0) {
+          setCommentPanels(prev => ({
+            ...prev,
+            [i]: { ...(prev[i] || {}), comments: d.comments }
+          }));
+        }
+      }).catch(() => {});
+    });
+  }, [results]);
   const fetchRecent = async () => {
     setLoading(true); setTableVisible(false);
     try {
@@ -739,28 +759,37 @@ export default function Home() {
                               {commentPanels[i]?.open ? (
                                 <span onClick={e => { e.stopPropagation(); toggleCommentPanel(i, row.pageId); }}
                                   title="댓글 접기"
-                                  style={{ cursor:"pointer", flexShrink:0, fontSize:13,
-                                    color:dark?"#818cf8":"#4f46e5", fontWeight:700,
-                                    marginLeft:4, userSelect:"none", transition:"all 0.2s" }}>
+                                  style={{ cursor:"pointer", flexShrink:0, fontSize:14,
+                                    color:dark?"#818cf8":"#4f46e5", fontWeight:800,
+                                    marginLeft:6, userSelect:"none", transition:"all 0.2s",
+                                    display:"inline-flex", alignItems:"center" }}>
                                   ▲
                                 </span>
                               ) : (
                                 <span onClick={e => { e.stopPropagation(); toggleCommentPanel(i, row.pageId); }}
                                   style={{ cursor:"pointer", flexShrink:0, position:"relative",
-                                    display:"inline-flex", alignItems:"flex-end", marginLeft:4,
-                                    opacity: commentPanels[i]?.comments?.length > 0 ? 1 : 0.25,
+                                    display:"inline-flex", alignItems:"center", marginLeft:6,
+                                    opacity: commentPanels[i]?.comments?.length > 0 ? 1 : 0.2,
                                     transition:"opacity 0.15s" }}
                                   title={commentPanels[i]?.comments?.length > 0 ? "댓글 보기" : "댓글 달기"}
-                                  onMouseEnter={e => e.currentTarget.style.opacity="0.8"}
-                                  onMouseLeave={e => e.currentTarget.style.opacity = commentPanels[i]?.comments?.length > 0 ? "1" : "0.25"}>
-                                  <span style={{ fontSize:22, lineHeight:1 }}>💬</span>
+                                  onMouseEnter={e => e.currentTarget.style.opacity="0.75"}
+                                  onMouseLeave={e => e.currentTarget.style.opacity = commentPanels[i]?.comments?.length > 0 ? "1" : "0.2"}>
+                                  <span style={{ fontSize:26, lineHeight:1 }}>💬</span>
                                   {commentPanels[i]?.comments?.length > 0 && (
-                                    <span style={{ fontSize:10, fontWeight:800,
-                                      color:dark?"#818cf8":"#4f46e5",
-                                      position:"absolute", bottom:-1, right:-10,
-                                      background:dark?"#1e293b":"#fff",
-                                      borderRadius:4, padding:"0 2px", lineHeight:1.4 }}>
-                                      +{commentPanels[i].comments.length}
+                                    <span style={{
+                                      position:"absolute", top:-6, right:-10,
+                                      background:"#ef4444",
+                                      color:"#fff",
+                                      fontSize:10, fontWeight:800,
+                                      minWidth:17, height:17,
+                                      borderRadius:9999,
+                                      display:"flex", alignItems:"center", justifyContent:"center",
+                                      padding:"0 4px",
+                                      boxShadow:"0 1px 4px rgba(0,0,0,0.25)",
+                                      lineHeight:1,
+                                      border:"1.5px solid #fff"
+                                    }}>
+                                      {commentPanels[i].comments.length}
                                     </span>
                                   )}
                                 </span>
