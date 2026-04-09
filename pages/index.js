@@ -1287,7 +1287,7 @@ export default function Home() {
                                         maxHeight:220, overflowY:"auto", flexShrink:1,
                                         marginBottom:8,
                                         scrollbarWidth:"thin",
-                                        scrollbarColor:dark?"#475569 #1e293b":"#cbd5e1 #eef2ff",
+                                        scrollbarColor:dark?"#475569 #1e293b":"#94a3b8 #eef2ff",
                                         opacity: panel.commentsVisible ? 1 : 0,
                                         transform: panel.commentsVisible ? "translateY(0)" : "translateY(-6px)",
                                         transition: "opacity 0.3s ease, transform 0.3s ease" }}>
