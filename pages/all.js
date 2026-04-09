@@ -976,7 +976,7 @@ export default function AllPage() {
                               {panel.loading?(
                                 <div style={{fontSize:12,color:"#94a3b8"}}>불러오는 중...</div>
                               ):panel.comments?.length>0?(
-                                <div style={{display:"flex",flexDirection:"column",gap:6,
+                                <div className="comment-scroll" style={{display:"flex",flexDirection:"column",gap:6,
                                   flex:1, minHeight:0, overflowY:"auto",
                                   marginBottom:8,
                                   scrollbarWidth:"thin",
@@ -1251,7 +1251,7 @@ export default function AllPage() {
                                     {panel.loading ? (
                                       <div style={{ fontSize:12, color:"#94a3b8" }}>불러오는 중...</div>
                                     ) : panel.comments?.length > 0 ? (
-                                      <div style={{ display:"flex", flexDirection:"column", gap:8,
+                                      <div className="comment-scroll" style={{ display:"flex", flexDirection:"column", gap:8,
                                         maxHeight:220, overflowY:"auto", flexShrink:1,
                                         marginBottom:8,
                                         scrollbarWidth:"thin",
@@ -1412,6 +1412,9 @@ export default function AllPage() {
           background:linear-gradient(180deg,#ffffff 0%,#f4f6fc 100%); color:#1f2937;
           transition:background .3s,color .3s; position:relative; box-sizing:border-box;
           animation:slideUpFade .7s ease both; }
+        .dark .comment-scroll::-webkit-scrollbar-track { background: #1e293b; }
+        .dark .comment-scroll::-webkit-scrollbar-thumb { background: #475569; }
+        .dark .comment-scroll::-webkit-scrollbar-thumb:hover { background: #64748b; }
         .page.dark { background:linear-gradient(160deg,#0f172a 0%,#1e293b 100%); color:#e2e8f0; }
 
         .theme-toggle { position:fixed; top:16px; right:20px; z-index:400; background:none; border:2px solid #d0d9f0;
