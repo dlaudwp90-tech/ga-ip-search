@@ -945,10 +945,47 @@ export default function AllPage() {
                         {row.typeItems?.map((t,k)=><span key={k} className="badge" style={notionBadgeStyle(t.color,dark)}>{t.name}</span>)}
                       </div>
                       {/* 출원번호 / 출원인 */}
-                      {(row.appNum||row.appOwner)&&(
+                      {(row.appNum||row.appOwner||row.agentCode)&&(
                         <div className="m-card-info">
-                          {row.appNum&&<span className="m-info-item">📋 {renderSingleLine(row.appNum)}</span>}
-                          {row.appOwner&&<span className="m-info-item">👤 {renderSingleLine(row.appOwner)}</span>}
+                          {row.appNum&&(
+                            <div className="m-info-row">
+                              <span className="m-info-label">📋</span>
+                              <div style={{flex:1}}>
+                                {row.appNum.split("\n").map((line,li)=>(
+                                  <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
+                                    <span className="m-info-item">{line}</span>
+                                    {li===0&&<button className="m-copy-btn" onClick={e=>{e.stopPropagation();navigator.clipboard.writeText(row.appNum);}}>복사</button>}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {row.appOwner&&(
+                            <div className="m-info-row">
+                              <span className="m-info-label">👤</span>
+                              <div style={{flex:1}}>
+                                {row.appOwner.split("\n").map((line,li)=>(
+                                  <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
+                                    <span className="m-info-item">{line}</span>
+                                    {li===0&&<button className="m-copy-btn" onClick={e=>{e.stopPropagation();navigator.clipboard.writeText(row.appOwner);}}>복사</button>}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {row.agentCode&&(
+                            <div className="m-info-row">
+                              <span className="m-info-label">🖊️</span>
+                              <div style={{flex:1}}>
+                                {row.agentCode.split("\n").map((line,li)=>(
+                                  <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
+                                    <span className="m-info-item">{line}</span>
+                                    {li===0&&<button className="m-copy-btn" onClick={e=>{e.stopPropagation();navigator.clipboard.writeText(row.agentCode);}}>복사</button>}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
                       {/* 파일 */}
@@ -1394,6 +1431,18 @@ export default function AllPage() {
         .m-card-badges { display:flex; flex-wrap:wrap; gap:4px; }
         .m-card-info { display:flex; flex-direction:column; gap:2px; }
         .m-info-item { font-size:12px; color:#6b7280; }
+        .m-info-row { display:flex; align-items:flex-start; gap:6px; }
+        .m-info-label { font-size:14px; flex-shrink:0; margin-top:1px; }
+        .m-copy-btn { background:#eef1fb; color:#1a3a8f; border:none; border-radius:4px;
+          padding:1px 6px; font-size:10px; font-weight:700; cursor:pointer;
+          font-family:inherit; flex-shrink:0; }
+        .dark .m-copy-btn { background:#1e3a6e; color:#93c5fd; }
+        .m-info-row { display:flex; align-items:flex-start; gap:6px; }
+        .m-info-label { font-size:14px; flex-shrink:0; margin-top:1px; }
+        .m-copy-btn { background:#eef1fb; color:#1a3a8f; border:none; border-radius:4px;
+          padding:1px 6px; font-size:10px; font-weight:700; cursor:pointer;
+          font-family:inherit; flex-shrink:0; }
+        .dark .m-copy-btn { background:#1e3a6e; color:#93c5fd; }
         .dark .m-info-item { color:#94a3b8; }
         .m-card-files { display:flex; flex-direction:column; gap:3px; }
         .m-file-link { font-size:12px; color:#1a3a8f; background:#eef1fb; border-radius:5px;
