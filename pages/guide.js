@@ -406,7 +406,10 @@ function BlockRenderer({ blocks, dark, depth = 0, toggleStates, setToggleStates 
 // ─── 메인 컴포넌트 ────────────────────────────────────────────────────────
 export default function GuidePage() {
   const router = useRouter();
-  const [dark, setDark] = useState(false);
+  const [dark, setDark] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  });
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -420,6 +423,13 @@ export default function GuidePage() {
 
   const tableOuterRef = useRef(null);
   const filePopupRef  = useRef(null);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const handler = (e) => setDark(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
 
   useEffect(() => { fetchForms(); }, []);
 
