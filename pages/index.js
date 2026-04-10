@@ -66,7 +66,10 @@ export default function Home() {
   const [loading,      setLoading]      = useState(false);
   const [error,        setError]        = useState(null);
   const [searched,     setSearched]     = useState(false);
-  const [dark,         setDark]         = useState(false);
+  const [dark, setDark] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  });
   const [tabView,      setTabView]      = useState("auto"); // "auto"|"mobile"|"pc"
   const [popup,        setPopup]        = useState(null);
   const [copied,       setCopied]       = useState({});
@@ -119,6 +122,14 @@ export default function Home() {
   const mobileCardRefs = useRef({});
 
   // 1분마다 현재 시각 갱신 (1시간 뱃지 자동 소멸)
+  // 시스템 다크모드 변경 자동 감지
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const handler = (e) => setDark(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+
   useEffect(() => {
     const id = setInterval(() => setNowTs(Date.now()), 60000);
     return () => clearInterval(id);
