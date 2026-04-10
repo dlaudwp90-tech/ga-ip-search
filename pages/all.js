@@ -61,7 +61,10 @@ function rowBg(i, dark, hover = false) {
 
 export default function AllPage() {
   const router = useRouter();
-  const [dark, setDark] = useState(false);
+  const [dark, setDark] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  });
   const [tabView, setTabView] = useState("auto");
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -118,6 +121,14 @@ export default function AllPage() {
   const notifBtnRef    = useRef(null);
   const rowRefs        = useRef({});
   const mobileCardRefs = useRef({});
+
+  // 시스템 다크모드 변경 자동 감지
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const handler = (e) => setDark(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
 
   useEffect(() => {
     const id = setInterval(() => setNowTs(Date.now()), 60000);
