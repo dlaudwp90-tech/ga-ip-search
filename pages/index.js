@@ -71,6 +71,8 @@ export default function Home() {
     return window.matchMedia("(prefers-color-scheme: dark)").matches;
   });
   const [tabView,      setTabView]      = useState("auto"); // "auto"|"mobile"|"pc"
+  const [viewType,     setViewType]     = useState("table"); // "table"|"card"
+  const [fadeVisible,  setFadeVisible]  = useState(true);
   const [popup,        setPopup]        = useState(null);
   const [copied,       setCopied]       = useState({});
   const [filePopup,    setFilePopup]    = useState(null);
@@ -300,6 +302,12 @@ export default function Home() {
       // 현재 목록에 없으면 all.js로 이동하며 pageId 전달
       router.push(`/all?openComment=${notif.pageId}`);
     }
+  };
+
+  const switchViewType = (next) => {
+    if (next === viewType) return;
+    setFadeVisible(false);
+    setTimeout(() => { setViewType(next); setFadeVisible(true); }, 280);
   };
 
   useEffect(() => { fetchRecent(); }, []);
@@ -705,6 +713,15 @@ export default function Home() {
       <div className={`page${searched?" searched":""}${dark?" dark":""}`}>
         <button className="theme-toggle" onClick={()=>setDark(!dark)} title={dark?"라이트":"다크"}>{dark?"☀️":"🌙"}</button>
         <button className="upload-btn" onClick={()=>router.push("/upload")} title="파일 업로드">📁</button>
+        {/* 카드/표 전환 버튼 */}
+        <button title={viewType==="table"?"카드 뷰":"표 뷰"}
+          onClick={() => switchViewType(viewType==="table"?"card":"table")}
+          style={{ position:"absolute", top:20, right:270, background:"none",
+            border:"2px solid #d0d9f0", borderRadius:"50%", width:40, height:40,
+            fontSize:18, cursor:"pointer", display:"flex", alignItems:"center",
+            justifyContent:"center", transition:"all .2s" }}>
+          {viewType==="table"?"🃏":"📋"}
+        </button>
         {/* 태블릿 뷰 토글 */}
         <button className="view-toggle-btn"
           title={tabView==="mobile"?"PC 뷰로 전환":tabView==="pc"?"자동 전환":"모바일 뷰로 전환"}
@@ -929,7 +946,8 @@ export default function Home() {
 
                 {/* ── 모바일 카드 뷰 ── */}
                 <div className="mobile-cards" style={{
-                display: tabView==="pc" ? "none" : tabView==="mobile" ? "flex" : undefined }}>
+                display: viewType==="card" ? "none" : tabView==="pc" ? "none" : tabView==="mobile" ? "flex" : undefined,
+                opacity: fadeVisible ? 1 : 0, transition: "opacity 0.28s ease" }}>
                   {results.map((row, i) => (
                     <React.Fragment key={i}>
                       <div className="m-card"
@@ -1198,8 +1216,88 @@ export default function Home() {
                 </div>
 
                 {/* ── PC 테이블 뷰 ── */}
-                <div className="table-outer" ref={tableOuterRef} style={{
-                display: tabView==="mobile" ? "none" : tabView==="pc" ? "block" : undefined }}>
+                {/* ── PC 카드 그리드 ── */}
+              {viewType==="card" && (
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14,
+                  opacity: fadeVisible ? 1 : 0, transition: "opacity 0.28s ease" }}>
+                  {results.map((row, i) => (
+                    <div key={i} style={{ background:dark?"#1e293b":"#fff",
+                      border:dark?"1px solid #334155":"1px solid #e5e9f5",
+                      borderRadius:14, padding:"14px 16px",
+                      boxShadow:"0 2px 10px rgba(19,39,79,0.07)",
+                      display:"flex", flexDirection:"column", gap:8 }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                        <span style={{fontSize:14}}>📄</span>
+                        <span onClick={e=>handleTitleClick(e,row.url)}
+                          style={{ fontSize:13, fontWeight:700, color:dark?"#93c5fd":"#1a3a8f",
+                            cursor:"pointer", textDecoration:"underline", flex:1, lineHeight:1.3 }}>
+                          {renderSingleLine(row.title)}
+                        </span>
+                        <span onClick={e=>{e.stopPropagation();toggleCommentPanel(i,row.pageId)}}
+                          style={{ cursor:"pointer", flexShrink:0, position:"relative", display:"inline-flex", alignItems:"center" }}>
+                          <span style={{ fontSize:18, opacity:commentPanels[i]?.comments?.length>0?1:0.2 }}>💬</span>
+                          {commentPanels[i]?.comments?.length>0&&(
+                            <span style={{ position:"absolute", top:-4, right:-8,
+                              background:"#ef4444", color:"#fff", fontSize:9, fontWeight:800,
+                              minWidth:15, height:15, borderRadius:9999,
+                              display:"flex", alignItems:"center", justifyContent:"center",
+                              padding:"0 3px", border:"1.5px solid #fff" }}>
+                              {commentPanels[i].comments.length}
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                      <div style={{ display:"flex", gap:4, alignItems:"center" }}>
+                        {STATUS_OPTIONS.map(opt => {
+                          const isActive = (reviewStates[row.url]??null)===opt.key;
+                          const c = dark?opt.darkColor:opt.color;
+                          const obg = dark?opt.darkBg:opt.bg;
+                          return (
+                            <button key={opt.key}
+                              onClick={()=>handleStatusSelect(row.url,isActive?null:opt.key)}
+                              disabled={checkLocked||savingUrl===row.url}
+                              style={{ display:"flex", alignItems:"center", gap:3, flex:1,
+                                background:isActive?obg:"transparent",
+                                border:`1.5px solid ${isActive?c:(dark?"#334155":"#e5e7eb")}`,
+                                borderRadius:6, padding:"4px 4px", cursor:"pointer", fontFamily:"inherit", transition:"all 0.15s" }}>
+                              <span style={{ width:7,height:7,borderRadius:"50%",flexShrink:0,
+                                border:`1.5px solid ${c}`,background:isActive?c:"transparent",display:"inline-block"}}/>
+                              <span style={{fontSize:10,fontWeight:700,color:isActive?c:(dark?"#94a3b8":"#6b7280")}}>{opt.short}</span>
+                            </button>
+                          );
+                        })}
+                        <button onClick={handleLockToggle}
+                          style={{ background:"none", border:`1.5px solid ${checkLocked?"#e5e7eb":"#fbbf24"}`,
+                            borderRadius:6, padding:"4px 6px", cursor:"pointer", fontSize:12,
+                            backgroundColor:checkLocked?"transparent":"rgba(251,191,36,0.1)" }}>
+                          {checkLocked?"🔒":"🔓"}
+                        </button>
+                      </div>
+                      <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
+                        {row.statusItem&&<span className="badge" style={notionBadgeStyle(row.statusItem.color,dark)}>{row.statusItem.name}</span>}
+                        {row.docWorkStatusItem&&<span className="badge" style={notionBadgeStyle(row.docWorkStatusItem.color,dark)}>{row.docWorkStatusItem.name}</span>}
+                        {row.typeItems?.map((t,k)=><span key={k} className="badge" style={notionBadgeStyle(t.color,dark)}>{t.name}</span>)}
+                      </div>
+                      <div style={{ display:"flex", flexDirection:"column", gap:2 }}>
+                        {row.appNum&&<span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280"}}>📋 {renderSingleLine(row.appNum)}</span>}
+                        {row.appOwner&&<span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280"}}>👤 {renderSingleLine(row.appOwner)}</span>}
+                        {row.agentCode&&<span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280"}}>🖊️ {renderSingleLine(row.agentCode)}</span>}
+                      </div>
+                      {row.fileLinks&&(
+                        <div style={{fontSize:11,color:dark?"#93c5fd":"#1a3a8f"}}>
+                          📄 {decodeURIComponent(row.fileLinks.split("\n")[0].split("/").pop())}
+                          {row.fileLinks.split("\n").filter(Boolean).length>1&&
+                            <span style={{color:"#94a3b8"}}> +{row.fileLinks.split("\n").filter(Boolean).length-1}</span>}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="table-outer" ref={tableOuterRef} style={{
+                display: viewType==="card" ? "none" : tabView==="mobile" ? "none" : tabView==="pc" ? "block" : undefined,
+                opacity: fadeVisible ? 1 : 0, transition: "opacity 0.28s ease" }}>
                   <table>
                     <thead>
                       <tr>
