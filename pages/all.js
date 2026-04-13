@@ -1014,14 +1014,73 @@ export default function AllPage() {
                         </div>
                       )}
                       {/* 파일 */}
-                      {row.fileLinks&&(
-                        <div className="m-card-files">
-                          {row.fileLinks.split("\n").filter(Boolean).slice(0,2).map((link,j)=>{
-                            const fn=decodeURIComponent(link.split("/").pop());
-                            return <a key={j} href={link} target="_blank" rel="noreferrer" className="m-file-link">📄 {fn}</a>;
-                          })}
-                        </div>
-                      )}
+                      {row.fileLinks&&(()=>{
+                        const mFiles = row.fileLinks.split("\n").filter(Boolean);
+                        const mLimit = 1;
+                        const mExpanded = !!expandedRows[`m_${i}`];
+                        const mShow = mExpanded ? mFiles : mFiles.slice(0, mLimit);
+                        return (
+                          <div className="m-card-files">
+                            {mShow.map((link, j) => {
+                              const fn = decodeURIComponent(link.split("/").pop());
+                              const mpk = `m_${i}_${j}`;
+                              const isOpen = filePopup === mpk;
+                              return (
+                                <div key={j} style={{ position:"relative" }}>
+                                  <span className={`m-file-link${isOpen?" active":""}`}
+                                    style={{ cursor:"pointer", userSelect:"none", display:"inline-block" }}
+                                    onMouseDown={e => {
+                                      e.stopPropagation();
+                                      if (isOpen) { setFilePopup(null); return; }
+                                      const rect = e.currentTarget.getBoundingClientRect();
+                                      const x = Math.min(e.clientX, window.innerWidth - 160);
+                                      const y = rect.bottom + 4;
+                                      setPopupPos({ x, y });
+                                      setFilePopup(mpk);
+                                    }}>
+                                    📄 {fn} ▾
+                                  </span>
+                                </div>
+                              );
+                            })}
+                            {mFiles.length > mLimit && (
+                              <div style={{ overflow:"hidden",
+                                maxHeight: mExpanded ? `${(mFiles.length - mLimit) * 40}px` : "0px",
+                                transition: "max-height 0.5s cubic-bezier(0.4,0,0.2,1)" }}>
+                                {mFiles.slice(mLimit).map((link, j) => {
+                                  const fn = decodeURIComponent(link.split("/").pop());
+                                  const mpk = `m_${i}_${j+mLimit}`;
+                                  const isOpen = filePopup === mpk;
+                                  return (
+                                    <div key={j} style={{ paddingTop:3 }}>
+                                      <span className={`m-file-link${isOpen?" active":""}`}
+                                        style={{ cursor:"pointer", userSelect:"none", display:"inline-block" }}
+                                        onMouseDown={e => {
+                                          e.stopPropagation();
+                                          if (isOpen) { setFilePopup(null); return; }
+                                          const rect = e.currentTarget.getBoundingClientRect();
+                                          const x = Math.min(e.clientX, window.innerWidth - 160);
+                                          const y = rect.bottom + 4;
+                                          setPopupPos({ x, y });
+                                          setFilePopup(mpk);
+                                        }}>
+                                        📄 {fn} ▾
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                            {mFiles.length > mLimit && (
+                              <button className="expand-btn"
+                                style={{ marginTop:4, transition:"all 0.3s ease" }}
+                                onClick={e => { e.stopPropagation(); setExpandedRows(p => ({ ...p, [`m_${i}`]: !p[`m_${i}`] })); }}>
+                                {mExpanded ? "↑ 접기" : `+${mFiles.length - mLimit} 파일더보기`}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })()}
                       {/* 댓글 패널 */}
                       {(() => {
                         const panel = commentPanels[i] || {};
