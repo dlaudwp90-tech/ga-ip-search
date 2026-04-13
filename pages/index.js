@@ -1043,7 +1043,7 @@ export default function Home() {
                           const mShow = mExpanded ? mFiles : mFiles.slice(0, mLimit);
                           return (
                             <div className="m-card-files">
-                              {mShow.map((link, j) => {
+                              {mFiles.slice(0, mLimit).map((link, j) => {
                                 const fn = decodeURIComponent(link.split("/").pop());
                                 const mpk = `m_${i}_${j}`;
                                 const isOpen = filePopup === mpk;
@@ -1066,10 +1066,40 @@ export default function Home() {
                                 );
                               })}
                               {mFiles.length > mLimit && (
-                                <button className="expand-btn"
-                                  onClick={e => { e.stopPropagation(); setExpandedRows(p => ({ ...p, [`m_${i}`]: !p[`m_${i}`] })); }}>
-                                  {mExpanded ? "↑ 접기" : `+${mFiles.length - mLimit} 파일더보기`}
-                                </button>
+                                <>
+                                  <div style={{ overflow:"hidden",
+                                    maxHeight: mExpanded ? `${(mFiles.length - mLimit) * 44}px` : "0px",
+                                    opacity: mExpanded ? 1 : 0,
+                                    transition: "max-height 0.55s cubic-bezier(0.4,0,0.2,1), opacity 0.4s ease" }}>
+                                    {mFiles.slice(mLimit).map((link, j) => {
+                                      const fn = decodeURIComponent(link.split("/").pop());
+                                      const mpk = `m_${i}_${j+mLimit}`;
+                                      const isOpen = filePopup === mpk;
+                                      return (
+                                        <div key={j} style={{ paddingTop:4 }}>
+                                          <span className={`m-file-link${isOpen?" active":""}`}
+                                            style={{ cursor:"pointer", userSelect:"none", display:"inline-block" }}
+                                            onMouseDown={e => {
+                                              e.stopPropagation();
+                                              if (isOpen) { setFilePopup(null); return; }
+                                              const rect = e.currentTarget.getBoundingClientRect();
+                                              const x = Math.min(e.clientX, window.innerWidth - 160);
+                                              const y = rect.bottom + 4;
+                                              setPopupPos({ x, y });
+                                              setFilePopup(mpk);
+                                            }}>
+                                            📄 {fn} ▾
+                                          </span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                  <button className="expand-btn"
+                                    style={{ marginTop:4, transition:"all 0.3s ease" }}
+                                    onClick={e => { e.stopPropagation(); setExpandedRows(p => ({ ...p, [`m_${i}`]: !p[`m_${i}`] })); }}>
+                                    {mExpanded ? "↑ 접기" : `+${mFiles.length - mLimit} 파일더보기`}
+                                  </button>
+                                </>
                               )}
                             </div>
                           );
