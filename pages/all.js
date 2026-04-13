@@ -1259,18 +1259,92 @@ export default function AllPage() {
                         {row.docWorkStatusItem&&<span className="badge" style={notionBadgeStyle(row.docWorkStatusItem.color,dark)}>{row.docWorkStatusItem.name}</span>}
                         {row.typeItems?.map((t,k)=><span key={k} className="badge" style={notionBadgeStyle(t.color,dark)}>{t.name}</span>)}
                       </div>
-                      <div style={{ display:"flex", flexDirection:"column", gap:2 }}>
-                        {row.appNum&&<span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280"}}>📋 {renderSingleLine(row.appNum)}</span>}
-                        {row.appOwner&&<span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280"}}>👤 {renderSingleLine(row.appOwner)}</span>}
-                        {row.agentCode&&<span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280"}}>🖊️ {renderSingleLine(row.agentCode)}</span>}
+                      <div style={{ display:"flex", flexDirection:"column", gap:3 }}>
+                        {row.appNum&&(
+                          <div style={{display:"flex",alignItems:"flex-start",gap:4}}>
+                            <span style={{fontSize:11,flexShrink:0}}>📋</span>
+                            <div>{row.appNum.split("\n").map((line,li)=>(
+                              <div key={li} style={{fontSize:11,color:dark?"#94a3b8":"#6b7280"}}>{line}</div>
+                            ))}</div>
+                          </div>
+                        )}
+                        {row.appOwner&&(
+                          <div style={{display:"flex",alignItems:"flex-start",gap:4}}>
+                            <span style={{fontSize:11,flexShrink:0}}>👤</span>
+                            <div>{row.appOwner.split("\n").map((line,li)=>(
+                              <div key={li} style={{fontSize:11,color:dark?"#94a3b8":"#6b7280"}}>{line}</div>
+                            ))}</div>
+                          </div>
+                        )}
+                        {row.agentCode&&(
+                          <div style={{display:"flex",alignItems:"flex-start",gap:4}}>
+                            <span style={{fontSize:11,flexShrink:0}}>🖊️</span>
+                            <div>{row.agentCode.split("\n").map((line,li)=>(
+                              <div key={li} style={{fontSize:11,color:dark?"#94a3b8":"#6b7280"}}>{line}</div>
+                            ))}</div>
+                          </div>
+                        )}
                       </div>
-                      {row.fileLinks&&(
-                        <div style={{fontSize:11,color:dark?"#93c5fd":"#1a3a8f"}}>
-                          📄 {decodeURIComponent(row.fileLinks.split("\n")[0].split("/").pop())}
-                          {row.fileLinks.split("\n").filter(Boolean).length>1&&
-                            <span style={{color:"#94a3b8"}}> +{row.fileLinks.split("\n").filter(Boolean).length-1}</span>}
-                        </div>
-                      )}
+                      {row.fileLinks&&(()=>{
+                        const pcFiles = row.fileLinks.split("\n").filter(Boolean);
+                        const pcLimit = 1;
+                        const pcKey = `pc_${i}`;
+                        const pcExpanded = !!expandedRows[pcKey];
+                        return (
+                          <div style={{display:"flex",flexDirection:"column",gap:3}}>
+                            {pcFiles.slice(0,pcLimit).map((link,j)=>{
+                              const fn=decodeURIComponent(link.split("/").pop());
+                              const mpk=`pc_${i}_${j}`;
+                              const isOpen=filePopup===mpk;
+                              return (
+                                <span key={j} className={`m-file-link${isOpen?" active":""}`}
+                                  style={{cursor:"pointer",userSelect:"none",display:"inline-block",fontSize:11}}
+                                  onMouseDown={e=>{
+                                    e.stopPropagation();
+                                    if(isOpen){setFilePopup(null);return;}
+                                    const rect=e.currentTarget.getBoundingClientRect();
+                                    const x=Math.min(e.clientX,window.innerWidth-160);
+                                    const y=rect.bottom+4;
+                                    setPopupPos({x,y});
+                                    setFilePopup(mpk);
+                                  }}>📄 {fn} ▾</span>
+                              );
+                            })}
+                            {pcFiles.length>pcLimit&&(
+                              <>
+                                <div style={{overflow:"hidden",
+                                  maxHeight:pcExpanded?`${(pcFiles.length-pcLimit)*28}px`:"0px",
+                                  opacity:pcExpanded?1:0,
+                                  transition:"max-height 0.55s cubic-bezier(0.4,0,0.2,1),opacity 0.4s ease"}}>
+                                  {pcFiles.slice(pcLimit).map((link,j)=>{
+                                    const fn=decodeURIComponent(link.split("/").pop());
+                                    const mpk=`pc_${i}_${j+pcLimit}`;
+                                    const isOpen=filePopup===mpk;
+                                    return (
+                                      <span key={j} className={`m-file-link${isOpen?" active":""}`}
+                                        style={{cursor:"pointer",userSelect:"none",display:"inline-block",fontSize:11,marginTop:3}}
+                                        onMouseDown={e=>{
+                                          e.stopPropagation();
+                                          if(isOpen){setFilePopup(null);return;}
+                                          const rect=e.currentTarget.getBoundingClientRect();
+                                          const x=Math.min(e.clientX,window.innerWidth-160);
+                                          const y=rect.bottom+4;
+                                          setPopupPos({x,y});
+                                          setFilePopup(mpk);
+                                        }}>📄 {fn} ▾</span>
+                                    );
+                                  })}
+                                </div>
+                                <button className="expand-btn"
+                                  style={{marginTop:2,fontSize:10,padding:"2px 6px",transition:"all 0.3s ease"}}
+                                  onClick={e=>{e.stopPropagation();setExpandedRows(p=>({...p,[pcKey]:!p[pcKey]}));}}>
+                                  {pcExpanded?"↑ 접기":`+${pcFiles.length-pcLimit} 파일더보기`}
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   ))}
                 </div>
