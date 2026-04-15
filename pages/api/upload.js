@@ -10,6 +10,24 @@ const s3 = new S3Client({
   },
 });
 
+// rich_text를 2000자 단위로 분할
+function toRichTextBlocks(text) {
+  const MAX = 1900; // 여유있게 1900자
+  const blocks = [];
+  let remaining = text;
+  while (remaining.length > 0) {
+    // 줄바꿈 경계에서 자르기
+    let cut = MAX;
+    if (remaining.length > MAX) {
+      const lastNewline = remaining.lastIndexOf("\n", MAX);
+      if (lastNewline > 0) cut = lastNewline + 1;
+    }
+    blocks.push({ type: "text", text: { content: remaining.slice(0, cut) } });
+    remaining = remaining.slice(cut);
+  }
+  return blocks;
+}
+
 async function getNotionPageId(title) {
   const res = await fetch(
     `https://api.notion.com/v1/databases/${process.env.NOTION_DB_ID}/query`,
@@ -29,7 +47,7 @@ async function getNotionPageId(title) {
   return data.results?.[0]?.id || null;
 }
 
-async function appendFileLink(pageId, newUrl) {
+async function getCurrentLinks(pageId) {
   const res = await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
     headers: {
       Authorization: `Bearer ${process.env.NOTION_API_KEY}`,
@@ -37,19 +55,11 @@ async function appendFileLink(pageId, newUrl) {
     },
   });
   const data = await res.json();
-  const existing =
-    data.properties?.["파일다운링크"]?.rich_text?.map((t) => t.plain_text).join("") || "";
+  // rich_text 배열의 모든 블록을 합쳐서 반환
+  return data.properties?.["파일다운링크"]?.rich_text?.map((t) => t.plain_text).join("") || "";
+}
 
-  // URL 인코딩
-  const encodedUrl = newUrl.split("/").map((part, i) =>
-    i < 3 ? part : encodeURIComponent(decodeURIComponent(part))
-  ).join("/");
-
-  // (파일명)URL 형식으로 저장
-  const fileName = decodeURIComponent(newUrl.split("/").pop());
-  const entry = `(${fileName})${encodedUrl}`;
-  const updated = existing ? `${existing}\n${entry}` : entry;
-
+async function saveLinks(pageId, text) {
   await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
     method: "PATCH",
     headers: {
@@ -59,59 +69,50 @@ async function appendFileLink(pageId, newUrl) {
     },
     body: JSON.stringify({
       properties: {
-        파일다운링크: { rich_text: [{ type: "text", text: { content: updated } }] },
+        파일다운링크: { rich_text: toRichTextBlocks(text) },
       },
     }),
   });
 }
 
+async function appendFileLink(pageId, newUrl) {
+  const existing = await getCurrentLinks(pageId);
+
+  const encodedUrl = newUrl.split("/").map((part, i) =>
+    i < 3 ? part : encodeURIComponent(decodeURIComponent(part))
+  ).join("/");
+
+  const fileName = decodeURIComponent(newUrl.split("/").pop());
+  const entry = `(${fileName})${encodedUrl}`;
+  const updated = existing ? `${existing}\n${entry}` : entry;
+
+  await saveLinks(pageId, updated);
+}
+
 async function removeFileLink(pageId, urlToRemove) {
-  const res = await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
-    headers: {
-      Authorization: `Bearer ${process.env.NOTION_API_KEY}`,
-      "Notion-Version": "2022-06-28",
-    },
-  });
-  const data = await res.json();
-  const existing =
-    data.properties?.["파일다운링크"]?.rich_text?.map((t) => t.plain_text).join("") || "";
+  const existing = await getCurrentLinks(pageId);
 
   const updated = existing
     .split("\n")
     .filter((line) => {
-      // (파일명)URL 형식 또는 기존 URL 형식 모두 처리
       const match = line.match(/^\(.+?\)(https?:\/\/.+)$/);
       const lineUrl = match ? match[1] : line.trim();
       return decodeURIComponent(lineUrl) !== decodeURIComponent(urlToRemove.trim());
     })
     .join("\n");
 
-  await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
-    method: "PATCH",
-    headers: {
-      Authorization: `Bearer ${process.env.NOTION_API_KEY}`,
-      "Notion-Version": "2022-06-28",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      properties: {
-        파일다운링크: { rich_text: [{ type: "text", text: { content: updated } }] },
-      },
-    }),
-  });
+  await saveLinks(pageId, updated);
 }
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
   const { action, fileName, contentType, folder, publicUrl, key } = req.body;
 
-  // Notion DB 일치 여부 사전 확인
   if (action === "check") {
     const pageId = await getNotionPageId(folder);
     return res.status(200).json({ exists: !!pageId });
   }
 
-  // Presigned URL 발급
   if (action === "presign") {
     const fileKey = folder ? `${folder}/${fileName}` : fileName;
     const command = new PutObjectCommand({
@@ -124,7 +125,6 @@ export default async function handler(req, res) {
     return res.status(200).json({ presignedUrl, publicUrl: pubUrl, key: fileKey });
   }
 
-  // Notion 기입
   if (action === "notify") {
     let notionUpdated = false;
     let notionFound = false;
@@ -139,7 +139,6 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, notionUpdated, notionFound });
   }
 
-  // 파일 삭제
   if (action === "delete") {
     try {
       await s3.send(new DeleteObjectCommand({
@@ -156,7 +155,6 @@ export default async function handler(req, res) {
     }
   }
 
-  // 폴더 파일 목록 조회
   if (action === "list") {
     try {
       const command = new ListObjectsV2Command({
