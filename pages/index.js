@@ -675,7 +675,7 @@ export default function Home() {
       {/* 파일 팝업 */}
       {filePopup && results && (() => {
         let ri, ci;
-        if (filePopup.startsWith("m_")) {
+        if (filePopup.startsWith("m_") || filePopup.startsWith("pc_")) {
           const parts = filePopup.split("_");
           ri = Number(parts[1]); ci = Number(parts[2]);
         } else {
@@ -1285,28 +1285,111 @@ export default function Home() {
                         {row.appNum&&(
                           <div style={{display:"flex",alignItems:"flex-start",gap:4}}>
                             <span style={{fontSize:11,flexShrink:0}}>📋</span>
-                            <div>{row.appNum.split("\n").map((line,li)=>(
-                              <div key={li} style={{fontSize:11,color:dark?"#94a3b8":"#6b7280"}}>{line}</div>
-                            ))}</div>
+                            <div style={{flex:1}}>
+                              {row.appNum.split("\n").map((line,li)=>(
+                                <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
+                                  <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280"}}>{line}</span>
+                                  {li===0&&<button className="m-copy-btn" onClick={e=>{e.stopPropagation();navigator.clipboard.writeText(row.appNum);}}>복사</button>}
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         )}
                         {row.appOwner&&(
                           <div style={{display:"flex",alignItems:"flex-start",gap:4}}>
                             <span style={{fontSize:11,flexShrink:0}}>👤</span>
-                            <div>{row.appOwner.split("\n").map((line,li)=>(
-                              <div key={li} style={{fontSize:11,color:dark?"#94a3b8":"#6b7280"}}>{line}</div>
-                            ))}</div>
+                            <div style={{flex:1}}>
+                              {row.appOwner.split("\n").map((line,li)=>(
+                                <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
+                                  <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280"}}>{line}</span>
+                                  {li===0&&<button className="m-copy-btn" onClick={e=>{e.stopPropagation();navigator.clipboard.writeText(row.appOwner);}}>복사</button>}
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         )}
                         {row.agentCode&&(
                           <div style={{display:"flex",alignItems:"flex-start",gap:4}}>
                             <span style={{fontSize:11,flexShrink:0}}>🖊️</span>
-                            <div>{row.agentCode.split("\n").map((line,li)=>(
-                              <div key={li} style={{fontSize:11,color:dark?"#94a3b8":"#6b7280"}}>{line}</div>
-                            ))}</div>
+                            <div style={{flex:1}}>
+                              {row.agentCode.split("\n").map((line,li)=>(
+                                <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
+                                  <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280"}}>{line}</span>
+                                  {li===0&&<button className="m-copy-btn" onClick={e=>{e.stopPropagation();navigator.clipboard.writeText(row.agentCode);}}>복사</button>}
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         )}
                       </div>
+                      {/* PC 카드 댓글 패널 */}
+                      {(() => {
+                        const panel = commentPanels[i] || {};
+                        const isOpen = panel.open && !panel.closing;
+                        const isClosing = panel.closing;
+                        return (
+                          <div style={{ overflow:"hidden",
+                            maxHeight:(isOpen||isClosing)?(isClosing?"0px":"600px"):"0px",
+                            opacity:isOpen?1:0,
+                            transition:"max-height 0.42s cubic-bezier(0.4,0,0.2,1), opacity 0.3s ease",
+                            marginTop:isOpen?"8px":0 }}>
+                            <div style={{ borderTop:dark?"1px solid #334155":"1px solid #c7d2fe", paddingTop:8,
+                              display:"flex", flexDirection:"column", gap:8,
+                              maxHeight:300, overflow:"hidden" }}>
+                              {panel.loading?(
+                                <div style={{fontSize:12,color:"#94a3b8"}}>불러오는 중...</div>
+                              ):panel.comments?.length>0?(
+                                <div className="comment-scroll" style={{display:"flex",flexDirection:"column",gap:6,
+                                  flex:1, minHeight:0, overflowY:"auto", marginBottom:8,
+                                  scrollbarWidth:"thin", scrollbarColor:dark?"#475569 #1e293b":"#94a3b8 #eef2ff",
+                                  opacity:panel.commentsVisible?1:0, transition:"opacity 0.3s ease"}}>
+                                  {panel.comments.map((c,ci)=>(
+                                    <div key={ci} style={{background:dark?"#1e293b":"#fff",borderRadius:8,
+                                      padding:"8px 10px",border:dark?"1px solid #334155":"1px solid #e0e7ff"}}>
+                                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}>
+                                        <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280",fontWeight:600}}>[{c.nickname}] {c.createdAt}</span>
+                                        {(c.nickname===nickname||user?.primaryEmailAddress?.emailAddress==="dlaudwp90@gmail.com")&&(
+                                          <div style={{display:"flex",gap:3}}>
+                                            <button onClick={()=>setCommentPanels(prev=>({...prev,[i]:{...prev[i],editingId:c.id,editInput:c.content}}))}
+                                              style={{fontSize:9,fontWeight:700,background:dark?"#14532d":"#f0fdf4",color:dark?"#86efac":"#166534",border:"1px solid #bbf7d0",borderRadius:4,padding:"2px 5px",cursor:"pointer",fontFamily:"inherit"}}>수정</button>
+                                            <button onClick={async()=>{if(!confirm("삭제?"))return;
+                                              await fetch("/api/comments",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"delete",pageId:row.pageId,commentId:c.id})});
+                                              const r2=await fetch("/api/comments",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"get",pageId:row.pageId})});
+                                              const d2=await r2.json();
+                                              setCommentPanels(prev=>({...prev,[i]:{...prev[i],comments:d2.comments||[]}}));}}
+                                              style={{fontSize:9,fontWeight:700,background:dark?"#450a0a":"#fff1f2",color:dark?"#f87171":"#dc2626",border:"1px solid #fecaca",borderRadius:4,padding:"2px 5px",cursor:"pointer",fontFamily:"inherit"}}>삭제</button>
+                                          </div>
+                                        )}
+                                      </div>
+                                      <div style={{fontSize:13,color:dark?"#e2e8f0":"#1f2937",whiteSpace:"pre-wrap"}}>{c.content}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                              ):(
+                                <div style={{fontSize:12,color:"#94a3b8",marginBottom:8}}>댓글이 없습니다.</div>
+                              )}
+                              <div style={{display:"flex",flexDirection:"column",gap:6,flexShrink:0}}>
+                                <textarea value={panel.input||""} rows={2} placeholder="댓글 입력"
+                                  enterKeyHint="enter"
+                                  onKeyDown={e=>{if(e.key==="Enter")e.stopPropagation();}}
+                                  onChange={e=>setCommentPanels(prev=>({...prev,[i]:{...prev[i],input:e.target.value}}))}
+                                  style={{width:"100%",fontSize:12,border:"1.5px solid #c7d2fe",borderRadius:8,
+                                    padding:"6px 8px",outline:"none",fontFamily:"inherit",
+                                    background:dark?"#1e293b":"#fff",color:dark?"#e2e8f0":"#1f2937",boxSizing:"border-box"}}/>
+                                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                                  <button type="button" onClick={()=>{if(!panel.saving)handlePostComment(i,row.pageId);}} disabled={panel.saving}
+                                    style={{padding:"5px 14px",background:"#13274F",color:"#fff",border:"none",borderRadius:8,
+                                      fontSize:12,fontWeight:700,cursor:panel.saving?"not-allowed":"pointer",fontFamily:"inherit"}}>
+                                    {panel.saving?"저장 중...":"등록"}
+                                  </button>
+                                  {panel.saved&&<span style={{fontSize:11,color:"#16a34a",fontWeight:700}}>✓ 저장됐습니다</span>}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+
                       {row.fileLinks&&(()=>{
                         const pcFiles = row.fileLinks.split("\n").filter(Boolean);
                         const pcLimit = 1;
