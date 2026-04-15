@@ -711,76 +711,112 @@ export default function Home() {
       })()}
 
       <div className={`page${searched?" searched":""}${dark?" dark":""}`}>
-        <button className="theme-toggle" onClick={()=>setDark(!dark)} title={dark?"라이트":"다크"}>{dark?"☀️":"🌙"}</button>
-        <button className="upload-btn" onClick={()=>router.push("/upload")} title="파일 업로드">📁</button>
-        {/* 카드/표 전환 버튼 - 가장 오른쪽 */}
-        <button
-          title={viewType==="table"?"카드 뷰로 전환":"표 뷰로 전환"}
-          onClick={() => switchViewType(viewType==="table"?"card":"table")}
-          style={{ position:"fixed", top:16, right:20, zIndex:400,
-            background:"none", border:"2px solid #d0d9f0", borderRadius:8,
-            width:40, height:40, cursor:"pointer",
-            display:"flex", alignItems:"center", justifyContent:"center",
-            color:dark?"#94a3b8":"#6b7280", transition:"all .2s" }}>
-          {viewType==="table" ? (
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-              <rect x="1" y="1" width="7" height="7" rx="1.5" fill="currentColor"/>
-              <rect x="10" y="1" width="7" height="7" rx="1.5" fill="currentColor"/>
-              <rect x="1" y="10" width="7" height="7" rx="1.5" fill="currentColor"/>
-              <rect x="10" y="10" width="7" height="7" rx="1.5" fill="currentColor"/>
-            </svg>
-          ) : (
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-              <rect x="1" y="2" width="16" height="2.5" rx="1" fill="currentColor"/>
-              <rect x="1" y="7" width="16" height="2.5" rx="1" fill="currentColor"/>
-              <rect x="1" y="12" width="16" height="2.5" rx="1" fill="currentColor"/>
-            </svg>
-          )}
-        </button>
-        {/* 태블릿 뷰 토글 */}
-        <button className="view-toggle-btn"
-          title={tabView==="mobile"?"PC 뷰로 전환":tabView==="pc"?"자동 전환":"모바일 뷰로 전환"}
-          onClick={() => {
-            setTabView(v => {
-              const next = v==="auto"?"mobile":v==="mobile"?"pc":"auto";
-              const p = document.querySelector(".page");
-              if (p) p.setAttribute("data-view", next);
-              return next;
-            });
-          }}
-          style={{ position:"absolute", top:20, right:220, background:"none",
-            border:"2px solid #d0d9f0", borderRadius:"50%", width:40, height:40,
-            fontSize:18, cursor:"pointer", display:"flex", alignItems:"center",
-            justifyContent:"center", transition:"border-color .2s" }}>
-          {tabView==="mobile"?"🖥️":tabView==="pc"?"📱":"⇄"}
-        </button>
-        {/* 알림 벨 */}
-        <div style={{ position:"absolute", top:20, right:170, display:"inline-flex" }}>
-          <button ref={notifBtnRef} title="댓글 알림"
+        {/* ── 우측 상단 버튼 묶음 (all.js와 동일 구조) ── */}
+        <div style={{ position:"fixed", top:14, right:12, zIndex:400,
+          display:"flex", alignItems:"center", gap:8 }}>
+
+          {/* 알림 벨 */}
+          <div style={{ display:"inline-flex" }}>
+            <button ref={notifBtnRef} title="댓글 알림"
+              onClick={e => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setNotifPos({ x: rect.left, y: rect.bottom });
+                if (!notifOpen) { markNotifRead(); loadNotifications(); }
+                setNotifOpen(p => !p);
+                setUserPopup(false);
+              }}
+              style={{ background:"none", border:"2px solid #d0d9f0", borderRadius:"50%",
+                width:40, height:40, fontSize:18, cursor:"pointer",
+                display:"flex", alignItems:"center", justifyContent:"center",
+                position:"relative", transition:"border-color .2s" }}>
+              🔔
+              {notifList.some(n => nowTs - n.ts < 3600000) && (
+                <span style={{ position:"absolute", top:-4, right:-4,
+                  background:"#ef4444", color:"#fff", fontSize:11, fontWeight:900,
+                  minWidth:18, height:18, borderRadius:9999,
+                  display:"flex", alignItems:"center", justifyContent:"center",
+                  padding:"0 4px", border:"2px solid #fff", lineHeight:1 }}>
+                  N
+                </span>
+              )}
+            </button>
+          </div>
+
+          {/* 유저 버튼 */}
+          <button ref={userBtnRef} title="계정"
             onClick={e => {
               const rect = e.currentTarget.getBoundingClientRect();
-              setNotifPos({ x: rect.left, y: rect.bottom });
-              if (!notifOpen) { markNotifRead(); loadNotifications(); }
-              setNotifOpen(p => !p);
-              setUserPopup(false);
+              setUserBtnPos({ x: rect.left, y: rect.bottom });
+              setUserPopup(p => !p);
+              setNotifOpen(false);
             }}
             style={{ background:"none", border:"2px solid #d0d9f0", borderRadius:"50%",
               width:40, height:40, fontSize:18, cursor:"pointer",
               display:"flex", alignItems:"center", justifyContent:"center",
-              position:"relative", transition:"border-color .2s" }}>
-            🔔
-            {notifList.some(n => nowTs - n.ts < 3600000) && (
-              <span style={{ position:"absolute", top:-4, right:-4,
-                background:"#ef4444", color:"#fff", fontSize:11, fontWeight:900,
-                minWidth:18, height:18, borderRadius:9999,
-                display:"flex", alignItems:"center", justifyContent:"center",
-                padding:"0 4px", border:"2px solid #fff", lineHeight:1,
-                fontFamily:"sans-serif", letterSpacing:0 }}>
-                N
-              </span>
+              transition:"border-color .2s", flexShrink:0 }}>
+            👤
+          </button>
+
+          {/* 업로드 버튼 */}
+          <button onClick={()=>router.push("/upload")} title="파일 업로드"
+            style={{ background:"none", border:"2px solid #d0d9f0", borderRadius:"50%",
+              width:40, height:40, fontSize:18, cursor:"pointer",
+              display:"flex", alignItems:"center", justifyContent:"center",
+              transition:"border-color .2s", flexShrink:0 }}>
+            📁
+          </button>
+
+          {/* 테마 버튼 */}
+          <button onClick={()=>setDark(!dark)} title={dark?"라이트":"다크"}
+            style={{ background:"none", border:"2px solid #d0d9f0", borderRadius:"50%",
+              width:40, height:40, fontSize:18, cursor:"pointer",
+              display:"flex", alignItems:"center", justifyContent:"center",
+              transition:"border-color .2s", flexShrink:0 }}>
+            {dark?"☀️":"🌙"}
+          </button>
+
+          {/* 태블릿 뷰 토글 */}
+          <button className="view-toggle-btn"
+            title={tabView==="mobile"?"PC 뷰로 전환":tabView==="pc"?"자동 전환":"모바일 뷰로 전환"}
+            onClick={() => {
+              setTabView(v => {
+                const next = v==="auto"?"mobile":v==="mobile"?"pc":"auto";
+                const p = document.querySelector(".page");
+                if (p) p.setAttribute("data-view", next);
+                return next;
+              });
+            }}
+            style={{ background:"none", border:"2px solid #d0d9f0", borderRadius:"50%",
+              width:40, height:40, fontSize:18, cursor:"pointer",
+              display:"flex", alignItems:"center", justifyContent:"center",
+              transition:"border-color .2s", flexShrink:0 }}>
+            {tabView==="mobile"?"🖥️":tabView==="pc"?"📱":"⇄"}
+          </button>
+
+          {/* 카드/표 전환 버튼 - 가장 오른쪽, 네모 */}
+          <button title={viewType==="table"?"카드 뷰로 전환":"표 뷰로 전환"}
+            onClick={() => switchViewType(viewType==="table"?"card":"table")}
+            style={{ background:"none", border:"2px solid #d0d9f0", borderRadius:8,
+              width:40, height:40, cursor:"pointer",
+              display:"flex", alignItems:"center", justifyContent:"center",
+              color:dark?"#94a3b8":"#6b7280", transition:"all .2s", flexShrink:0 }}>
+            {viewType==="table" ? (
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                <rect x="1" y="1" width="7" height="7" rx="1.5" fill="currentColor"/>
+                <rect x="10" y="1" width="7" height="7" rx="1.5" fill="currentColor"/>
+                <rect x="1" y="10" width="7" height="7" rx="1.5" fill="currentColor"/>
+                <rect x="10" y="10" width="7" height="7" rx="1.5" fill="currentColor"/>
+              </svg>
+            ) : (
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                <rect x="1" y="2" width="16" height="2.5" rx="1" fill="currentColor"/>
+                <rect x="1" y="7" width="16" height="2.5" rx="1" fill="currentColor"/>
+                <rect x="1" y="12" width="16" height="2.5" rx="1" fill="currentColor"/>
+              </svg>
             )}
           </button>
-        </div>
+
+        </div>{/* ── 우측 버튼 묶음 끝 ── */}
 
         {/* 알림 드롭다운 */}
         {notifOpen && (
@@ -829,22 +865,6 @@ export default function Home() {
             )}
           </div>
         )}
-        <div className="user-btn-wrap">
-          <button
-            ref={userBtnRef}
-            className="user-icon-btn"
-            title="계정"
-            onClick={e => {
-              e.stopPropagation();
-              const rect = e.currentTarget.getBoundingClientRect();
-              setUserBtnPos({ x: rect.left, y: rect.bottom });
-              setUserPopup(p => !p);
-            }}
-          >
-            👤
-          </button>
-        </div>
-
         {userPopup && (
           <div
             style={{ position:"fixed", right: 16, top:userBtnPos.y+6, zIndex:500,
@@ -1880,8 +1900,7 @@ export default function Home() {
           border-radius:50%; width:40px; height:40px; font-size:18px; cursor:pointer;
           display:flex; align-items:center; justify-content:center; transition:border-color .2s; }
         .dark .upload-btn { border-color:#475569; }
-        .user-btn-wrap { position:absolute; top:20px; right:120px;
-          display:flex; align-items:center; justify-content:center; }
+        
         .user-icon-btn { background:none; border:2px solid #d0d9f0; border-radius:50%;
           width:40px; height:40px; font-size:18px; cursor:pointer;
           display:flex; align-items:center; justify-content:center; transition:border-color .2s; }
