@@ -790,17 +790,6 @@ export default function AllPage() {
               transition:"border-color .2s", flexShrink:0 }}>
             {dark?"☀️":"🌙"}
           </button>
-
-          {/* 카드/표 전환 버튼 */}
-          <button title={viewType==="table"?"카드 뷰":"표 뷰"}
-            onClick={() => switchViewType(viewType==="table"?"card":"table")}
-            style={{ background:"none", border:"2px solid #d0d9f0", borderRadius:"50%",
-              width:40, height:40, fontSize:18, cursor:"pointer",
-              display:"flex", alignItems:"center", justifyContent:"center",
-              transition:"all .2s", flexShrink:0 }}>
-            {viewType==="table"?"🃏":"📋"}
-          </button>
-
           {/* 태블릿 뷰 토글 */}
           <button
             className="view-toggle-btn"
@@ -811,6 +800,30 @@ export default function AllPage() {
               display:"flex", alignItems:"center", justifyContent:"center",
               transition:"border-color .2s", flexShrink:0 }}>
             {tabView==="mobile"?"🖥️":tabView==="pc"?"📱":"⇄"}
+          </button>
+
+          {/* 카드/표 전환 버튼 - 가장 오른쪽 */}
+          <button
+            title={viewType==="table"?"카드 뷰로 전환":"표 뷰로 전환"}
+            onClick={() => switchViewType(viewType==="table"?"card":"table")}
+            style={{ background:"none", border:"2px solid #d0d9f0", borderRadius:8,
+              width:40, height:40, cursor:"pointer",
+              display:"flex", alignItems:"center", justifyContent:"center",
+              color:dark?"#94a3b8":"#6b7280", transition:"all .2s", flexShrink:0 }}>
+            {viewType==="table" ? (
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <rect x="1" y="1" width="7" height="7" rx="1.5" fill="currentColor"/>
+              <rect x="10" y="1" width="7" height="7" rx="1.5" fill="currentColor"/>
+              <rect x="1" y="10" width="7" height="7" rx="1.5" fill="currentColor"/>
+              <rect x="10" y="10" width="7" height="7" rx="1.5" fill="currentColor"/>
+            </svg>
+            ) : (
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <rect x="1" y="2" width="16" height="2.5" rx="1" fill="currentColor"/>
+              <rect x="1" y="7" width="16" height="2.5" rx="1" fill="currentColor"/>
+              <rect x="1" y="12" width="16" height="2.5" rx="1" fill="currentColor"/>
+            </svg>
+            )}
           </button>
 
         </div>{/* ── 우측 버튼 묶음 끝 ── */}
