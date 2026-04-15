@@ -713,6 +713,30 @@ export default function Home() {
       <div className={`page${searched?" searched":""}${dark?" dark":""}`}>
         <button className="theme-toggle" onClick={()=>setDark(!dark)} title={dark?"라이트":"다크"}>{dark?"☀️":"🌙"}</button>
         <button className="upload-btn" onClick={()=>router.push("/upload")} title="파일 업로드">📁</button>
+        {/* 카드/표 전환 버튼 - 가장 오른쪽 */}
+        <button
+          title={viewType==="table"?"카드 뷰로 전환":"표 뷰로 전환"}
+          onClick={() => switchViewType(viewType==="table"?"card":"table")}
+          style={{ position:"fixed", top:16, right:20, zIndex:400,
+            background:"none", border:"2px solid #d0d9f0", borderRadius:8,
+            width:40, height:40, cursor:"pointer",
+            display:"flex", alignItems:"center", justifyContent:"center",
+            color:dark?"#94a3b8":"#6b7280", transition:"all .2s" }}>
+          {viewType==="table" ? (
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <rect x="1" y="1" width="7" height="7" rx="1.5" fill="currentColor"/>
+              <rect x="10" y="1" width="7" height="7" rx="1.5" fill="currentColor"/>
+              <rect x="1" y="10" width="7" height="7" rx="1.5" fill="currentColor"/>
+              <rect x="10" y="10" width="7" height="7" rx="1.5" fill="currentColor"/>
+            </svg>
+          ) : (
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <rect x="1" y="2" width="16" height="2.5" rx="1" fill="currentColor"/>
+              <rect x="1" y="7" width="16" height="2.5" rx="1" fill="currentColor"/>
+              <rect x="1" y="12" width="16" height="2.5" rx="1" fill="currentColor"/>
+            </svg>
+          )}
+        </button>
         {/* 태블릿 뷰 토글 */}
         <button className="view-toggle-btn"
           title={tabView==="mobile"?"PC 뷰로 전환":tabView==="pc"?"자동 전환":"모바일 뷰로 전환"}
@@ -730,18 +754,6 @@ export default function Home() {
             justifyContent:"center", transition:"border-color .2s" }}>
           {tabView==="mobile"?"🖥️":tabView==="pc"?"📱":"⇄"}
         </button>
-        {/* 카드/표 전환 버튼 */}
-        <div style={{ position:"absolute", top:20, right:220, display:"inline-flex" }}>
-          <button title={viewType==="table"?"카드 뷰로 전환":"표 뷰로 전환"}
-            onClick={() => switchViewType(viewType==="table"?"card":"table")}
-            style={{ background:"none", border:"2px solid #d0d9f0", borderRadius:"50%",
-              width:40, height:40, fontSize:18, cursor:"pointer",
-              display:"flex", alignItems:"center", justifyContent:"center",
-              transition:"all .2s" }}>
-            {viewType==="table"?"🃏":"📋"}
-          </button>
-        </div>
-
         {/* 알림 벨 */}
         <div style={{ position:"absolute", top:20, right:170, display:"inline-flex" }}>
           <button ref={notifBtnRef} title="댓글 알림"
