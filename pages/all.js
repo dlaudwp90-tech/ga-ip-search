@@ -1362,14 +1362,17 @@ export default function AllPage() {
                                     <div key={ci} style={{background:dark?"#1e293b":"#fff",borderRadius:8,
                                       padding:"8px 10px",border:dark?"1px solid #334155":"1px solid #e0e7ff"}}>
                                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}>
-                                        <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280",fontWeight:600}}>[{c.nickname}] {c.createdAt}</span>
+                                        <div style={{display:"flex",flexDirection:"column",gap:1}}>
+                                          <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280",fontWeight:600}}>[{c.nickname}] {c.createdAt}</span>
+                                          {c.edited&&<span style={{fontSize:10,color:dark?"#6b7280":"#9ca3af"}}>[수정됨] {c.editedAt}</span>}
+                                        </div>
                                         {(c.nickname===nickname||user?.primaryEmailAddress?.emailAddress==="dlaudwp90@gmail.com")&&(
                                           <div style={{display:"flex",gap:3}}>
                                             <button type="button"
-                                              onMouseDown={e=>{e.stopPropagation();e.preventDefault();setCommentPanels(prev=>({...prev,[i]:{...prev[i],editingId:c.id,editInput:c.content}}));}}
+                                              onClick={e=>{e.stopPropagation();setCommentPanels(prev=>({...prev,[i]:{...prev[i],editingId:prev[i]?.editingId===c.id?null:c.id,editInput:c.content}}));}}
                                               style={{fontSize:9,fontWeight:700,background:dark?"#14532d":"#f0fdf4",color:dark?"#86efac":"#166534",border:"1px solid #bbf7d0",borderRadius:4,padding:"2px 5px",cursor:"pointer",fontFamily:"inherit",position:"relative",zIndex:10}}>수정</button>
                                             <button type="button"
-                                              onMouseDown={async e=>{e.stopPropagation();e.preventDefault();if(!confirm("삭제?"))return;
+                                              onClick={async e=>{e.stopPropagation();if(!confirm("댓글을 삭제하시겠습니까?"))return;
                                               await fetch("/api/comments",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"delete",pageId:row.pageId,commentId:c.id})});
                                               const r2=await fetch("/api/comments",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"get",pageId:row.pageId})});
                                               const d2=await r2.json();
@@ -1379,6 +1382,24 @@ export default function AllPage() {
                                         )}
                                       </div>
                                       <div style={{fontSize:13,color:dark?"#e2e8f0":"#1f2937",whiteSpace:"pre-wrap"}}>{c.content}</div>
+                                      {panel.editingId===c.id&&(
+                                        <div style={{marginTop:6,display:"flex",flexDirection:"column",gap:4}}>
+                                          <textarea value={panel.editInput||""} rows={2}
+                                            onKeyDown={e=>{if(e.key==="Enter")e.stopPropagation();}}
+                                            onChange={e=>setCommentPanels(prev=>({...prev,[i]:{...prev[i],editInput:e.target.value}}))}
+                                            style={{width:"100%",fontSize:12,border:dark?"1.5px solid #334155":"1.5px solid #c7d2fe",
+                                              borderRadius:6,padding:"6px 8px",outline:"none",fontFamily:"inherit",
+                                              background:dark?"#0f172a":"#fff",color:dark?"#e2e8f0":"#1f2937",boxSizing:"border-box"}}/>
+                                          <div style={{display:"flex",gap:4}}>
+                                            <button type="button"
+                                              onClick={e=>{e.stopPropagation();handleEditComment(i,row.pageId,c.id);}}
+                                              style={{fontSize:11,fontWeight:700,padding:"4px 10px",background:"#13274F",color:"#fff",border:"none",borderRadius:6,cursor:"pointer",fontFamily:"inherit",position:"relative",zIndex:10}}>수정완료</button>
+                                            <button type="button"
+                                              onClick={e=>{e.stopPropagation();setCommentPanels(prev=>({...prev,[i]:{...prev[i],editingId:null}}));}}
+                                              style={{fontSize:11,padding:"4px 10px",background:"none",border:dark?"1px solid #334155":"1px solid #e5e7eb",borderRadius:6,cursor:"pointer",color:dark?"#94a3b8":"#6b7280",fontFamily:"inherit",position:"relative",zIndex:10}}>취소</button>
+                                          </div>
+                                        </div>
+                                      )}
                                     </div>
                                   ))}
                                 </div>
