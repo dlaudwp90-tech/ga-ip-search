@@ -1226,27 +1226,43 @@ export default function AllPage() {
                       borderRadius:14, padding:"14px 16px",
                       boxShadow:"0 2px 10px rgba(19,39,79,0.07)",
                       display:"flex", flexDirection:"column", gap:8 }}>
-                      <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                        <span style={{fontSize:14}}>📄</span>
-                        <span onClick={e=>handleTitleClick(e,row.url)}
-                          style={{ fontSize:13, fontWeight:700, color:dark?"#93c5fd":"#1a3a8f",
-                            cursor:"pointer", textDecoration:"underline", flex:1, lineHeight:1.3 }}>
-                          {renderSingleLine(row.title)}
-                        </span>
+                      {/* Row1: 타입배지 + 말풍선 */}
+                      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", minHeight:22 }}>
+                        <div style={{display:"flex",flexWrap:"wrap",gap:3,flex:1}}>
+                          {row.typeItems?.map((t,k)=><span key={k} className="badge" style={notionBadgeStyle(t.color,dark)}>{t.name}</span>)}
+                        </div>
+                        {/* 말풍선 - 표뷰와 동일 스타일 */}
                         <span onClick={e=>{e.stopPropagation();toggleCommentPanel(i,row.pageId)}}
-                          style={{ cursor:"pointer", flexShrink:0, position:"relative", display:"inline-flex", alignItems:"center" }}>
-                          <span style={{ fontSize:18, opacity:commentPanels[i]?.comments?.length>0?1:0.2 }}>💬</span>
+                          style={{ cursor:"pointer", flexShrink:0, position:"relative",
+                            display:"inline-flex", alignItems:"center", marginLeft:6,
+                            opacity: commentPanels[i]?.comments?.length>0 ? 1 : 0.2,
+                            transition:"opacity 0.15s" }}
+                          title={commentPanels[i]?.comments?.length>0?"댓글 보기":"댓글 달기"}
+                          onMouseEnter={e=>e.currentTarget.style.opacity="0.75"}
+                          onMouseLeave={e=>e.currentTarget.style.opacity=commentPanels[i]?.comments?.length>0?"1":"0.2"}>
+                          <span style={{ fontSize:26, lineHeight:1 }}>💬</span>
                           {commentPanels[i]?.comments?.length>0&&(
-                            <span style={{ position:"absolute", top:-4, right:-8,
-                              background:"#ef4444", color:"#fff", fontSize:9, fontWeight:800,
-                              minWidth:15, height:15, borderRadius:9999,
+                            <span style={{ position:"absolute", top:-6, right:-10,
+                              background:"#ef4444", color:"#fff", fontSize:10, fontWeight:800,
+                              minWidth:17, height:17, borderRadius:9999,
                               display:"flex", alignItems:"center", justifyContent:"center",
-                              padding:"0 3px", border:"1.5px solid #fff" }}>
+                              padding:"0 4px", boxShadow:"0 1px 4px rgba(0,0,0,0.25)",
+                              lineHeight:1, border:"1.5px solid #fff" }}>
                               {commentPanels[i].comments.length}
                             </span>
                           )}
                         </span>
                       </div>
+                      {/* Row2: 📄 제목 */}
+                      <div style={{ display:"flex", alignItems:"center", gap:5 }}>
+                        <span style={{fontSize:14,flexShrink:0}}>📄</span>
+                        <span onClick={e=>handleTitleClick(e,row.url)}
+                          style={{ fontSize:13, fontWeight:700, color:dark?"#93c5fd":"#1a3a8f",
+                            cursor:"pointer", textDecoration:"underline", lineHeight:1.3 }}>
+                          {renderSingleLine(row.title)}
+                        </span>
+                      </div>
+                      {/* Row3: 대표검토 버튼 */}
                       <div style={{ display:"flex", gap:4, alignItems:"center" }}>
                         {STATUS_OPTIONS.map(opt => {
                           const isActive = (reviewStates[row.url]??null)===opt.key;
@@ -1273,11 +1289,13 @@ export default function AllPage() {
                           {checkLocked?"🔒":"🔓"}
                         </button>
                       </div>
-                      <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
-                        {row.statusItem&&<span className="badge" style={notionBadgeStyle(row.statusItem.color,dark)}>{row.statusItem.name}</span>}
-                        {row.docWorkStatusItem&&<span className="badge" style={notionBadgeStyle(row.docWorkStatusItem.color,dark)}>{row.docWorkStatusItem.name}</span>}
-                        {row.typeItems?.map((t,k)=><span key={k} className="badge" style={notionBadgeStyle(t.color,dark)}>{t.name}</span>)}
-                      </div>
+                      {/* Row4: 상태/서류작업 배지 */}
+                      {(row.statusItem||row.docWorkStatusItem)&&(
+                        <div style={{display:"flex",flexWrap:"wrap",gap:3}}>
+                          {row.statusItem&&<span className="badge" style={notionBadgeStyle(row.statusItem.color,dark)}>{row.statusItem.name}</span>}
+                          {row.docWorkStatusItem&&<span className="badge" style={notionBadgeStyle(row.docWorkStatusItem.color,dark)}>{row.docWorkStatusItem.name}</span>}
+                        </div>
+                      )}
                       <div style={{ display:"flex", flexDirection:"column", gap:3 }}>
                         {row.appNum&&(
                           <div style={{display:"flex",alignItems:"flex-start",gap:4}}>
@@ -1347,14 +1365,16 @@ export default function AllPage() {
                                         <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280",fontWeight:600}}>[{c.nickname}] {c.createdAt}</span>
                                         {(c.nickname===nickname||user?.primaryEmailAddress?.emailAddress==="dlaudwp90@gmail.com")&&(
                                           <div style={{display:"flex",gap:3}}>
-                                            <button onClick={()=>setCommentPanels(prev=>({...prev,[i]:{...prev[i],editingId:c.id,editInput:c.content}}))}
-                                              style={{fontSize:9,fontWeight:700,background:dark?"#14532d":"#f0fdf4",color:dark?"#86efac":"#166534",border:"1px solid #bbf7d0",borderRadius:4,padding:"2px 5px",cursor:"pointer",fontFamily:"inherit"}}>수정</button>
-                                            <button onClick={async()=>{if(!confirm("삭제?"))return;
+                                            <button type="button"
+                                              onMouseDown={e=>{e.stopPropagation();e.preventDefault();setCommentPanels(prev=>({...prev,[i]:{...prev[i],editingId:c.id,editInput:c.content}}))}
+                                              style={{fontSize:9,fontWeight:700,background:dark?"#14532d":"#f0fdf4",color:dark?"#86efac":"#166534",border:"1px solid #bbf7d0",borderRadius:4,padding:"2px 5px",cursor:"pointer",fontFamily:"inherit",position:"relative",zIndex:10}}>수정</button>
+                                            <button type="button"
+                                              onMouseDown={async e=>{e.stopPropagation();e.preventDefault();if(!confirm("삭제?"))return;
                                               await fetch("/api/comments",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"delete",pageId:row.pageId,commentId:c.id})});
                                               const r2=await fetch("/api/comments",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"get",pageId:row.pageId})});
                                               const d2=await r2.json();
                                               setCommentPanels(prev=>({...prev,[i]:{...prev[i],comments:d2.comments||[]}}));}}
-                                              style={{fontSize:9,fontWeight:700,background:dark?"#450a0a":"#fff1f2",color:dark?"#f87171":"#dc2626",border:"1px solid #fecaca",borderRadius:4,padding:"2px 5px",cursor:"pointer",fontFamily:"inherit"}}>삭제</button>
+                                              style={{fontSize:9,fontWeight:700,background:dark?"#450a0a":"#fff1f2",color:dark?"#f87171":"#dc2626",border:"1px solid #fecaca",borderRadius:4,padding:"2px 5px",cursor:"pointer",fontFamily:"inherit",position:"relative",zIndex:10}}>삭제</button>
                                           </div>
                                         )}
                                       </div>
