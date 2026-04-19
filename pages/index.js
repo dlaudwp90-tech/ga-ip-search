@@ -1401,7 +1401,7 @@ export default function Home() {
                                         {(c.nickname===nickname||user?.primaryEmailAddress?.emailAddress==="dlaudwp90@gmail.com")&&(
                                           <div style={{display:"flex",gap:3}}>
                                             <button type="button"
-                                              onMouseDown={e=>{e.stopPropagation();e.preventDefault();setCommentPanels(prev=>({...prev,[i]:{...prev[i],editingId:c.id,editInput:c.content}}))}
+                                              onMouseDown={e=>{e.stopPropagation();e.preventDefault();setCommentPanels(prev=>({...prev,[i]:{...prev[i],editingId:c.id,editInput:c.content}}));}}
                                               style={{fontSize:9,fontWeight:700,background:dark?"#14532d":"#f0fdf4",color:dark?"#86efac":"#166534",border:"1px solid #bbf7d0",borderRadius:4,padding:"2px 5px",cursor:"pointer",fontFamily:"inherit",position:"relative",zIndex:10}}>수정</button>
                                             <button type="button"
                                               onMouseDown={async e=>{e.stopPropagation();e.preventDefault();if(!confirm("삭제?"))return;
