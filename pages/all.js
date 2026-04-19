@@ -740,10 +740,10 @@ export default function AllPage() {
 
         {/* ── 우측 상단 버튼 묶음 ── */}
         <div style={{ position:"fixed", top:14, right:12, zIndex:400,
-          display:"flex", alignItems:"center", gap:8 }}>
+          display:"flex", alignItems:"flex-start", gap:8 }}>
 
           {/* 알림 벨 */}
-          <div style={{ display:"inline-flex" }}>
+          <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:3 }}>
           <button ref={notifBtnRef} title="댓글 알림"
             onClick={e => {
               const rect = e.currentTarget.getBoundingClientRect();
@@ -765,9 +765,11 @@ export default function AllPage() {
                 padding:"0 4px", border:"2px solid #fff", lineHeight:1 }}>N</span>
             )}
           </button>
+          <span style={{ fontSize:9, color:dark?"#94a3b8":"#9ca3af", fontWeight:500, whiteSpace:"nowrap", letterSpacing:"0.02em" }}>알림</span>
           </div>
 
           {/* 유저 버튼 */}
+          <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:3 }}>
           <button ref={userBtnRef} title="계정"
             onClick={e => {
               const rect = e.currentTarget.getBoundingClientRect();
@@ -781,8 +783,11 @@ export default function AllPage() {
               transition:"border-color .2s", flexShrink:0 }}>
             👤
           </button>
+          <span style={{ fontSize:9, color:dark?"#94a3b8":"#9ca3af", fontWeight:500, whiteSpace:"nowrap", letterSpacing:"0.02em" }}>내 정보</span>
+          </div>
 
           {/* 테마 버튼 */}
+          <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:3 }}>
           <button onClick={()=>setDark(!dark)} title={dark?"라이트 모드":"다크 모드"}
             style={{ background:"none", border:"2px solid #d0d9f0", borderRadius:"50%",
               width:40, height:40, fontSize:18, cursor:"pointer",
@@ -790,6 +795,9 @@ export default function AllPage() {
               transition:"border-color .2s", flexShrink:0 }}>
             {dark?"☀️":"🌙"}
           </button>
+          <span style={{ fontSize:9, color:dark?"#94a3b8":"#9ca3af", fontWeight:500, whiteSpace:"nowrap", letterSpacing:"0.02em" }}>{dark?"라이트모드":"다크모드"}</span>
+          </div>
+
           {/* 태블릿 뷰 토글 */}
           <button
             className="view-toggle-btn"
@@ -803,6 +811,7 @@ export default function AllPage() {
           </button>
 
           {/* 카드/표 전환 버튼 - 가장 오른쪽 */}
+          <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:3 }}>
           <button
             title={viewType==="table"?"카드 뷰로 전환":"표 뷰로 전환"}
             onClick={() => switchViewType(viewType==="table"?"card":"table")}
@@ -825,6 +834,8 @@ export default function AllPage() {
             </svg>
             )}
           </button>
+          <span style={{ fontSize:9, color:dark?"#94a3b8":"#9ca3af", fontWeight:500, whiteSpace:"nowrap", letterSpacing:"0.02em" }}>{viewType==="table"?"카드 뷰":"테이블 뷰"}</span>
+          </div>
 
         </div>{/* ── 우측 버튼 묶음 끝 ── */}
 
