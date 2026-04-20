@@ -14,6 +14,16 @@ const LOCK_SECONDS  = 600;
 const COL_CHECK_W   = 160;
 const COL_TITLE_L   = COL_CHECK_W;
 
+// ─── 정렬 옵션 ───
+const SORT_OPTIONS = [
+  { key: "created_desc",  label: "생성 순서 (최신순)" },
+  { key: "created_asc",   label: "생성 순서 (오래된순)" },
+  { key: "edited_desc",   label: "최근 편집 순 (최신순)" },
+  { key: "edited_asc",    label: "최근 편집 순 (오래된순)" },
+  { key: "deadline_asc",  label: "마감일 (가까운순)" },
+  { key: "deadline_desc", label: "마감일 (먼순)" },
+];
+
 function fmtCountdown(s) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
@@ -77,6 +87,18 @@ export default function AllPage() {
   const [nextCursor, setNextCursor] = useState(null);
   const [totalCount, setTotalCount] = useState(null);
   const [tableVisible, setTableVisible] = useState(false);
+
+  // ─── 필터 상태 ───
+  const [sortKey, setSortKey] = useState("created_desc");
+  const [filters, setFilters] = useState({
+    types: [], statuses: [], docWorkStates: [], categories: [], productClasses: [],
+  });
+  const [dbOptions, setDbOptions] = useState({
+    types: [], statuses: [], docWorkStates: [], categories: [], productClasses: [],
+  });
+  const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
+  const [filterBarCollapsed, setFilterBarCollapsed] = useState(false);
+  const sortDropdownRef = useRef(null);
   const [expandedRows, setExpandedRows] = useState({});
   const [filePopup, setFilePopup] = useState(null);
   const [popupPos, setPopupPos] = useState({ x: 0, y: 0 });
@@ -441,11 +463,67 @@ export default function AllPage() {
     startLockTimer();
   }, [checkLocked, startLockTimer, reviewStates]);
 
-  // ── 초기 로드 ──
+  // ── DB 옵션 로드 (최초 1회) ──
   useEffect(() => {
+    fetch("/api/db-options")
+      .then(r => r.json())
+      .then(d => { if (!d.error) setDbOptions(d); })
+      .catch(() => {});
+  }, []);
+
+  // ── 최초 로드 + 필터/정렬 변경 시 재조회 ──
+  useEffect(() => {
+    // 기존 결과 초기화
+    setResults([]);
+    setHasMore(false);
+    setNextCursor(null);
+    setTableVisible(false);
+    setExpandedRows({});
+    setCommentPanels({});
     fetchPage(null, true);
+  }, [sortKey, filters]);
+
+  // ── totalCount는 DB 전체 기준이므로 최초 1회만 ──
+  useEffect(() => {
     fetchTotalCount();
   }, []);
+
+  // ── 정렬 드롭다운 외부 클릭 닫기 ──
+  useEffect(() => {
+    if (!sortDropdownOpen) return;
+    const h = e => {
+      if (sortDropdownRef.current?.contains(e.target)) return;
+      setSortDropdownOpen(false);
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [sortDropdownOpen]);
+
+  // ── 필터 토글 헬퍼 ──
+  const toggleFilter = (category, value) => {
+    setFilters(prev => {
+      const cur = prev[category] || [];
+      const next = cur.includes(value)
+        ? cur.filter(v => v !== value)
+        : [...cur, value];
+      return { ...prev, [category]: next };
+    });
+  };
+
+  const clearFilterCategory = (category) => {
+    setFilters(prev => ({ ...prev, [category]: [] }));
+  };
+
+  const clearAllFilters = () => {
+    setFilters({ types: [], statuses: [], docWorkStates: [], categories: [], productClasses: [] });
+  };
+
+  const hasAnyFilter =
+    filters.types.length || filters.statuses.length ||
+    filters.docWorkStates.length || filters.categories.length || filters.productClasses.length;
+
+  // 상표 선택된 경우에만 상품류 하위 필터 노출
+  const showProductClass = filters.types.includes("상표");
 
   const fetchPage = async (cursor, isInitial = false) => {
     if (isInitial) setLoading(true); else setLoadingMore(true);
@@ -453,7 +531,7 @@ export default function AllPage() {
       const res = await fetch("/api/all", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cursor, mode: "page" }),
+        body: JSON.stringify({ cursor, mode: "page", sort: sortKey, filters }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "로드 실패");
@@ -476,7 +554,7 @@ export default function AllPage() {
       const res = await fetch("/api/all", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cursor: nextCursor, mode: "all" }),
+        body: JSON.stringify({ cursor: nextCursor, mode: "all", sort: sortKey, filters }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "로드 실패");
@@ -936,9 +1014,168 @@ export default function AllPage() {
 
         <div className="page-title-wrap">
           <h2 className="page-title">📂 문서 전체 보기</h2>
-          <p className="page-subtitle">생성 순서 기준 · 전체 DB 조회
+          <p className="page-subtitle">
+            {SORT_OPTIONS.find(s => s.key === sortKey)?.label || "생성 순서"} 기준 · 전체 DB 조회
             {totalCount !== null && <span className="total-badge"> 총 {totalCount}건</span>}
           </p>
+        </div>
+
+        {/* ─── 필터 바 ─── */}
+        <div className="filter-bar">
+          <div className="filter-bar-header">
+            <button className="filter-collapse-btn"
+              onClick={() => setFilterBarCollapsed(v => !v)}
+              title={filterBarCollapsed ? "필터 펼치기" : "필터 접기"}>
+              {filterBarCollapsed ? "▸" : "▾"} 필터 / 정렬
+              {hasAnyFilter ? <span className="filter-dot">●</span> : null}
+            </button>
+            {hasAnyFilter && !filterBarCollapsed && (
+              <button className="filter-clear-all-btn" onClick={clearAllFilters}>전체 해제</button>
+            )}
+          </div>
+
+          {!filterBarCollapsed && (
+            <div className="filter-body">
+              {/* 정렬 드롭다운 */}
+              <div className="filter-row">
+                <span className="filter-label">정렬</span>
+                <div className="sort-dropdown" ref={sortDropdownRef}>
+                  <button className="sort-dropdown-btn"
+                    onClick={() => setSortDropdownOpen(v => !v)}>
+                    {SORT_OPTIONS.find(s => s.key === sortKey)?.label}
+                    <span className="dropdown-arrow">{sortDropdownOpen ? "▴" : "▾"}</span>
+                  </button>
+                  {sortDropdownOpen && (
+                    <div className="sort-dropdown-menu">
+                      {SORT_OPTIONS.map(opt => (
+                        <button key={opt.key}
+                          className={`sort-option${sortKey === opt.key ? " active" : ""}`}
+                          onClick={() => { setSortKey(opt.key); setSortDropdownOpen(false); }}>
+                          {opt.label}
+                          {sortKey === opt.key && <span style={{marginLeft:6}}>✓</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 유형 필터 */}
+              {dbOptions.types.length > 0 && (
+                <div className="filter-row">
+                  <span className="filter-label">유형</span>
+                  <div className="filter-btns">
+                    <button className={`f-btn f-all${!filters.types.length ? " active" : ""}`}
+                      onClick={() => clearFilterCategory("types")}>전체</button>
+                    {dbOptions.types.map(opt => {
+                      const isOn = filters.types.includes(opt.name);
+                      const bs = notionBadgeStyle(opt.color, dark);
+                      return (
+                        <button key={opt.name}
+                          className={`f-btn${isOn ? " active" : ""}`}
+                          style={isOn ? { background: bs.background, color: bs.color, borderColor: bs.color } : {}}
+                          onClick={() => toggleFilter("types", opt.name)}>
+                          {opt.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* 상품류 (상표 선택 시만) */}
+              {showProductClass && dbOptions.productClasses.length > 0 && (
+                <div className="filter-row filter-sub">
+                  <span className="filter-label">└ 상품류</span>
+                  <div className="filter-btns">
+                    <button className={`f-btn f-all${!filters.productClasses.length ? " active" : ""}`}
+                      onClick={() => clearFilterCategory("productClasses")}>전체</button>
+                    {dbOptions.productClasses.map(opt => {
+                      const isOn = filters.productClasses.includes(opt.name);
+                      const bs = notionBadgeStyle(opt.color, dark);
+                      return (
+                        <button key={opt.name}
+                          className={`f-btn${isOn ? " active" : ""}`}
+                          style={isOn ? { background: bs.background, color: bs.color, borderColor: bs.color } : {}}
+                          onClick={() => toggleFilter("productClasses", opt.name)}>
+                          {opt.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* 상태 필터 */}
+              {dbOptions.statuses.length > 0 && (
+                <div className="filter-row">
+                  <span className="filter-label">상태</span>
+                  <div className="filter-btns">
+                    <button className={`f-btn f-all${!filters.statuses.length ? " active" : ""}`}
+                      onClick={() => clearFilterCategory("statuses")}>전체</button>
+                    {dbOptions.statuses.map(opt => {
+                      const isOn = filters.statuses.includes(opt.name);
+                      const bs = notionBadgeStyle(opt.color, dark);
+                      return (
+                        <button key={opt.name}
+                          className={`f-btn${isOn ? " active" : ""}`}
+                          style={isOn ? { background: bs.background, color: bs.color, borderColor: bs.color } : {}}
+                          onClick={() => toggleFilter("statuses", opt.name)}>
+                          {opt.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* 서류작업상태 필터 */}
+              {dbOptions.docWorkStates.length > 0 && (
+                <div className="filter-row">
+                  <span className="filter-label">서류</span>
+                  <div className="filter-btns">
+                    <button className={`f-btn f-all${!filters.docWorkStates.length ? " active" : ""}`}
+                      onClick={() => clearFilterCategory("docWorkStates")}>전체</button>
+                    {dbOptions.docWorkStates.map(opt => {
+                      const isOn = filters.docWorkStates.includes(opt.name);
+                      const bs = notionBadgeStyle(opt.color, dark);
+                      return (
+                        <button key={opt.name}
+                          className={`f-btn${isOn ? " active" : ""}`}
+                          style={isOn ? { background: bs.background, color: bs.color, borderColor: bs.color } : {}}
+                          onClick={() => toggleFilter("docWorkStates", opt.name)}>
+                          {opt.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* 카테고리 필터 */}
+              {dbOptions.categories.length > 0 && (
+                <div className="filter-row">
+                  <span className="filter-label">카테고리</span>
+                  <div className="filter-btns">
+                    <button className={`f-btn f-all${!filters.categories.length ? " active" : ""}`}
+                      onClick={() => clearFilterCategory("categories")}>전체</button>
+                    {dbOptions.categories.map(opt => {
+                      const isOn = filters.categories.includes(opt.name);
+                      const bs = notionBadgeStyle(opt.color, dark);
+                      return (
+                        <button key={opt.name}
+                          className={`f-btn${isOn ? " active" : ""}`}
+                          style={isOn ? { background: bs.background, color: bs.color, borderColor: bs.color } : {}}
+                          onClick={() => toggleFilter("categories", opt.name)}>
+                          {opt.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="results">
@@ -1955,6 +2192,79 @@ export default function AllPage() {
         .page-subtitle { font-size:13px; color:#6b7280; }
         .total-badge { background:#dbeafe; color:#1e40af; padding:2px 8px; border-radius:5px; font-weight:700; font-size:12px; margin-left:6px; }
         .dark .total-badge { background:#1e3a6e; color:#93c5fd; }
+
+        /* ─── 필터 바 ─── */
+        .filter-bar { width:100%; max-width:1300px; background:#fff; border:1px solid #e5e9f5;
+          border-radius:14px; box-shadow:0 2px 10px rgba(19,39,79,0.06);
+          margin:0 auto 16px; overflow:hidden; }
+        .dark .filter-bar { background:#1e293b; border-color:#334155; }
+        .filter-bar-header { display:flex; align-items:center; justify-content:space-between;
+          padding:10px 14px; gap:8px; }
+        .filter-collapse-btn { background:none; border:none; cursor:pointer; font-family:inherit;
+          font-size:13px; font-weight:700; color:#13274F; display:flex; align-items:center; gap:6px; padding:4px 6px; }
+        .dark .filter-collapse-btn { color:#e2e8f0; }
+        .filter-collapse-btn:hover { color:#1a3a8f; }
+        .dark .filter-collapse-btn:hover { color:#93c5fd; }
+        .filter-dot { color:#ef4444; font-size:10px; margin-left:4px; }
+        .filter-clear-all-btn { background:#fff1f2; color:#dc2626; border:1px solid #fecaca;
+          border-radius:6px; padding:4px 10px; font-size:11px; font-weight:700;
+          cursor:pointer; font-family:inherit; transition:background .15s; }
+        .filter-clear-all-btn:hover { background:#ffe4e6; }
+        .dark .filter-clear-all-btn { background:#450a0a; color:#f87171; border-color:#dc2626; }
+
+        .filter-body { padding:4px 14px 12px; display:flex; flex-direction:column; gap:8px;
+          border-top:1px solid #f1f5f9; }
+        .dark .filter-body { border-top-color:#334155; }
+        .filter-row { display:flex; align-items:flex-start; gap:10px; flex-wrap:nowrap; }
+        .filter-row.filter-sub { padding-left:12px; }
+        .filter-label { font-size:12px; font-weight:700; color:#6b7280;
+          min-width:60px; padding-top:6px; flex-shrink:0; }
+        .dark .filter-label { color:#94a3b8; }
+        .filter-btns { display:flex; flex-wrap:wrap; gap:5px; flex:1; }
+
+        .f-btn { background:#f8faff; border:1.5px solid #e5e9f5; color:#6b7280;
+          border-radius:14px; padding:4px 11px; font-size:11px; font-weight:700;
+          cursor:pointer; font-family:inherit; transition:all .15s; white-space:nowrap; }
+        .f-btn:hover { background:#eef1fb; border-color:#c7d2fe; }
+        .f-btn.active { background:#1a3a8f; color:#fff; border-color:#1a3a8f; }
+        .f-btn.f-all { background:#fff; color:#9ca3af; border-style:dashed; }
+        .f-btn.f-all.active { background:#f3f4f6; color:#13274F; border-style:solid; border-color:#13274F; }
+        .dark .f-btn { background:#1e293b; border-color:#334155; color:#94a3b8; }
+        .dark .f-btn:hover { background:#2a3a55; border-color:#475569; }
+        .dark .f-btn.active { background:#1e3a6e; color:#fff; border-color:#1e3a6e; }
+        .dark .f-btn.f-all { background:#1e293b; color:#64748b; }
+        .dark .f-btn.f-all.active { background:#2a3a55; color:#e2e8f0; border-color:#475569; }
+
+        /* 정렬 드롭다운 */
+        .sort-dropdown { position:relative; display:inline-block; }
+        .sort-dropdown-btn { background:#f8faff; border:1.5px solid #c7d2fe; color:#1a3a8f;
+          border-radius:8px; padding:6px 12px; font-size:12px; font-weight:700;
+          cursor:pointer; font-family:inherit; display:flex; align-items:center; gap:8px;
+          min-width:180px; justify-content:space-between; transition:border-color .15s; }
+        .sort-dropdown-btn:hover { border-color:#1a3a8f; }
+        .dark .sort-dropdown-btn { background:#1e293b; border-color:#334155; color:#93c5fd; }
+        .dark .sort-dropdown-btn:hover { border-color:#93c5fd; }
+        .dropdown-arrow { font-size:10px; color:#6b7280; }
+        .sort-dropdown-menu { position:absolute; top:calc(100% + 4px); left:0; z-index:50;
+          background:#fff; border:1.5px solid #e5e9f5; border-radius:10px;
+          box-shadow:0 8px 24px rgba(19,39,79,0.12); padding:4px; min-width:220px;
+          display:flex; flex-direction:column; gap:2px; }
+        .dark .sort-dropdown-menu { background:#1e293b; border-color:#334155; }
+        .sort-option { background:none; border:none; cursor:pointer; font-family:inherit;
+          font-size:12px; text-align:left; padding:7px 12px; border-radius:6px;
+          color:#374151; transition:background .1s; white-space:nowrap; }
+        .sort-option:hover { background:#eef1fb; color:#1a3a8f; }
+        .sort-option.active { background:#eef1fb; color:#1a3a8f; font-weight:700; }
+        .dark .sort-option { color:#cbd5e1; }
+        .dark .sort-option:hover { background:#1e3a6e; color:#93c5fd; }
+        .dark .sort-option.active { background:#1e3a6e; color:#93c5fd; }
+
+        @media (max-width:768px) {
+          .filter-label { min-width:48px; font-size:11px; }
+          .sort-dropdown-btn { min-width:140px; font-size:11px; }
+          .f-btn { font-size:10px; padding:3px 9px; }
+          .filter-row { gap:6px; }
+        }
 
         .results { width:100%; max-width:1300px; padding-bottom:60px; }
         .loading { display:flex; flex-direction:column; align-items:center; margin-top:60px; gap:16px; }
