@@ -122,6 +122,7 @@ export default function Home() {
   const notifBtnRef   = useRef(null);
   const rowRefs        = useRef({});
   const mobileCardRefs = useRef({});
+  const pcCardRefs     = useRef({});
 
   // 1분마다 현재 시각 갱신 (1시간 뱃지 자동 소멸)
   // 시스템 다크모드 변경 자동 감지
@@ -284,7 +285,10 @@ export default function Home() {
       await toggleCommentPanel(idx, notif.pageId);
       const scrollToTarget = () => {
         const isMobile = window.innerWidth <= 768;
-        const target = isMobile ? mobileCardRefs.current[idx] : rowRefs.current[idx];
+        let target;
+        if (isMobile) target = mobileCardRefs.current[idx];
+        else if (viewType === "card") target = pcCardRefs.current[idx];
+        else target = rowRefs.current[idx];
         if (target) {
           const top = target.getBoundingClientRect().top + window.scrollY - 80;
           window.scrollTo({ top, behavior: "smooth" });
@@ -1269,7 +1273,9 @@ export default function Home() {
                 <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14,
                   opacity: fadeVisible ? 1 : 0, transition: "opacity 0.28s ease" }}>
                   {results.map((row, i) => (
-                    <div key={i} style={{ background:dark?"#1e293b":"#fff",
+                    <div key={i}
+                      ref={el => pcCardRefs.current[i] = el}
+                      style={{ background:dark?"#1e293b":"#fff",
                       border:dark?"1px solid #334155":"1px solid #e5e9f5",
                       borderRadius:14, padding:"14px 16px",
                       boxShadow:"0 2px 10px rgba(19,39,79,0.07)",
