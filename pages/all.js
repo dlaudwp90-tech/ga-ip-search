@@ -188,7 +188,10 @@ export default function AllPage() {
   // id 기반 스크롤 함수
   const scrollToIdx = (idx) => {
     const isMobile = window.innerWidth <= 768;
-    const id = isMobile ? `m-card-${idx}` : `pc-row-${idx}`;
+    let id;
+    if (isMobile) id = `m-card-${idx}`;
+    else if (viewType === "card") id = `pc-card-${idx}`;
+    else id = `pc-row-${idx}`;
     const el = document.getElementById(id);
     if (el) {
       el.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -197,51 +200,54 @@ export default function AllPage() {
     return false;
   };
 
-  // 알림 클릭 → 해당 행 스크롤 + 댓글 패널
-  const handleNotifClick = async (notif) => {
+  // 알림 클릭 → 해당 행 스크롤 + 댓글 패널 (없으면 자동으로 더 불러오기)
+  const handleNotifClick = (notif) => {
     setNotifOpen(false);
-    const idx = results?.findIndex(r => r.pageId === notif.pageId);
-    if (idx !== undefined && idx >= 0) {
-      await toggleCommentPanel(idx, notif.pageId);
-      // id 기반 스크롤 - 즉시 + 재시도
-      if (!scrollToIdx(idx)) {
-        let tries = 0;
-        const retry = setInterval(() => {
-          if (scrollToIdx(idx) || ++tries >= 10) clearInterval(retry);
-        }, 150);
-      }
-    }
+    setTargetPageId(notif.pageId);
   };
 
-  // openComment 쿼리 파라미터 처리 (index.js에서 넘어올 때)
-  const [jumpTarget, setJumpTarget] = useState(null); // 모바일용 이동 배너
+  // 찾고 있는 pageId (알림 클릭 또는 openComment 쿼리)
+  const [targetPageId, setTargetPageId] = useState(null);
 
+  // 이동 배너 (모두 불러왔는데도 못 찾은 경우)
+  const [jumpTarget, setJumpTarget] = useState(null);
+
+  // 라우터 쿼리의 openComment를 targetPageId로 승격
   useEffect(() => {
-    const { openComment } = router.query;
-    if (!openComment || !results?.length) return;
-    const idx = results.findIndex(r => r.pageId === openComment);
-    if (idx < 0) return;
+    const { openComment } = router.query || {};
+    if (openComment) setTargetPageId(openComment);
+  }, [router.query]);
 
-    // 댓글 패널 먼저 오픈
-    toggleCommentPanel(idx, openComment);
+  // targetPageId가 설정되면 results에서 찾고, 없으면 다음 페이지 자동 로드
+  useEffect(() => {
+    if (!targetPageId || !results?.length) return;
 
-    // id 기반 스크롤 시도
-    const tryScroll = (attempt = 0) => {
-      const isMobile = window.innerWidth <= 768;
-      const id = isMobile ? `m-card-${idx}` : `pc-row-${idx}`;
-      const el = document.getElementById(id);
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "center" });
-        setJumpTarget(null);
-      } else if (attempt < 12) {
-        setTimeout(() => tryScroll(attempt + 1), 150);
-      } else {
-        const row = results[idx];
-        setJumpTarget({ idx, pageId: openComment, title: row?.title || "문서" });
-      }
-    };
-    setTimeout(() => tryScroll(), 300);
-  }, [router.query, results]);
+    const idx = results.findIndex(r => r.pageId === targetPageId);
+
+    if (idx >= 0) {
+      // 찾음 - 댓글 패널 열고 스크롤
+      const pid = targetPageId;
+      setTargetPageId(null); // 중복 실행 방지
+      toggleCommentPanel(idx, pid);
+      const tryScroll = (attempt = 0) => {
+        if (scrollToIdx(idx)) {
+          setJumpTarget(null);
+        } else if (attempt < 12) {
+          setTimeout(() => tryScroll(attempt + 1), 150);
+        } else {
+          const row = results[idx];
+          setJumpTarget({ idx, pageId: pid, title: row?.title || "문서" });
+        }
+      };
+      setTimeout(() => tryScroll(), 300);
+    } else if (hasMore && !loadingMore && !loadingAll && nextCursor) {
+      // 못 찾음 + 더 있음 → 자동으로 다음 페이지 로드 (다시 이 useEffect가 재실행됨)
+      fetchPage(nextCursor);
+    } else if (!hasMore) {
+      // 전부 불러왔는데도 없음 → 포기
+      setTargetPageId(null);
+    }
+  }, [targetPageId, results, hasMore, loadingMore, loadingAll]);
 
   useEffect(() => {
     if (!userPopup) return;
@@ -723,10 +729,7 @@ export default function AllPage() {
             </span>
             <button
               onClick={() => {
-                const isMobile = window.innerWidth <= 768;
-                const id = isMobile ? `m-card-${jumpTarget.idx}` : `pc-row-${jumpTarget.idx}`;
-                const el = document.getElementById(id);
-                if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+                scrollToIdx(jumpTarget.idx);
                 setJumpTarget(null);
               }}
               style={{ background:"#fff", color:"#13274F", border:"none", borderRadius:8,
@@ -1232,7 +1235,8 @@ export default function AllPage() {
                 <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14,
                   opacity: fadeVisible ? 1 : 0, transition: "opacity 0.28s ease" }}>
                   {results.map((row, i) => (
-                    <div key={i} style={{ background:dark?"#1e293b":"#fff",
+                    <div key={i} id={`pc-card-${i}`}
+                      style={{ background:dark?"#1e293b":"#fff",
                       border:dark?"1px solid #334155":"1px solid #e5e9f5",
                       borderRadius:14, padding:"14px 16px",
                       boxShadow:"0 2px 10px rgba(19,39,79,0.07)",
