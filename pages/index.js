@@ -1071,7 +1071,7 @@ export default function Home() {
                                   {row.appNum.split("\n").map((line,li)=>(
                                     <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
                                       <span className="m-info-item">{line}</span>
-                                      {li===0&&<button className="m-copy-btn" onClick={e=>{e.stopPropagation();navigator.clipboard.writeText(row.appNum);}}>복사</button>}
+                                      <button className="m-copy-btn" onClick={e=>{e.stopPropagation();navigator.clipboard.writeText(line);}}>복사</button>
                                     </div>
                                   ))}
                                 </div>
@@ -1084,7 +1084,7 @@ export default function Home() {
                                   {row.appOwner.split("\n").map((line,li)=>(
                                     <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
                                       <span className="m-info-item">{line}</span>
-                                      {li===0&&<button className="m-copy-btn" onClick={e=>{e.stopPropagation();navigator.clipboard.writeText(row.appOwner);}}>복사</button>}
+                                      <button className="m-copy-btn" onClick={e=>{e.stopPropagation();navigator.clipboard.writeText(line);}}>복사</button>
                                     </div>
                                   ))}
                                 </div>
@@ -1097,7 +1097,7 @@ export default function Home() {
                                   {row.agentCode.split("\n").map((line,li)=>(
                                     <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
                                       <span className="m-info-item">{line}</span>
-                                      {li===0&&<button className="m-copy-btn" onClick={e=>{e.stopPropagation();navigator.clipboard.writeText(row.agentCode);}}>복사</button>}
+                                      <button className="m-copy-btn" onClick={e=>{e.stopPropagation();navigator.clipboard.writeText(line);}}>복사</button>
                                     </div>
                                   ))}
                                 </div>
@@ -1358,7 +1358,7 @@ export default function Home() {
                               {row.appNum.split("\n").map((line,li)=>(
                                 <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
                                   <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280"}}>{line}</span>
-                                  {li===0&&<button className="m-copy-btn" onClick={e=>{e.stopPropagation();navigator.clipboard.writeText(row.appNum);}}>복사</button>}
+                                  <button className="m-copy-btn" onClick={e=>{e.stopPropagation();navigator.clipboard.writeText(line);}}>복사</button>
                                 </div>
                               ))}
                             </div>
@@ -1371,7 +1371,7 @@ export default function Home() {
                               {row.appOwner.split("\n").map((line,li)=>(
                                 <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
                                   <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280"}}>{line}</span>
-                                  {li===0&&<button className="m-copy-btn" onClick={e=>{e.stopPropagation();navigator.clipboard.writeText(row.appOwner);}}>복사</button>}
+                                  <button className="m-copy-btn" onClick={e=>{e.stopPropagation();navigator.clipboard.writeText(line);}}>복사</button>
                                 </div>
                               ))}
                             </div>
@@ -1384,7 +1384,7 @@ export default function Home() {
                               {row.agentCode.split("\n").map((line,li)=>(
                                 <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
                                   <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280"}}>{line}</span>
-                                  {li===0&&<button className="m-copy-btn" onClick={e=>{e.stopPropagation();navigator.clipboard.writeText(row.agentCode);}}>복사</button>}
+                                  <button className="m-copy-btn" onClick={e=>{e.stopPropagation();navigator.clipboard.writeText(line);}}>복사</button>
                                 </div>
                               ))}
                             </div>
@@ -1677,24 +1677,51 @@ export default function Home() {
                           </td>
 
                           <td className={isMultiLine(row.appNum)?"td-top":"td-nowrap"}>
-                            <div className="copy-wrap">
-                              {renderWithIndent(row.appNum)}
-                              {row.appNum&&<button className={`copy-btn${copied[`${i}-n`]?" copied":""}`} onClick={e=>handleCopy(e,row.appNum,`${i}-n`)}>{copied[`${i}-n`]?"✓":"복사"}</button>}
-                            </div>
+                            {row.appNum ? (
+                              <div style={{display:"flex",flexDirection:"column",gap:3}}>
+                                {row.appNum.split("\n").map((line,li)=>{
+                                  const ck=`${i}-n-${li}`;
+                                  return (
+                                    <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
+                                      <span className={li===0?"first-line":"indent-line"}>{line||"\u3000"}</span>
+                                      <button className={`copy-btn${copied[ck]?" copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : <span className="dash">—</span>}
                           </td>
 
                           <td className={isMultiLine(row.appOwner)?"td-top":"td-nowrap"}>
-                            <div className="copy-wrap">
-                              {renderWithIndent(row.appOwner)}
-                              {row.appOwner&&<button className={`copy-btn${copied[`${i}-o`]?" copied":""}`} onClick={e=>handleCopy(e,row.appOwner,`${i}-o`)}>{copied[`${i}-o`]?"✓":"복사"}</button>}
-                            </div>
+                            {row.appOwner ? (
+                              <div style={{display:"flex",flexDirection:"column",gap:3}}>
+                                {row.appOwner.split("\n").map((line,li)=>{
+                                  const ck=`${i}-o-${li}`;
+                                  return (
+                                    <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
+                                      <span className={li===0?"first-line":"indent-line"}>{line||"\u3000"}</span>
+                                      <button className={`copy-btn${copied[ck]?" copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : <span className="dash">—</span>}
                           </td>
 
                           <td className={isMultiLine(row.agentCode)?"td-top":"td-nowrap"}>
-                            <div className="copy-wrap">
-                              {renderWithIndent(row.agentCode)}
-                              {row.agentCode&&<button className={`copy-btn${copied[`${i}-c`]?" copied":""}`} onClick={e=>handleCopy(e,row.agentCode,`${i}-c`)}>{copied[`${i}-c`]?"✓":"복사"}</button>}
-                            </div>
+                            {row.agentCode ? (
+                              <div style={{display:"flex",flexDirection:"column",gap:3}}>
+                                {row.agentCode.split("\n").map((line,li)=>{
+                                  const ck=`${i}-c-${li}`;
+                                  return (
+                                    <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
+                                      <span className={li===0?"first-line":"indent-line"}>{line||"\u3000"}</span>
+                                      <button className={`copy-btn${copied[ck]?" copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : <span className="dash">—</span>}
                           </td>
 
                           <td className="td-nowrap"><span className="cell-text">{row.deadline||"—"}</span></td>
