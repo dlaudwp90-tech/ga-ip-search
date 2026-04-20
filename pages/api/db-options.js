@@ -1,6 +1,5 @@
 // pages/api/db-options.js
-// Notion DB 스키마에서 필터 옵션을 동적으로 조회
-// — 하드코딩 대신 DB 수정 시 자동 반영되도록
+// Notion DB 스키마 — multi_select/status 옵션 + status groups 반환
 
 export default async function handler(req, res) {
   if (req.method !== "GET") return res.status(405).end();
@@ -31,34 +30,63 @@ export default async function handler(req, res) {
       }));
     };
 
-    // status — groups/options 모두 고려
-    const extractStatus = (propName) => {
+    // status — options + groups 구조 반환
+    // groups: [{ name: "할 일", color: "gray", options: [{name,color}, ...] }, ...]
+    const extractStatusWithGroups = (propName) => {
       const p = props[propName];
-      if (!p?.status?.options) return [];
-      return p.status.options.map((o) => ({
+      if (!p?.status) return { options: [], groups: [] };
+      const rawOptions = p.status.options || [];
+      const rawGroups = p.status.groups || [];
+
+      const options = rawOptions.map((o) => ({
         name: o.name,
         color: o.color || "default",
       }));
+
+      // option id → option 매핑
+      const idToOpt = {};
+      rawOptions.forEach((o) => {
+        idToOpt[o.id] = { name: o.name, color: o.color || "default" };
+      });
+
+      const groups = rawGroups.map((g) => ({
+        name: g.name,
+        color: g.color || "default",
+        options: (g.option_ids || [])
+          .map((id) => idToOpt[id])
+          .filter(Boolean),
+      }));
+
+      return { options, groups };
     };
 
-    // status 또는 select 혼용 대응
-    const extractStatusOrSelect = (propName) => {
+    // status가 select인 경우도 대비 (groups 없음)
+    const extractStatusOrSelectWithGroups = (propName) => {
       const p = props[propName];
-      if (p?.status?.options) {
-        return p.status.options.map((o) => ({ name: o.name, color: o.color || "default" }));
-      }
+      if (p?.status) return extractStatusWithGroups(propName);
       if (p?.select?.options) {
-        return p.select.options.map((o) => ({ name: o.name, color: o.color || "default" }));
+        return {
+          options: p.select.options.map((o) => ({
+            name: o.name,
+            color: o.color || "default",
+          })),
+          groups: [],
+        };
       }
-      return [];
+      return { options: [], groups: [] };
     };
+
+    const statusFull = extractStatusWithGroups("상태(대표 결)");
+    const docWorkFull = extractStatusOrSelectWithGroups("서류작업상태(작업자)");
 
     return res.status(200).json({
-      types:        extractMultiSelect("특허/상표/디자인"),
-      statuses:     extractStatus("상태(대표 결)"),
-      docWorkStates: extractStatusOrSelect("서류작업상태(작업자)"),
-      categories:   extractMultiSelect("카테고리"),
-      productClasses: extractMultiSelect("상품류"),
+      types:              extractMultiSelect("특허/상표/디자인"),
+      statuses:           statusFull.options,
+      statusGroups:       statusFull.groups,
+      docWorkStates:      docWorkFull.options,
+      docWorkStateGroups: docWorkFull.groups,
+      categories:         extractMultiSelect("카테고리"),
+      productClasses:     extractMultiSelect("상품류"),
     });
   } catch (err) {
     return res.status(500).json({ error: err.message });
