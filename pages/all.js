@@ -14,6 +14,15 @@ const LOCK_SECONDS  = 600;
 const COL_CHECK_W   = 160;
 const COL_TITLE_L   = COL_CHECK_W;
 
+// ─── 그룹 이름 번역 (영어 → 한글) ───
+const GROUP_NAME_KR = {
+  "To-do": "할 일", "To Do": "할 일",
+  "In progress": "진행 중", "In Progress": "진행 중",
+  "Complete": "완료", "Completed": "완료", "Done": "완료",
+  "할 일": "할 일", "진행 중": "진행 중", "완료": "완료",
+};
+const translateGroup = (name) => GROUP_NAME_KR[name] || name;
+
 // ─── 정렬 옵션 ───
 const SORT_OPTIONS = [
   { key: "created_desc", label: "생성 순서 (최신순)" },
@@ -1149,121 +1158,110 @@ export default function AllPage() {
                 </div>
               )}
 
-              {/* 상태 필터 — 그룹 구조 */}
-              <div className="filter-row">
-                <span className="filter-label">상태</span>
-                <div className="filter-btns-grouped">
-                  {dbOptions.statuses.length > 0 ? (
-                    <>
-                      {/* 전체 버튼 */}
-                      <div className="group-line">
-                        <span className="group-label-ghost"/>
-                        <div className="group-line-btns">
+              {/* 상태 + 서류 통합 — 1행 그룹 배치 (CSS grid로 열 정렬) */}
+              {(dbOptions.statusGroups?.length > 0 && dbOptions.docWorkStateGroups?.length > 0) ? (
+                <div className="status-combo-grid"
+                  style={{ gridTemplateColumns: `60px auto repeat(${Math.max(dbOptions.statusGroups.length, dbOptions.docWorkStateGroups.length)}, auto)` }}>
+
+                  {/* 상태 행 */}
+                  <span className="filter-label combo-label">상태</span>
+                  <button className={`f-btn f-all${!filters.statuses.length ? " active" : ""}`}
+                    onClick={() => clearFilterCategory("statuses")}>전체</button>
+                  {dbOptions.statusGroups.map(grp => (
+                    <div key={`st-${grp.name}`} className="group-cell">
+                      <span className="group-label-mini" style={notionBadgeStyle(grp.color, dark)}>
+                        {translateGroup(grp.name)}
+                      </span>
+                      {grp.options.map(opt => {
+                        const isOn = filters.statuses.includes(opt.name);
+                        const bs = notionBadgeStyle(opt.color, dark);
+                        return (
+                          <button key={opt.name}
+                            className={`f-btn${isOn ? " active" : ""}`}
+                            style={isOn ? { background: bs.background, color: bs.color, borderColor: bs.color } : {}}
+                            onClick={() => toggleFilter("statuses", opt.name)}>
+                            {opt.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ))}
+
+                  {/* 서류 행 */}
+                  <span className="filter-label combo-label">서류</span>
+                  <button className={`f-btn f-all${!filters.docWorkStates.length ? " active" : ""}`}
+                    onClick={() => clearFilterCategory("docWorkStates")}>전체</button>
+                  {dbOptions.docWorkStateGroups.map(grp => (
+                    <div key={`dw-${grp.name}`} className="group-cell">
+                      <span className="group-label-mini" style={notionBadgeStyle(grp.color, dark)}>
+                        {translateGroup(grp.name)}
+                      </span>
+                      {grp.options.map(opt => {
+                        const isOn = filters.docWorkStates.includes(opt.name);
+                        const bs = notionBadgeStyle(opt.color, dark);
+                        return (
+                          <button key={opt.name}
+                            className={`f-btn${isOn ? " active" : ""}`}
+                            style={isOn ? { background: bs.background, color: bs.color, borderColor: bs.color } : {}}
+                            onClick={() => toggleFilter("docWorkStates", opt.name)}>
+                            {opt.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <>
+                  {/* fallback — 그룹이 없는 경우 단순 flat 레이아웃 */}
+                  <div className="filter-row">
+                    <span className="filter-label">상태</span>
+                    <div className="filter-btns">
+                      {dbOptions.statuses.length > 0 ? (
+                        <>
                           <button className={`f-btn f-all${!filters.statuses.length ? " active" : ""}`}
                             onClick={() => clearFilterCategory("statuses")}>전체</button>
-                        </div>
-                      </div>
-                      {/* 그룹이 있으면 그룹별로, 없으면 flat */}
-                      {dbOptions.statusGroups?.length > 0 ? (
-                        dbOptions.statusGroups.map(grp => (
-                          <div key={grp.name} className="group-line">
-                            <span className="group-label" style={notionBadgeStyle(grp.color, dark)}>{grp.name}</span>
-                            <div className="group-line-btns">
-                              {grp.options.map(opt => {
-                                const isOn = filters.statuses.includes(opt.name);
-                                const bs = notionBadgeStyle(opt.color, dark);
-                                return (
-                                  <button key={opt.name}
-                                    className={`f-btn${isOn ? " active" : ""}`}
-                                    style={isOn ? { background: bs.background, color: bs.color, borderColor: bs.color } : {}}
-                                    onClick={() => toggleFilter("statuses", opt.name)}>
-                                    {opt.name}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        ))
-                      ) : (
-                        <div className="group-line">
-                          <span className="group-label-ghost"/>
-                          <div className="group-line-btns">
-                            {dbOptions.statuses.map(opt => {
-                              const isOn = filters.statuses.includes(opt.name);
-                              const bs = notionBadgeStyle(opt.color, dark);
-                              return (
-                                <button key={opt.name}
-                                  className={`f-btn${isOn ? " active" : ""}`}
-                                  style={isOn ? { background: bs.background, color: bs.color, borderColor: bs.color } : {}}
-                                  onClick={() => toggleFilter("statuses", opt.name)}>
-                                  {opt.name}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  ) : <span className="filter-empty">{dbOptionsStatus === "error" ? "— 로드 실패 —" : "옵션 불러오는 중..."}</span>}
-                </div>
-              </div>
-
-              {/* 서류작업상태 필터 — 그룹 구조 */}
-              <div className="filter-row">
-                <span className="filter-label">서류</span>
-                <div className="filter-btns-grouped">
-                  {dbOptions.docWorkStates.length > 0 ? (
-                    <>
-                      <div className="group-line">
-                        <span className="group-label-ghost"/>
-                        <div className="group-line-btns">
+                          {dbOptions.statuses.map(opt => {
+                            const isOn = filters.statuses.includes(opt.name);
+                            const bs = notionBadgeStyle(opt.color, dark);
+                            return (
+                              <button key={opt.name}
+                                className={`f-btn${isOn ? " active" : ""}`}
+                                style={isOn ? { background: bs.background, color: bs.color, borderColor: bs.color } : {}}
+                                onClick={() => toggleFilter("statuses", opt.name)}>
+                                {opt.name}
+                              </button>
+                            );
+                          })}
+                        </>
+                      ) : <span className="filter-empty">{dbOptionsStatus === "error" ? "— 로드 실패 —" : "옵션 불러오는 중..."}</span>}
+                    </div>
+                  </div>
+                  <div className="filter-row">
+                    <span className="filter-label">서류</span>
+                    <div className="filter-btns">
+                      {dbOptions.docWorkStates.length > 0 ? (
+                        <>
                           <button className={`f-btn f-all${!filters.docWorkStates.length ? " active" : ""}`}
                             onClick={() => clearFilterCategory("docWorkStates")}>전체</button>
-                        </div>
-                      </div>
-                      {dbOptions.docWorkStateGroups?.length > 0 ? (
-                        dbOptions.docWorkStateGroups.map(grp => (
-                          <div key={grp.name} className="group-line">
-                            <span className="group-label" style={notionBadgeStyle(grp.color, dark)}>{grp.name}</span>
-                            <div className="group-line-btns">
-                              {grp.options.map(opt => {
-                                const isOn = filters.docWorkStates.includes(opt.name);
-                                const bs = notionBadgeStyle(opt.color, dark);
-                                return (
-                                  <button key={opt.name}
-                                    className={`f-btn${isOn ? " active" : ""}`}
-                                    style={isOn ? { background: bs.background, color: bs.color, borderColor: bs.color } : {}}
-                                    onClick={() => toggleFilter("docWorkStates", opt.name)}>
-                                    {opt.name}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        ))
-                      ) : (
-                        <div className="group-line">
-                          <span className="group-label-ghost"/>
-                          <div className="group-line-btns">
-                            {dbOptions.docWorkStates.map(opt => {
-                              const isOn = filters.docWorkStates.includes(opt.name);
-                              const bs = notionBadgeStyle(opt.color, dark);
-                              return (
-                                <button key={opt.name}
-                                  className={`f-btn${isOn ? " active" : ""}`}
-                                  style={isOn ? { background: bs.background, color: bs.color, borderColor: bs.color } : {}}
-                                  onClick={() => toggleFilter("docWorkStates", opt.name)}>
-                                  {opt.name}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  ) : <span className="filter-empty">{dbOptionsStatus === "error" ? "— 로드 실패 —" : "옵션 불러오는 중..."}</span>}
-                </div>
-              </div>
+                          {dbOptions.docWorkStates.map(opt => {
+                            const isOn = filters.docWorkStates.includes(opt.name);
+                            const bs = notionBadgeStyle(opt.color, dark);
+                            return (
+                              <button key={opt.name}
+                                className={`f-btn${isOn ? " active" : ""}`}
+                                style={isOn ? { background: bs.background, color: bs.color, borderColor: bs.color } : {}}
+                                onClick={() => toggleFilter("docWorkStates", opt.name)}>
+                                {opt.name}
+                              </button>
+                            );
+                          })}
+                        </>
+                      ) : <span className="filter-empty">{dbOptionsStatus === "error" ? "— 로드 실패 —" : "옵션 불러오는 중..."}</span>}
+                    </div>
+                  </div>
+                </>
+              )}
 
               {/* 카테고리 필터 */}
               <div className="filter-row">
@@ -2337,7 +2335,33 @@ export default function AllPage() {
         .dark .filter-label { color:#94a3b8; }
         .filter-btns { display:flex; flex-wrap:wrap; gap:5px; flex:1; }
 
-        /* ─── 그룹 라인 레이아웃 (상태/서류 status groups용) ─── */
+        /* ─── 상태 + 서류 통합 grid (열 정렬) ─── */
+        .status-combo-grid { display:grid; gap:6px 10px; align-items:center;
+          width:100%; padding:2px 0; }
+        .status-combo-grid > .combo-label { padding-top:0; align-self:center; }
+        .group-cell { display:flex; align-items:center; gap:4px; flex-wrap:wrap;
+          padding-left:10px; border-left:1.5px solid #e5e9f5;
+          min-height:28px; }
+        .dark .group-cell { border-left-color:#334155; }
+        .group-label-mini { font-size:9px; padding:2px 6px; border-radius:5px;
+          font-weight:800; white-space:nowrap; letter-spacing:-0.3px;
+          line-height:1.4; flex-shrink:0; margin-right:2px; }
+
+        /* 좁은 화면: grid을 2열로 바꾸고 그룹들은 라벨 열 건너뛰어 2열로 몰기 */
+        @media (max-width:1100px) {
+          .status-combo-grid { grid-template-columns: 60px 1fr !important; }
+          .status-combo-grid > .group-cell { grid-column:2; }
+        }
+        @media (max-width:768px) {
+          .status-combo-grid { grid-template-columns: auto !important;
+            gap:4px; }
+          .status-combo-grid > * { grid-column:auto !important; }
+          .status-combo-grid > .combo-label { margin-top:4px; }
+          .group-cell { padding-left:0; border-left:none; }
+          .group-label-mini { font-size:8px; padding:1px 5px; }
+        }
+
+        /* ─── 그룹 라인 레이아웃 (fallback용 — status가 아닌 경우) ─── */
         .filter-btns-grouped { display:flex; flex-direction:column; gap:6px; flex:1; }
         .group-line { display:flex; align-items:flex-start; gap:8px; flex-wrap:nowrap; }
         .group-label { font-size:10px; font-weight:700; padding:4px 8px;
