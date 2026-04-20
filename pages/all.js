@@ -16,12 +16,9 @@ const COL_TITLE_L   = COL_CHECK_W;
 
 // ─── 정렬 옵션 ───
 const SORT_OPTIONS = [
-  { key: "created_desc",  label: "생성 순서 (최신순)" },
-  { key: "created_asc",   label: "생성 순서 (오래된순)" },
-  { key: "edited_desc",   label: "최근 편집 순 (최신순)" },
-  { key: "edited_asc",    label: "최근 편집 순 (오래된순)" },
-  { key: "deadline_asc",  label: "마감일 (가까운순)" },
-  { key: "deadline_desc", label: "마감일 (먼순)" },
+  { key: "created_desc", label: "생성 순서 (최신순)" },
+  { key: "edited_desc",  label: "최근 편집 순 (최신순)" },
+  { key: "deadline_asc", label: "마감일 (가까운순)" },
 ];
 
 function fmtCountdown(s) {
@@ -96,6 +93,8 @@ export default function AllPage() {
   const [dbOptions, setDbOptions] = useState({
     types: [], statuses: [], docWorkStates: [], categories: [], productClasses: [],
   });
+  const [dbOptionsStatus, setDbOptionsStatus] = useState("loading"); // "loading" | "ok" | "error"
+  const [dbOptionsError, setDbOptionsError] = useState("");
   const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
   const [filterBarCollapsed, setFilterBarCollapsed] = useState(false);
   const sortDropdownRef = useRef(null);
@@ -463,13 +462,31 @@ export default function AllPage() {
     startLockTimer();
   }, [checkLocked, startLockTimer, reviewStates]);
 
-  // ── DB 옵션 로드 (최초 1회) ──
-  useEffect(() => {
+  // ── DB 옵션 로드 (최초 1회 + 재시도 가능) ──
+  const loadDbOptions = useCallback(() => {
+    setDbOptionsStatus("loading");
+    setDbOptionsError("");
     fetch("/api/db-options")
-      .then(r => r.json())
-      .then(d => { if (!d.error) setDbOptions(d); })
-      .catch(() => {});
+      .then(async r => {
+        const text = await r.text();
+        if (!r.ok) throw new Error(`HTTP ${r.status} — ${text.slice(0, 120)}`);
+        try { return JSON.parse(text); }
+        catch { throw new Error(`JSON 파싱 실패 — 응답이 HTML일 수 있음 (api 배포 확인): ${text.slice(0, 80)}`); }
+      })
+      .then(d => {
+        if (d.error) throw new Error(d.error);
+        setDbOptions(d);
+        setDbOptionsStatus("ok");
+        console.log("[db-options] loaded:", d);
+      })
+      .catch(err => {
+        console.error("[db-options] error:", err);
+        setDbOptionsError(err.message || String(err));
+        setDbOptionsStatus("error");
+      });
   }, []);
+
+  useEffect(() => { loadDbOptions(); }, [loadDbOptions]);
 
   // ── 최초 로드 + 필터/정렬 변경 시 재조회 ──
   useEffect(() => {
@@ -1036,6 +1053,18 @@ export default function AllPage() {
 
           {!filterBarCollapsed && (
             <div className="filter-body">
+              {dbOptionsStatus === "error" && (
+                <div className="db-error-banner">
+                  <div className="db-error-title">⚠ 필터 옵션을 불러오지 못했습니다</div>
+                  <div className="db-error-msg">{dbOptionsError}</div>
+                  <div className="db-error-hint">
+                    1) <code>pages/api/db-options.js</code> 파일이 배포됐는지 확인<br/>
+                    2) 브라우저에서 <code>/api/db-options</code>를 직접 열어 응답 확인<br/>
+                    3) Vercel 환경변수(NOTION_API_KEY, NOTION_DB_ID) 확인
+                  </div>
+                  <button className="db-error-retry" onClick={loadDbOptions}>🔄 다시 시도</button>
+                </div>
+              )}
               {/* 정렬 드롭다운 */}
               <div className="filter-row" ref={sortDropdownRef}>
                 <span className="filter-label">정렬</span>
@@ -1080,7 +1109,7 @@ export default function AllPage() {
                         );
                       })}
                     </>
-                  ) : <span className="filter-empty">옵션 불러오는 중...</span>}
+                  ) : <span className="filter-empty">{dbOptionsStatus === "error" ? "— 로드 실패 —" : "옵션 불러오는 중..."}</span>}
                 </div>
               </div>
 
@@ -1132,7 +1161,7 @@ export default function AllPage() {
                         );
                       })}
                     </>
-                  ) : <span className="filter-empty">옵션 불러오는 중...</span>}
+                  ) : <span className="filter-empty">{dbOptionsStatus === "error" ? "— 로드 실패 —" : "옵션 불러오는 중..."}</span>}
                 </div>
               </div>
 
@@ -1157,7 +1186,7 @@ export default function AllPage() {
                         );
                       })}
                     </>
-                  ) : <span className="filter-empty">옵션 불러오는 중...</span>}
+                  ) : <span className="filter-empty">{dbOptionsStatus === "error" ? "— 로드 실패 —" : "옵션 불러오는 중..."}</span>}
                 </div>
               </div>
 
@@ -1182,7 +1211,7 @@ export default function AllPage() {
                         );
                       })}
                     </>
-                  ) : <span className="filter-empty">옵션 불러오는 중...</span>}
+                  ) : <span className="filter-empty">{dbOptionsStatus === "error" ? "— 로드 실패 —" : "옵션 불러오는 중..."}</span>}
                 </div>
               </div>
             </div>
@@ -2281,6 +2310,28 @@ export default function AllPage() {
         .filter-empty { font-size:11px; color:#9ca3af; font-style:italic;
           padding:4px 2px; align-self:center; }
         .dark .filter-empty { color:#64748b; }
+
+        /* DB 옵션 로드 실패 배너 */
+        .db-error-banner { background:#fff1f2; border:1.5px solid #fecaca;
+          border-radius:10px; padding:12px 14px; display:flex; flex-direction:column;
+          gap:6px; margin-bottom:4px; }
+        .dark .db-error-banner { background:#450a0a; border-color:#dc2626; }
+        .db-error-title { font-size:13px; font-weight:700; color:#dc2626; }
+        .dark .db-error-title { color:#f87171; }
+        .db-error-msg { font-size:12px; color:#991b1b; font-family:monospace;
+          word-break:break-all; background:rgba(220,38,38,0.08);
+          padding:6px 10px; border-radius:6px; }
+        .dark .db-error-msg { color:#fecaca; background:rgba(248,113,113,0.08); }
+        .db-error-hint { font-size:11px; color:#7f1d1d; line-height:1.6; }
+        .db-error-hint code { background:rgba(0,0,0,0.08); padding:1px 5px;
+          border-radius:3px; font-size:10.5px; }
+        .dark .db-error-hint { color:#fca5a5; }
+        .dark .db-error-hint code { background:rgba(255,255,255,0.1); }
+        .db-error-retry { align-self:flex-start; background:#dc2626; color:#fff;
+          border:none; border-radius:6px; padding:5px 12px; font-size:11px;
+          font-weight:700; cursor:pointer; font-family:inherit;
+          transition:background .15s; margin-top:4px; }
+        .db-error-retry:hover { background:#b91c1c; }
 
         @media (max-width:768px) {
           .sort-menu-wrap { margin-left:54px; }
