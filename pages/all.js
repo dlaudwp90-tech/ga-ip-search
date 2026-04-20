@@ -1037,143 +1037,154 @@ export default function AllPage() {
           {!filterBarCollapsed && (
             <div className="filter-body">
               {/* 정렬 드롭다운 */}
-              <div className="filter-row">
+              <div className="filter-row" ref={sortDropdownRef}>
                 <span className="filter-label">정렬</span>
-                <div className="sort-dropdown" ref={sortDropdownRef}>
-                  <button className="sort-dropdown-btn"
-                    onClick={() => setSortDropdownOpen(v => !v)}>
-                    {SORT_OPTIONS.find(s => s.key === sortKey)?.label}
-                    <span className="dropdown-arrow">{sortDropdownOpen ? "▴" : "▾"}</span>
-                  </button>
-                  {sortDropdownOpen && (
-                    <div className="sort-dropdown-menu">
-                      {SORT_OPTIONS.map(opt => (
-                        <button key={opt.key}
-                          className={`sort-option${sortKey === opt.key ? " active" : ""}`}
-                          onClick={() => { setSortKey(opt.key); setSortDropdownOpen(false); }}>
-                          {opt.label}
-                          {sortKey === opt.key && <span style={{marginLeft:6}}>✓</span>}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                <button className={`sort-dropdown-btn${sortDropdownOpen ? " open" : ""}`}
+                  onClick={() => setSortDropdownOpen(v => !v)}>
+                  {SORT_OPTIONS.find(s => s.key === sortKey)?.label}
+                  <span className="dropdown-arrow">{sortDropdownOpen ? "▴" : "▾"}</span>
+                </button>
+              </div>
+              {/* 정렬 인라인 확장 메뉴 (filter-bar가 부드럽게 확장됨) */}
+              <div className={`sort-menu-wrap${sortDropdownOpen ? " open" : ""}`}>
+                <div className="sort-menu-inner">
+                  {SORT_OPTIONS.map(opt => (
+                    <button key={opt.key}
+                      className={`sort-option${sortKey === opt.key ? " active" : ""}`}
+                      onClick={() => { setSortKey(opt.key); setSortDropdownOpen(false); }}>
+                      {opt.label}
+                      {sortKey === opt.key && <span style={{marginLeft:6}}>✓</span>}
+                    </button>
+                  ))}
                 </div>
               </div>
 
               {/* 유형 필터 */}
-              {dbOptions.types.length > 0 && (
-                <div className="filter-row">
-                  <span className="filter-label">유형</span>
-                  <div className="filter-btns">
-                    <button className={`f-btn f-all${!filters.types.length ? " active" : ""}`}
-                      onClick={() => clearFilterCategory("types")}>전체</button>
-                    {dbOptions.types.map(opt => {
-                      const isOn = filters.types.includes(opt.name);
-                      const bs = notionBadgeStyle(opt.color, dark);
-                      return (
-                        <button key={opt.name}
-                          className={`f-btn${isOn ? " active" : ""}`}
-                          style={isOn ? { background: bs.background, color: bs.color, borderColor: bs.color } : {}}
-                          onClick={() => toggleFilter("types", opt.name)}>
-                          {opt.name}
-                        </button>
-                      );
-                    })}
-                  </div>
+              <div className="filter-row">
+                <span className="filter-label">유형</span>
+                <div className="filter-btns">
+                  {dbOptions.types.length > 0 ? (
+                    <>
+                      <button className={`f-btn f-all${!filters.types.length ? " active" : ""}`}
+                        onClick={() => clearFilterCategory("types")}>전체</button>
+                      {dbOptions.types.map(opt => {
+                        const isOn = filters.types.includes(opt.name);
+                        const bs = notionBadgeStyle(opt.color, dark);
+                        return (
+                          <button key={opt.name}
+                            className={`f-btn${isOn ? " active" : ""}`}
+                            style={isOn ? { background: bs.background, color: bs.color, borderColor: bs.color } : {}}
+                            onClick={() => toggleFilter("types", opt.name)}>
+                            {opt.name}
+                          </button>
+                        );
+                      })}
+                    </>
+                  ) : <span className="filter-empty">옵션 불러오는 중...</span>}
                 </div>
-              )}
+              </div>
 
               {/* 상품류 (상표 선택 시만) */}
-              {showProductClass && dbOptions.productClasses.length > 0 && (
+              {showProductClass && (
                 <div className="filter-row filter-sub">
                   <span className="filter-label">└ 상품류</span>
                   <div className="filter-btns">
-                    <button className={`f-btn f-all${!filters.productClasses.length ? " active" : ""}`}
-                      onClick={() => clearFilterCategory("productClasses")}>전체</button>
-                    {dbOptions.productClasses.map(opt => {
-                      const isOn = filters.productClasses.includes(opt.name);
-                      const bs = notionBadgeStyle(opt.color, dark);
-                      return (
-                        <button key={opt.name}
-                          className={`f-btn${isOn ? " active" : ""}`}
-                          style={isOn ? { background: bs.background, color: bs.color, borderColor: bs.color } : {}}
-                          onClick={() => toggleFilter("productClasses", opt.name)}>
-                          {opt.name}
-                        </button>
-                      );
-                    })}
+                    {dbOptions.productClasses.length > 0 ? (
+                      <>
+                        <button className={`f-btn f-all${!filters.productClasses.length ? " active" : ""}`}
+                          onClick={() => clearFilterCategory("productClasses")}>전체</button>
+                        {dbOptions.productClasses.map(opt => {
+                          const isOn = filters.productClasses.includes(opt.name);
+                          const bs = notionBadgeStyle(opt.color, dark);
+                          return (
+                            <button key={opt.name}
+                              className={`f-btn${isOn ? " active" : ""}`}
+                              style={isOn ? { background: bs.background, color: bs.color, borderColor: bs.color } : {}}
+                              onClick={() => toggleFilter("productClasses", opt.name)}>
+                              {opt.name}
+                            </button>
+                          );
+                        })}
+                      </>
+                    ) : <span className="filter-empty">상품류 옵션 없음</span>}
                   </div>
                 </div>
               )}
 
               {/* 상태 필터 */}
-              {dbOptions.statuses.length > 0 && (
-                <div className="filter-row">
-                  <span className="filter-label">상태</span>
-                  <div className="filter-btns">
-                    <button className={`f-btn f-all${!filters.statuses.length ? " active" : ""}`}
-                      onClick={() => clearFilterCategory("statuses")}>전체</button>
-                    {dbOptions.statuses.map(opt => {
-                      const isOn = filters.statuses.includes(opt.name);
-                      const bs = notionBadgeStyle(opt.color, dark);
-                      return (
-                        <button key={opt.name}
-                          className={`f-btn${isOn ? " active" : ""}`}
-                          style={isOn ? { background: bs.background, color: bs.color, borderColor: bs.color } : {}}
-                          onClick={() => toggleFilter("statuses", opt.name)}>
-                          {opt.name}
-                        </button>
-                      );
-                    })}
-                  </div>
+              <div className="filter-row">
+                <span className="filter-label">상태</span>
+                <div className="filter-btns">
+                  {dbOptions.statuses.length > 0 ? (
+                    <>
+                      <button className={`f-btn f-all${!filters.statuses.length ? " active" : ""}`}
+                        onClick={() => clearFilterCategory("statuses")}>전체</button>
+                      {dbOptions.statuses.map(opt => {
+                        const isOn = filters.statuses.includes(opt.name);
+                        const bs = notionBadgeStyle(opt.color, dark);
+                        return (
+                          <button key={opt.name}
+                            className={`f-btn${isOn ? " active" : ""}`}
+                            style={isOn ? { background: bs.background, color: bs.color, borderColor: bs.color } : {}}
+                            onClick={() => toggleFilter("statuses", opt.name)}>
+                            {opt.name}
+                          </button>
+                        );
+                      })}
+                    </>
+                  ) : <span className="filter-empty">옵션 불러오는 중...</span>}
                 </div>
-              )}
+              </div>
 
               {/* 서류작업상태 필터 */}
-              {dbOptions.docWorkStates.length > 0 && (
-                <div className="filter-row">
-                  <span className="filter-label">서류</span>
-                  <div className="filter-btns">
-                    <button className={`f-btn f-all${!filters.docWorkStates.length ? " active" : ""}`}
-                      onClick={() => clearFilterCategory("docWorkStates")}>전체</button>
-                    {dbOptions.docWorkStates.map(opt => {
-                      const isOn = filters.docWorkStates.includes(opt.name);
-                      const bs = notionBadgeStyle(opt.color, dark);
-                      return (
-                        <button key={opt.name}
-                          className={`f-btn${isOn ? " active" : ""}`}
-                          style={isOn ? { background: bs.background, color: bs.color, borderColor: bs.color } : {}}
-                          onClick={() => toggleFilter("docWorkStates", opt.name)}>
-                          {opt.name}
-                        </button>
-                      );
-                    })}
-                  </div>
+              <div className="filter-row">
+                <span className="filter-label">서류</span>
+                <div className="filter-btns">
+                  {dbOptions.docWorkStates.length > 0 ? (
+                    <>
+                      <button className={`f-btn f-all${!filters.docWorkStates.length ? " active" : ""}`}
+                        onClick={() => clearFilterCategory("docWorkStates")}>전체</button>
+                      {dbOptions.docWorkStates.map(opt => {
+                        const isOn = filters.docWorkStates.includes(opt.name);
+                        const bs = notionBadgeStyle(opt.color, dark);
+                        return (
+                          <button key={opt.name}
+                            className={`f-btn${isOn ? " active" : ""}`}
+                            style={isOn ? { background: bs.background, color: bs.color, borderColor: bs.color } : {}}
+                            onClick={() => toggleFilter("docWorkStates", opt.name)}>
+                            {opt.name}
+                          </button>
+                        );
+                      })}
+                    </>
+                  ) : <span className="filter-empty">옵션 불러오는 중...</span>}
                 </div>
-              )}
+              </div>
 
               {/* 카테고리 필터 */}
-              {dbOptions.categories.length > 0 && (
-                <div className="filter-row">
-                  <span className="filter-label">카테고리</span>
-                  <div className="filter-btns">
-                    <button className={`f-btn f-all${!filters.categories.length ? " active" : ""}`}
-                      onClick={() => clearFilterCategory("categories")}>전체</button>
-                    {dbOptions.categories.map(opt => {
-                      const isOn = filters.categories.includes(opt.name);
-                      const bs = notionBadgeStyle(opt.color, dark);
-                      return (
-                        <button key={opt.name}
-                          className={`f-btn${isOn ? " active" : ""}`}
-                          style={isOn ? { background: bs.background, color: bs.color, borderColor: bs.color } : {}}
-                          onClick={() => toggleFilter("categories", opt.name)}>
-                          {opt.name}
-                        </button>
-                      );
-                    })}
-                  </div>
+              <div className="filter-row">
+                <span className="filter-label">카테고리</span>
+                <div className="filter-btns">
+                  {dbOptions.categories.length > 0 ? (
+                    <>
+                      <button className={`f-btn f-all${!filters.categories.length ? " active" : ""}`}
+                        onClick={() => clearFilterCategory("categories")}>전체</button>
+                      {dbOptions.categories.map(opt => {
+                        const isOn = filters.categories.includes(opt.name);
+                        const bs = notionBadgeStyle(opt.color, dark);
+                        return (
+                          <button key={opt.name}
+                            className={`f-btn${isOn ? " active" : ""}`}
+                            style={isOn ? { background: bs.background, color: bs.color, borderColor: bs.color } : {}}
+                            onClick={() => toggleFilter("categories", opt.name)}>
+                            {opt.name}
+                          </button>
+                        );
+                      })}
+                    </>
+                  ) : <span className="filter-empty">옵션 불러오는 중...</span>}
                 </div>
-              )}
+              </div>
             </div>
           )}
         </div>
@@ -2235,21 +2246,28 @@ export default function AllPage() {
         .dark .f-btn.f-all { background:#1e293b; color:#64748b; }
         .dark .f-btn.f-all.active { background:#2a3a55; color:#e2e8f0; border-color:#475569; }
 
-        /* 정렬 드롭다운 */
-        .sort-dropdown { position:relative; display:inline-block; }
+        /* ─── 정렬 드롭다운 (인라인 확장 방식) ─── */
         .sort-dropdown-btn { background:#f8faff; border:1.5px solid #c7d2fe; color:#1a3a8f;
           border-radius:8px; padding:6px 12px; font-size:12px; font-weight:700;
           cursor:pointer; font-family:inherit; display:flex; align-items:center; gap:8px;
-          min-width:180px; justify-content:space-between; transition:border-color .15s; }
+          min-width:200px; justify-content:space-between; transition:border-color .15s, background .15s; }
         .sort-dropdown-btn:hover { border-color:#1a3a8f; }
+        .sort-dropdown-btn.open { border-color:#1a3a8f; background:#eef1fb; }
         .dark .sort-dropdown-btn { background:#1e293b; border-color:#334155; color:#93c5fd; }
         .dark .sort-dropdown-btn:hover { border-color:#93c5fd; }
-        .dropdown-arrow { font-size:10px; color:#6b7280; }
-        .sort-dropdown-menu { position:absolute; top:calc(100% + 4px); left:0; z-index:50;
-          background:#fff; border:1.5px solid #e5e9f5; border-radius:10px;
-          box-shadow:0 8px 24px rgba(19,39,79,0.12); padding:4px; min-width:220px;
-          display:flex; flex-direction:column; gap:2px; }
-        .dark .sort-dropdown-menu { background:#1e293b; border-color:#334155; }
+        .dark .sort-dropdown-btn.open { border-color:#93c5fd; background:#1e3a6e; }
+        .dropdown-arrow { font-size:10px; color:#6b7280; transition:transform .25s ease; }
+        .sort-dropdown-btn.open .dropdown-arrow { transform:rotate(180deg); }
+
+        /* 인라인 확장 메뉴 — filter-bar 내부에서 자연스럽게 자리 차지 */
+        .sort-menu-wrap { overflow:hidden; max-height:0;
+          transition:max-height .38s cubic-bezier(0.4,0,0.2,1), margin-top .28s ease;
+          margin-left:70px; }
+        .sort-menu-wrap.open { max-height:400px; margin-top:2px; }
+        .sort-menu-inner { display:flex; flex-direction:column; gap:2px;
+          padding:5px; background:#f8faff; border:1.5px solid #c7d2fe;
+          border-radius:10px; max-width:260px; }
+        .dark .sort-menu-inner { background:#0f172a; border-color:#334155; }
         .sort-option { background:none; border:none; cursor:pointer; font-family:inherit;
           font-size:12px; text-align:left; padding:7px 12px; border-radius:6px;
           color:#374151; transition:background .1s; white-space:nowrap; }
@@ -2258,6 +2276,16 @@ export default function AllPage() {
         .dark .sort-option { color:#cbd5e1; }
         .dark .sort-option:hover { background:#1e3a6e; color:#93c5fd; }
         .dark .sort-option.active { background:#1e3a6e; color:#93c5fd; }
+
+        /* 옵션 로딩 중/없음 메시지 */
+        .filter-empty { font-size:11px; color:#9ca3af; font-style:italic;
+          padding:4px 2px; align-self:center; }
+        .dark .filter-empty { color:#64748b; }
+
+        @media (max-width:768px) {
+          .sort-menu-wrap { margin-left:54px; }
+          .sort-dropdown-btn { min-width:160px; }
+        }
 
         @media (max-width:768px) {
           .filter-label { min-width:48px; font-size:11px; }
