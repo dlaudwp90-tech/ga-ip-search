@@ -1068,12 +1068,15 @@ export default function Home() {
                               <div className="m-info-row">
                                 <span className="m-info-label">📋</span>
                                 <div style={{flex:1}}>
-                                  {row.appNum.split("\n").map((line,li)=>(
+                                  {row.appNum.split("\n").map((line,li)=>{
+                                    const ck=`${i}-mn-${li}`;
+                                    return (
                                     <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
                                       <span className="m-info-item">{line}</span>
-                                      <button className="m-copy-btn" onClick={e=>{e.stopPropagation();navigator.clipboard.writeText(line);}}>복사</button>
+                                      <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>
                                     </div>
-                                  ))}
+                                    );
+                                  })}
                                 </div>
                               </div>
                             )}
@@ -1081,12 +1084,15 @@ export default function Home() {
                               <div className="m-info-row">
                                 <span className="m-info-label">👤</span>
                                 <div style={{flex:1}}>
-                                  {row.appOwner.split("\n").map((line,li)=>(
+                                  {row.appOwner.split("\n").map((line,li)=>{
+                                    const ck=`${i}-mo-${li}`;
+                                    return (
                                     <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
                                       <span className="m-info-item">{line}</span>
-                                      <button className="m-copy-btn" onClick={e=>{e.stopPropagation();navigator.clipboard.writeText(line);}}>복사</button>
+                                      <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>
                                     </div>
-                                  ))}
+                                    );
+                                  })}
                                 </div>
                               </div>
                             )}
@@ -1094,12 +1100,15 @@ export default function Home() {
                               <div className="m-info-row">
                                 <span className="m-info-label">🖊️</span>
                                 <div style={{flex:1}}>
-                                  {row.agentCode.split("\n").map((line,li)=>(
+                                  {row.agentCode.split("\n").map((line,li)=>{
+                                    const ck=`${i}-mc-${li}`;
+                                    return (
                                     <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
                                       <span className="m-info-item">{line}</span>
-                                      <button className="m-copy-btn" onClick={e=>{e.stopPropagation();navigator.clipboard.writeText(line);}}>복사</button>
+                                      <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>
                                     </div>
-                                  ))}
+                                    );
+                                  })}
                                 </div>
                               </div>
                             )}
@@ -1355,12 +1364,15 @@ export default function Home() {
                           <div style={{display:"flex",alignItems:"flex-start",gap:4}}>
                             <span style={{fontSize:11,flexShrink:0}}>📋</span>
                             <div style={{flex:1}}>
-                              {row.appNum.split("\n").map((line,li)=>(
+                              {row.appNum.split("\n").map((line,li)=>{
+                                const ck=`${i}-pn-${li}`;
+                                return (
                                 <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
                                   <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280"}}>{line}</span>
-                                  <button className="m-copy-btn" onClick={e=>{e.stopPropagation();navigator.clipboard.writeText(line);}}>복사</button>
+                                  <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>
                                 </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           </div>
                         )}
@@ -1368,12 +1380,15 @@ export default function Home() {
                           <div style={{display:"flex",alignItems:"flex-start",gap:4}}>
                             <span style={{fontSize:11,flexShrink:0}}>👤</span>
                             <div style={{flex:1}}>
-                              {row.appOwner.split("\n").map((line,li)=>(
+                              {row.appOwner.split("\n").map((line,li)=>{
+                                const ck=`${i}-po-${li}`;
+                                return (
                                 <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
                                   <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280"}}>{line}</span>
-                                  <button className="m-copy-btn" onClick={e=>{e.stopPropagation();navigator.clipboard.writeText(line);}}>복사</button>
+                                  <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>
                                 </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           </div>
                         )}
@@ -1381,12 +1396,15 @@ export default function Home() {
                           <div style={{display:"flex",alignItems:"flex-start",gap:4}}>
                             <span style={{fontSize:11,flexShrink:0}}>🖊️</span>
                             <div style={{flex:1}}>
-                              {row.agentCode.split("\n").map((line,li)=>(
+                              {row.agentCode.split("\n").map((line,li)=>{
+                                const ck=`${i}-pc-${li}`;
+                                return (
                                 <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
                                   <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280"}}>{line}</span>
-                                  <button className="m-copy-btn" onClick={e=>{e.stopPropagation();navigator.clipboard.writeText(line);}}>복사</button>
+                                  <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>
                                 </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           </div>
                         )}
@@ -1947,6 +1965,8 @@ export default function Home() {
           padding:1px 6px; font-size:10px; font-weight:700; cursor:pointer;
           font-family:inherit; flex-shrink:0; }
         .dark .m-copy-btn { background:#1e3a6e; color:#93c5fd; }
+        .m-copy-btn.m-copied { background:#dcfce7; color:#166634; transition:background .15s; }
+        .dark .m-copy-btn.m-copied { background:#14532d; color:#86efac; }
         .dark .m-info-item { color:#94a3b8; }
         .m-card-files { display:flex; flex-direction:column; gap:3px; }
         .m-file-link { font-size:12px; color:#1a3a8f; background:#eef1fb; border-radius:5px;
