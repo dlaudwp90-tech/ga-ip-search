@@ -2087,8 +2087,10 @@ export default function Home() {
         .m-info-row { display:flex; align-items:flex-start; gap:6px; }
         .m-info-label { font-size:14px; flex-shrink:0; margin-top:1px; }
         .m-copy-btn { background:#eef1fb; color:#1a3a8f; border:none; border-radius:4px;
-          padding:2px 3px; font-size:10px; font-weight:700; cursor:pointer;
-          font-family:inherit; flex-shrink:0; min-width:22px; letter-spacing:-0.3px; line-height:1.3; }
+          padding:0 1.5px; font-size:8px; font-weight:700; cursor:pointer;
+          font-family:inherit; flex-shrink:0; min-width:14px; height:19px;
+          letter-spacing:-0.4px; line-height:19px;
+          display:inline-flex; align-items:center; justify-content:center; }
         .dark .m-copy-btn { background:#1e3a6e; color:#93c5fd; }
         .m-copy-btn.m-copied { background:#dcfce7; color:#166634; transition:background .15s; }
         .m-copy-btn.partial { background:#ede9fe; color:#6d28d9; }
@@ -2319,8 +2321,9 @@ export default function Home() {
         .indent-line { padding-left:16px; }
         .dark .first-line,.dark .indent-line { color:#94a3b8; }
         .copy-btn   { flex-shrink:0; background:#eef1fb; color:#1a3a8f; border:none; border-radius:4px;
-          padding:3px 3.5px; font-size:10px; font-weight:700; cursor:pointer; font-family:inherit; transition:background .15s;
-          min-width:22px; letter-spacing:-0.3px; line-height:1.3; }
+          padding:0 1.5px; font-size:8px; font-weight:700; cursor:pointer; font-family:inherit; transition:background .15s;
+          min-width:14px; height:19px; letter-spacing:-0.4px; line-height:19px;
+          display:inline-flex; align-items:center; justify-content:center; }
         .copy-btn:hover { background:#d0d9f0; }
         .copy-btn.copied { background:#dcfce7; color:#166634; }
         .copy-btn.partial { background:#ede9fe; color:#6d28d9; }
