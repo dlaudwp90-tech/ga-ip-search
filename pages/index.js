@@ -19,19 +19,6 @@ function fmtCountdown(s) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-// ─── 줄별 복사 버튼 표시 여부 판별 ─────────────────────────────────────────
-// 규칙: 끝이 ) 이거나 숫자로 끝나면 복사 O, 그 외(한글 라벨, 00류 등) 복사 X
-// 예외 마커: 라인 앞에 공백 2칸( "  " )이 있으면 강제로 복사 제외
-const shouldCopyLine = (line) => {
-  if (!line || !line.trim()) return false;
-  if (line.startsWith("  ")) return false;          // 예외 마커: 공백 2칸 시작
-  const t = line.trim();
-  if (t.endsWith(")")) return true;                 // (특허고객번호) 형식
-  if (/\d$/.test(t)) return true;                  // 출원번호·대리인코드 등 숫자 끝
-  return false;
-};
-// 예외 마커 공백 제거 후 표시용 텍스트 반환
-const displayLine = (line) => line.startsWith("  ") ? line.trimStart() : line;
 function renderSingleLine(text) {
   if (!text) return "—";
   return text.split("\n")[0];
@@ -1085,8 +1072,8 @@ export default function Home() {
                                     const ck=`${i}-mn-${li}`;
                                     return (
                                     <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
-                                      <span className="m-info-item">{displayLine(line)}</span>
-                                      {shouldCopyLine(line) && <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
+                                      <span className="m-info-item">{line}</span>
+                                      <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>
                                     </div>
                                     );
                                   })}
@@ -1101,8 +1088,8 @@ export default function Home() {
                                     const ck=`${i}-mo-${li}`;
                                     return (
                                     <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
-                                      <span className="m-info-item">{displayLine(line)}</span>
-                                      {shouldCopyLine(line) && <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
+                                      <span className="m-info-item">{line}</span>
+                                      <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>
                                     </div>
                                     );
                                   })}
@@ -1117,8 +1104,8 @@ export default function Home() {
                                     const ck=`${i}-mc-${li}`;
                                     return (
                                     <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
-                                      <span className="m-info-item">{displayLine(line)}</span>
-                                      {shouldCopyLine(line) && <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
+                                      <span className="m-info-item">{line}</span>
+                                      <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>
                                     </div>
                                     );
                                   })}
@@ -1381,8 +1368,8 @@ export default function Home() {
                                 const ck=`${i}-pn-${li}`;
                                 return (
                                 <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
-                                  <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280"}}>{displayLine(line)}</span>
-                                  {shouldCopyLine(line) && <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
+                                  <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280"}}>{line}</span>
+                                  <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>
                                 </div>
                                 );
                               })}
@@ -1397,8 +1384,8 @@ export default function Home() {
                                 const ck=`${i}-po-${li}`;
                                 return (
                                 <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
-                                  <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280"}}>{displayLine(line)}</span>
-                                  {shouldCopyLine(line) && <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
+                                  <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280"}}>{line}</span>
+                                  <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>
                                 </div>
                                 );
                               })}
@@ -1413,8 +1400,8 @@ export default function Home() {
                                 const ck=`${i}-pc-${li}`;
                                 return (
                                 <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
-                                  <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280"}}>{displayLine(line)}</span>
-                                  {shouldCopyLine(line) && <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
+                                  <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280"}}>{line}</span>
+                                  <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>
                                 </div>
                                 );
                               })}
@@ -1714,8 +1701,8 @@ export default function Home() {
                                   const ck=`${i}-n-${li}`;
                                   return (
                                     <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
-                                      <span className="first-line">{displayLine(line)||"\u3000"}</span>
-                                      {shouldCopyLine(line) && <button className={`copy-btn${copied[ck]?" copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
+                                      <span className={li===0?"first-line":"indent-line"}>{line||"\u3000"}</span>
+                                      <button className={`copy-btn${copied[ck]?" copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>
                                     </div>
                                   );
                                 })}
@@ -1730,8 +1717,8 @@ export default function Home() {
                                   const ck=`${i}-o-${li}`;
                                   return (
                                     <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
-                                      <span className="first-line">{displayLine(line)||"\u3000"}</span>
-                                      {shouldCopyLine(line) && <button className={`copy-btn${copied[ck]?" copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
+                                      <span className={li===0?"first-line":"indent-line"}>{line||"\u3000"}</span>
+                                      <button className={`copy-btn${copied[ck]?" copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>
                                     </div>
                                   );
                                 })}
@@ -1746,8 +1733,8 @@ export default function Home() {
                                   const ck=`${i}-c-${li}`;
                                   return (
                                     <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
-                                      <span className="first-line">{displayLine(line)||"\u3000"}</span>
-                                      {shouldCopyLine(line) && <button className={`copy-btn${copied[ck]?" copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
+                                      <span className={li===0?"first-line":"indent-line"}>{line||"\u3000"}</span>
+                                      <button className={`copy-btn${copied[ck]?" copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>
                                     </div>
                                   );
                                 })}
