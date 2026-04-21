@@ -1,11 +1,13 @@
 // pages/api/count.js
 // 전체 문서 수 + 상품류별 건수를 한 번의 DB 순회로 집계
+// Notion API 2025-09-03 — data_source 엔드포인트 사용
+// ⚠ 중요: sorts 파라미터가 있어야 전체 row 반환됨 (Notion API 동작 특성)
 
 export default async function handler(req, res) {
   if (req.method !== "GET") return res.status(405).end();
 
   const NOTION_KEY = process.env.NOTION_API_KEY;
-  const DB_ID = process.env.NOTION_DB_ID;
+  const DATA_SOURCE_ID = process.env.NOTION_DATA_SOURCE_ID;
 
   try {
     let count = 0;
@@ -14,13 +16,17 @@ export default async function handler(req, res) {
     let hasMore = true;
 
     while (hasMore) {
-      const body = { page_size: 100 };
+      const body = {
+        page_size: 100,
+        // ⚠ sorts 필수 — 없으면 Notion이 300건에서 막음
+        sorts: [{ timestamp: "created_time", direction: "descending" }],
+      };
       if (cursor) body.start_cursor = cursor;
-      const response = await fetch(`https://api.notion.com/v1/databases/${DB_ID}/query`, {
+      const response = await fetch(`https://api.notion.com/v1/data_sources/${DATA_SOURCE_ID}/query`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${NOTION_KEY}`,
-          "Notion-Version": "2022-06-28",
+          "Notion-Version": "2025-09-03",
           "Content-Type": "application/json",
         },
         body: JSON.stringify(body),
