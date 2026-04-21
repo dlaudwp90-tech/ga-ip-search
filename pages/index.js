@@ -19,23 +19,33 @@ function fmtCountdown(s) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-// ─── 부분복사 + 연도복사: 필드별 핵심 숫자 추출 ───────────────────────────
-// appNum(출원번호)   "40-2026-0075516 (26.04.16)" → 연도 "2026" / 부분 "0075516"
-// appOwner(출원인)   "김은희(4-2026-030277-6)"    → 연도 "2026" / 부분 "030277"
-// agentCode(대리인)  "2026-017894-2"              → 연도 "2026" / 부분 "017894"
-// 추출 실패 시 각 값은 null — 버튼 미표시
+// ─── 이름 + 연도 + 부분 복사 추출 ──────────────────────────────────────────
+// appNum(출원번호)   "40-2026-0075516 (26.04.16)"    → name(없음) / year "2026" / partial "0075516"
+// appOwner(출원인)   "김은희(4-2026-030277-6)"        → name "김은희" / year "2026" / partial "030277"
+//                    "주식회사 코리아이앤피(1-...)"    → name "주식회사 코리아이앤피" ...
+// agentCode(대리인)  "2026-017894-2"                  → name(없음) / year "2026" / partial "017894"
+// 추출 실패 시 null — 버튼 미표시
 const extractCopyExtras = (line, field) => {
-  if (!line) return { year: null, partial: null };
+  const empty = { name: null, year: null, partial: null };
+  if (!line) return empty;
   const t = line.trim();
   let m = null;
   if (field === "appNum") {
     m = t.match(/\d{2}-(\d{4})-(\d{7})\b/);
-  } else if (field === "appOwner") {
-    m = t.match(/\(\s*\d-(\d{4})-(\d{6})-\d\s*\)/);
-  } else if (field === "agentCode") {
-    m = t.match(/\b(\d{4})-(\d{6})-\d\b/);
+    return m ? { name: null, year: m[1], partial: m[2] } : empty;
   }
-  return m ? { year: m[1], partial: m[2] } : { year: null, partial: null };
+  if (field === "appOwner") {
+    // 괄호 바로 앞까지를 name으로, 괄호 내부에서 연도/일련번호 추출
+    m = t.match(/^(.*?)\s*\(\s*\d-(\d{4})-(\d{6})-\d\s*\)/);
+    if (!m) return empty;
+    const rawName = (m[1] || "").trim();
+    return { name: rawName || null, year: m[2], partial: m[3] };
+  }
+  if (field === "agentCode") {
+    m = t.match(/\b(\d{4})-(\d{6})-\d\b/);
+    return m ? { name: null, year: m[1], partial: m[2] } : empty;
+  }
+  return empty;
 };
 // 기존 호환 (미사용 대비)
 const extractPartialCopy = (line, field) => extractCopyExtras(line, field).partial;
@@ -1118,8 +1128,9 @@ export default function Home() {
                                       <span className="m-info-item">{displayLine(line)}</span>
                                       {shouldCopyLine(line) && <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
                                       {(() => { const ex = extractCopyExtras(line, fieldFromCk(ck));
-                                        const yk = `${ck}-y`, pk = `${ck}-p`;
+                                        const nk = `${ck}-nm`, yk = `${ck}-y`, pk = `${ck}-p`;
                                         return (<>
+                                          {ex.name && <button className={`m-copy-btn name${copied[nk]?" m-copied":""}`} onClick={e=>handleCopy(e,ex.name,nk)}>{copied[nk]?"✓":"이름"}</button>}
                                           {ex.year && <button className={`m-copy-btn year${copied[yk]?" m-copied":""}`} onClick={e=>handleCopy(e,ex.year,yk)}>{copied[yk]?"✓":"연도"}</button>}
                                           {ex.partial && <button className={`m-copy-btn partial${copied[pk]?" m-copied":""}`} onClick={e=>handleCopy(e,ex.partial,pk)}>{copied[pk]?"✓":"부분"}</button>}
                                         </>);
@@ -1141,8 +1152,9 @@ export default function Home() {
                                       <span className="m-info-item">{displayLine(line)}</span>
                                       {shouldCopyLine(line) && <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
                                       {(() => { const ex = extractCopyExtras(line, fieldFromCk(ck));
-                                        const yk = `${ck}-y`, pk = `${ck}-p`;
+                                        const nk = `${ck}-nm`, yk = `${ck}-y`, pk = `${ck}-p`;
                                         return (<>
+                                          {ex.name && <button className={`m-copy-btn name${copied[nk]?" m-copied":""}`} onClick={e=>handleCopy(e,ex.name,nk)}>{copied[nk]?"✓":"이름"}</button>}
                                           {ex.year && <button className={`m-copy-btn year${copied[yk]?" m-copied":""}`} onClick={e=>handleCopy(e,ex.year,yk)}>{copied[yk]?"✓":"연도"}</button>}
                                           {ex.partial && <button className={`m-copy-btn partial${copied[pk]?" m-copied":""}`} onClick={e=>handleCopy(e,ex.partial,pk)}>{copied[pk]?"✓":"부분"}</button>}
                                         </>);
@@ -1164,8 +1176,9 @@ export default function Home() {
                                       <span className="m-info-item">{displayLine(line)}</span>
                                       {shouldCopyLine(line) && <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
                                       {(() => { const ex = extractCopyExtras(line, fieldFromCk(ck));
-                                        const yk = `${ck}-y`, pk = `${ck}-p`;
+                                        const nk = `${ck}-nm`, yk = `${ck}-y`, pk = `${ck}-p`;
                                         return (<>
+                                          {ex.name && <button className={`m-copy-btn name${copied[nk]?" m-copied":""}`} onClick={e=>handleCopy(e,ex.name,nk)}>{copied[nk]?"✓":"이름"}</button>}
                                           {ex.year && <button className={`m-copy-btn year${copied[yk]?" m-copied":""}`} onClick={e=>handleCopy(e,ex.year,yk)}>{copied[yk]?"✓":"연도"}</button>}
                                           {ex.partial && <button className={`m-copy-btn partial${copied[pk]?" m-copied":""}`} onClick={e=>handleCopy(e,ex.partial,pk)}>{copied[pk]?"✓":"부분"}</button>}
                                         </>);
@@ -1435,8 +1448,9 @@ export default function Home() {
                                   <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280"}}>{displayLine(line)}</span>
                                   {shouldCopyLine(line) && <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
                                   {(() => { const ex = extractCopyExtras(line, fieldFromCk(ck));
-                                    const yk = `${ck}-y`, pk = `${ck}-p`;
+                                    const nk = `${ck}-nm`, yk = `${ck}-y`, pk = `${ck}-p`;
                                     return (<>
+                                      {ex.name && <button className={`m-copy-btn name${copied[nk]?" m-copied":""}`} onClick={e=>handleCopy(e,ex.name,nk)}>{copied[nk]?"✓":"이름"}</button>}
                                       {ex.year && <button className={`m-copy-btn year${copied[yk]?" m-copied":""}`} onClick={e=>handleCopy(e,ex.year,yk)}>{copied[yk]?"✓":"연도"}</button>}
                                       {ex.partial && <button className={`m-copy-btn partial${copied[pk]?" m-copied":""}`} onClick={e=>handleCopy(e,ex.partial,pk)}>{copied[pk]?"✓":"부분"}</button>}
                                     </>);
@@ -1458,8 +1472,9 @@ export default function Home() {
                                   <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280"}}>{displayLine(line)}</span>
                                   {shouldCopyLine(line) && <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
                                   {(() => { const ex = extractCopyExtras(line, fieldFromCk(ck));
-                                    const yk = `${ck}-y`, pk = `${ck}-p`;
+                                    const nk = `${ck}-nm`, yk = `${ck}-y`, pk = `${ck}-p`;
                                     return (<>
+                                      {ex.name && <button className={`m-copy-btn name${copied[nk]?" m-copied":""}`} onClick={e=>handleCopy(e,ex.name,nk)}>{copied[nk]?"✓":"이름"}</button>}
                                       {ex.year && <button className={`m-copy-btn year${copied[yk]?" m-copied":""}`} onClick={e=>handleCopy(e,ex.year,yk)}>{copied[yk]?"✓":"연도"}</button>}
                                       {ex.partial && <button className={`m-copy-btn partial${copied[pk]?" m-copied":""}`} onClick={e=>handleCopy(e,ex.partial,pk)}>{copied[pk]?"✓":"부분"}</button>}
                                     </>);
@@ -1481,8 +1496,9 @@ export default function Home() {
                                   <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280"}}>{displayLine(line)}</span>
                                   {shouldCopyLine(line) && <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
                                   {(() => { const ex = extractCopyExtras(line, fieldFromCk(ck));
-                                    const yk = `${ck}-y`, pk = `${ck}-p`;
+                                    const nk = `${ck}-nm`, yk = `${ck}-y`, pk = `${ck}-p`;
                                     return (<>
+                                      {ex.name && <button className={`m-copy-btn name${copied[nk]?" m-copied":""}`} onClick={e=>handleCopy(e,ex.name,nk)}>{copied[nk]?"✓":"이름"}</button>}
                                       {ex.year && <button className={`m-copy-btn year${copied[yk]?" m-copied":""}`} onClick={e=>handleCopy(e,ex.year,yk)}>{copied[yk]?"✓":"연도"}</button>}
                                       {ex.partial && <button className={`m-copy-btn partial${copied[pk]?" m-copied":""}`} onClick={e=>handleCopy(e,ex.partial,pk)}>{copied[pk]?"✓":"부분"}</button>}
                                     </>);
@@ -1789,8 +1805,9 @@ export default function Home() {
                                       <span className="first-line">{displayLine(line)||"\u3000"}</span>
                                       {shouldCopyLine(line) && <button className={`copy-btn${copied[ck]?" copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
                                       {(() => { const ex = extractCopyExtras(line, fieldFromCk(ck));
-                                        const yk = `${ck}-y`, pk = `${ck}-p`;
+                                        const nk = `${ck}-nm`, yk = `${ck}-y`, pk = `${ck}-p`;
                                         return (<>
+                                          {ex.name && <button className={`copy-btn name${copied[nk]?" copied":""}`} onClick={e=>handleCopy(e,ex.name,nk)}>{copied[nk]?"✓":"이름"}</button>}
                                           {ex.year && <button className={`copy-btn year${copied[yk]?" copied":""}`} onClick={e=>handleCopy(e,ex.year,yk)}>{copied[yk]?"✓":"연도"}</button>}
                                           {ex.partial && <button className={`copy-btn partial${copied[pk]?" copied":""}`} onClick={e=>handleCopy(e,ex.partial,pk)}>{copied[pk]?"✓":"부분"}</button>}
                                         </>);
@@ -1812,8 +1829,9 @@ export default function Home() {
                                       <span className="first-line">{displayLine(line)||"\u3000"}</span>
                                       {shouldCopyLine(line) && <button className={`copy-btn${copied[ck]?" copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
                                       {(() => { const ex = extractCopyExtras(line, fieldFromCk(ck));
-                                        const yk = `${ck}-y`, pk = `${ck}-p`;
+                                        const nk = `${ck}-nm`, yk = `${ck}-y`, pk = `${ck}-p`;
                                         return (<>
+                                          {ex.name && <button className={`copy-btn name${copied[nk]?" copied":""}`} onClick={e=>handleCopy(e,ex.name,nk)}>{copied[nk]?"✓":"이름"}</button>}
                                           {ex.year && <button className={`copy-btn year${copied[yk]?" copied":""}`} onClick={e=>handleCopy(e,ex.year,yk)}>{copied[yk]?"✓":"연도"}</button>}
                                           {ex.partial && <button className={`copy-btn partial${copied[pk]?" copied":""}`} onClick={e=>handleCopy(e,ex.partial,pk)}>{copied[pk]?"✓":"부분"}</button>}
                                         </>);
@@ -1835,8 +1853,9 @@ export default function Home() {
                                       <span className="first-line">{displayLine(line)||"\u3000"}</span>
                                       {shouldCopyLine(line) && <button className={`copy-btn${copied[ck]?" copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
                                       {(() => { const ex = extractCopyExtras(line, fieldFromCk(ck));
-                                        const yk = `${ck}-y`, pk = `${ck}-p`;
+                                        const nk = `${ck}-nm`, yk = `${ck}-y`, pk = `${ck}-p`;
                                         return (<>
+                                          {ex.name && <button className={`copy-btn name${copied[nk]?" copied":""}`} onClick={e=>handleCopy(e,ex.name,nk)}>{copied[nk]?"✓":"이름"}</button>}
                                           {ex.year && <button className={`copy-btn year${copied[yk]?" copied":""}`} onClick={e=>handleCopy(e,ex.year,yk)}>{copied[yk]?"✓":"연도"}</button>}
                                           {ex.partial && <button className={`copy-btn partial${copied[pk]?" copied":""}`} onClick={e=>handleCopy(e,ex.partial,pk)}>{copied[pk]?"✓":"부분"}</button>}
                                         </>);
@@ -2068,12 +2087,17 @@ export default function Home() {
         .m-info-row { display:flex; align-items:flex-start; gap:6px; }
         .m-info-label { font-size:14px; flex-shrink:0; margin-top:1px; }
         .m-copy-btn { background:#eef1fb; color:#1a3a8f; border:none; border-radius:4px;
-          padding:1px 6px; font-size:10px; font-weight:700; cursor:pointer;
-          font-family:inherit; flex-shrink:0; }
+          padding:2px 3px; font-size:10px; font-weight:700; cursor:pointer;
+          font-family:inherit; flex-shrink:0; min-width:22px; letter-spacing:-0.3px; line-height:1.3; }
         .dark .m-copy-btn { background:#1e3a6e; color:#93c5fd; }
         .m-copy-btn.m-copied { background:#dcfce7; color:#166634; transition:background .15s; }
         .m-copy-btn.partial { background:#ede9fe; color:#6d28d9; }
         .m-copy-btn.year { background:#fce7f3; color:#be185d; }
+        .m-copy-btn.name { background:#fef9c3; color:#854d0e; }
+        .m-copy-btn.name:hover { background:#fef08a; }
+        .m-copy-btn.name.m-copied { background:#dcfce7; color:#166634; }
+        .dark .m-copy-btn.name { background:#422006; color:#fde68a; }
+        .dark .m-copy-btn.name.m-copied { background:#14532d; color:#86efac; }
         .m-copy-btn.year:hover { background:#fbcfe8; }
         .m-copy-btn.year.m-copied { background:#dcfce7; color:#166634; }
         .dark .m-copy-btn.year { background:#500724; color:#f9a8d4; }
@@ -2295,11 +2319,17 @@ export default function Home() {
         .indent-line { padding-left:16px; }
         .dark .first-line,.dark .indent-line { color:#94a3b8; }
         .copy-btn   { flex-shrink:0; background:#eef1fb; color:#1a3a8f; border:none; border-radius:4px;
-          padding:2px 7px; font-size:10px; font-weight:700; cursor:pointer; font-family:inherit; transition:background .15s; }
+          padding:3px 3.5px; font-size:10px; font-weight:700; cursor:pointer; font-family:inherit; transition:background .15s;
+          min-width:22px; letter-spacing:-0.3px; line-height:1.3; }
         .copy-btn:hover { background:#d0d9f0; }
         .copy-btn.copied { background:#dcfce7; color:#166634; }
         .copy-btn.partial { background:#ede9fe; color:#6d28d9; }
         .copy-btn.year { background:#fce7f3; color:#be185d; }
+        .copy-btn.name { background:#fef9c3; color:#854d0e; }
+        .copy-btn.name:hover { background:#fef08a; }
+        .copy-btn.name.copied { background:#dcfce7; color:#166634; }
+        .dark .copy-btn.name { background:#422006; color:#fde68a; }
+        .dark .copy-btn.name.copied { background:#14532d; color:#86efac; }
         .copy-btn.year:hover { background:#fbcfe8; }
         .copy-btn.year.copied { background:#dcfce7; color:#166634; }
         .dark .copy-btn.year { background:#500724; color:#f9a8d4; }
