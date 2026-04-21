@@ -29,13 +29,14 @@ function toRichTextBlocks(text) {
 }
 
 async function getNotionPageId(title) {
+  // Notion API 2025-09-03 — data_source 엔드포인트 사용
   const res = await fetch(
-    `https://api.notion.com/v1/databases/${process.env.NOTION_DB_ID}/query`,
+    `https://api.notion.com/v1/data_sources/${process.env.NOTION_DATA_SOURCE_ID}/query`,
     {
       method: "POST",
       headers: {
         Authorization: `Bearer ${process.env.NOTION_API_KEY}`,
-        "Notion-Version": "2022-06-28",
+        "Notion-Version": "2025-09-03",
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -51,7 +52,7 @@ async function getCurrentLinks(pageId) {
   const res = await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
     headers: {
       Authorization: `Bearer ${process.env.NOTION_API_KEY}`,
-      "Notion-Version": "2022-06-28",
+      "Notion-Version": "2025-09-03",
     },
   });
   const data = await res.json();
@@ -64,7 +65,7 @@ async function saveLinks(pageId, text) {
     method: "PATCH",
     headers: {
       Authorization: `Bearer ${process.env.NOTION_API_KEY}`,
-      "Notion-Version": "2022-06-28",
+      "Notion-Version": "2025-09-03",
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
