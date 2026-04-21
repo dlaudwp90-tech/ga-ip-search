@@ -1,8 +1,11 @@
+// pages/api/forms.js
+// Notion API 2025-09-03 버전 — data_source 엔드포인트 사용
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
 
   const NOTION_KEY = process.env.NOTION_API_KEY;
-  const DB_ID = process.env.NOTION_DB_ID;
+  const DATA_SOURCE_ID = process.env.NOTION_DATA_SOURCE_ID;
 
   const parseRow = (page) => {
     const props = page.properties || {};
@@ -34,12 +37,12 @@ export default async function handler(req, res) {
 
   try {
     const response = await fetch(
-      `https://api.notion.com/v1/databases/${DB_ID}/query`,
+      `https://api.notion.com/v1/data_sources/${DATA_SOURCE_ID}/query`,
       {
         method: "POST",
         headers: {
           Authorization: `Bearer ${NOTION_KEY}`,
-          "Notion-Version": "2022-06-28",
+          "Notion-Version": "2025-09-03",
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
