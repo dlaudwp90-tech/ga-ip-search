@@ -2020,7 +2020,7 @@ export default function AllPage() {
                                 const ck=`${i}-a-${li}`;
                                 return (
                                   <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
-                                    <span className={li===0?"first-line":"indent-line"}>{displayLine(line)||"\u3000"}</span>
+                                    <span className="first-line">{displayLine(line)||"\u3000"}</span>
                                     {shouldCopyLine(line) && <button className={`copy-btn${copied[ck]?" copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
                                   </div>
                                 );
@@ -2036,7 +2036,7 @@ export default function AllPage() {
                                 const ck=`${i}-o-${li}`;
                                 return (
                                   <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
-                                    <span className={li===0?"first-line":"indent-line"}>{displayLine(line)||"\u3000"}</span>
+                                    <span className="first-line">{displayLine(line)||"\u3000"}</span>
                                     {shouldCopyLine(line) && <button className={`copy-btn${copied[ck]?" copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
                                   </div>
                                 );
@@ -2052,7 +2052,7 @@ export default function AllPage() {
                                 const ck=`${i}-c-${li}`;
                                 return (
                                   <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
-                                    <span className={li===0?"first-line":"indent-line"}>{displayLine(line)||"\u3000"}</span>
+                                    <span className="first-line">{displayLine(line)||"\u3000"}</span>
                                     {shouldCopyLine(line) && <button className={`copy-btn${copied[ck]?" copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
                                   </div>
                                 );
