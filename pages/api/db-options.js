@@ -1,18 +1,19 @@
 // pages/api/db-options.js
 // Notion DB 스키마 — multi_select/status 옵션 + status groups 반환
+// Notion API 2025-09-03 — data_source 엔드포인트 사용 (스키마는 data_source에 있음)
 
 export default async function handler(req, res) {
   if (req.method !== "GET") return res.status(405).end();
 
   const NOTION_KEY = process.env.NOTION_API_KEY;
-  const DB_ID = process.env.NOTION_DB_ID;
+  const DATA_SOURCE_ID = process.env.NOTION_DATA_SOURCE_ID;
 
   try {
-    const response = await fetch(`https://api.notion.com/v1/databases/${DB_ID}`, {
+    const response = await fetch(`https://api.notion.com/v1/data_sources/${DATA_SOURCE_ID}`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${NOTION_KEY}`,
-        "Notion-Version": "2022-06-28",
+        "Notion-Version": "2025-09-03",
       },
     });
     const data = await response.json();
