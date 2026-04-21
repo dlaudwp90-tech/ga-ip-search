@@ -1,6 +1,6 @@
 // pages/api/diag.js
-// 필터 유형별로 접근 가능한 row 수를 비교
-// 목적: search.js의 "필터 우회" 현상이 재현되는지 확인
+// 가설: 토큰이 "정렬 기준 상위 300건"만 본다
+// 검증: 정렬 4종으로 각각 fetch → union 사이즈가 300보다 크면 가설 확정
 // 주소창 호출: /api/diag
 
 export default async function handler(req, res) {
@@ -9,14 +9,13 @@ export default async function handler(req, res) {
   const NOTION_KEY = process.env.NOTION_API_KEY;
   const DATA_SOURCE_ID = process.env.NOTION_DATA_SOURCE_ID;
 
-  const countAll = async (filter) => {
-    let count = 0;
+  const queryAll = async (sorts) => {
+    const ids = new Set();
     let cursor = undefined;
     let hasMore = true;
     try {
       while (hasMore) {
-        const body = { page_size: 100 };
-        if (filter) body.filter = filter;
+        const body = { page_size: 100, sorts };
         if (cursor) body.start_cursor = cursor;
         const r = await fetch(`https://api.notion.com/v1/data_sources/${DATA_SOURCE_ID}/query`, {
           method: "POST",
@@ -28,37 +27,46 @@ export default async function handler(req, res) {
           body: JSON.stringify(body),
         });
         const data = await r.json();
-        if (!r.ok) return { error: data.message || `HTTP ${r.status}` };
-        count += (data.results || []).length;
+        if (!r.ok) return { error: data.message || `HTTP ${r.status}`, ids: [] };
+        for (const p of (data.results || [])) ids.add(p.id);
         hasMore = data.has_more;
         cursor = data.next_cursor;
       }
-      return { count };
+      return { count: ids.size, ids: Array.from(ids) };
     } catch (e) {
-      return { error: e.message };
+      return { error: e.message, ids: [] };
     }
   };
 
-  const results = {};
-  results["A_필터없음"] = await countAll(null);
-  results["B_title_is_not_empty"] = await countAll({
-    property: "이름(상표/디자인)",
-    title: { is_not_empty: true },
-  });
-  results["C_category_contains_출원"] = await countAll({
-    property: "카테고리",
-    multi_select: { contains: "출원" },
-  });
-  results["D_or_복합필터_search와동일구조"] = await countAll({
-    or: [
-      { property: "이름(상표/디자인)", title: { is_not_empty: true } },
-      { property: "출원번호", rich_text: { is_not_empty: true } },
-    ],
-  });
+  const R1 = await queryAll([{ timestamp: "created_time", direction: "descending" }]);
+  const R2 = await queryAll([{ timestamp: "created_time", direction: "ascending" }]);
+  const R3 = await queryAll([{ timestamp: "last_edited_time", direction: "descending" }]);
+  const R4 = await queryAll([{ timestamp: "last_edited_time", direction: "ascending" }]);
+
+  const unionSet = new Set([...R1.ids, ...R2.ids, ...R3.ids, ...R4.ids]);
+
+  // 각 집합의 고유 contribution
+  const base = new Set(R1.ids);
+  const r2_extra = R2.ids.filter((id) => !base.has(id)).length;
+  const r3_extra = R3.ids.filter((id) => !base.has(id) && !R2.ids.includes(id)).length;
+  const mergedAfterR3 = new Set([...R1.ids, ...R2.ids, ...R3.ids]);
+  const r4_extra = R4.ids.filter((id) => !mergedAfterR3.has(id)).length;
 
   return res.status(200).json({
-    token_last4: (NOTION_KEY || "").slice(-4),
-    results,
-    hint: "B/C/D 중 하나라도 A보다 크면 → 필터 우회 가능. 그대로 all.js 고치면 됩니다.",
+    R1_created_desc: R1.count,
+    R2_created_asc: R2.count,
+    R3_edited_desc: R3.count,
+    R4_edited_asc: R4.count,
+    union_total: unionSet.size,
+    contribution: {
+      R1_alone: R1.count,
+      R2_added: r2_extra,
+      R3_added: r3_extra,
+      R4_added: r4_extra,
+    },
+    conclusion:
+      unionSet.size > 300
+        ? `🎉 가설 확정: 정렬별로 다른 집합을 반환. union=${unionSet.size}. merge 전략으로 해결 가능.`
+        : "❌ 정렬에 관계없이 동일한 300건. 가설 기각. 우회 방법 없음.",
   });
 }
