@@ -303,6 +303,41 @@ export default function Home() {
     });
   }, [user]);
 
+  // ── 개인 설정 (viewType / dark / tabView) 로드·저장 ──
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
+  useEffect(() => {
+    if (!user?.primaryEmailAddress?.emailAddress) return;
+    fetch("/api/preferences", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: user.primaryEmailAddress.emailAddress }),
+    })
+      .then(r => r.json())
+      .then(d => {
+        if (d?.prefs) {
+          if (typeof d.prefs.viewType === "string") setViewType(d.prefs.viewType);
+          if (typeof d.prefs.dark === "boolean")    setDark(d.prefs.dark);
+          if (typeof d.prefs.tabView === "string")  setTabView(d.prefs.tabView);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setPrefsLoaded(true));
+  }, [user]);
+
+  // 값이 바뀔 때마다 자동 저장 (최초 로드 전엔 저장 안 함)
+  useEffect(() => {
+    if (!prefsLoaded) return;
+    if (!user?.primaryEmailAddress?.emailAddress) return;
+    fetch("/api/preferences", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: user.primaryEmailAddress.emailAddress,
+        prefs: { viewType, dark, tabView },
+      }),
+    }).catch(() => {});
+  }, [viewType, dark, tabView, prefsLoaded, user]);
+
   // 알림 로드
   const loadNotifications = async () => {
     if (!user?.primaryEmailAddress?.emailAddress) return;
@@ -979,6 +1014,80 @@ export default function Home() {
                 </button>
               </div>
             )}
+
+            {/* ── 개인 설정 ── */}
+            <div style={{ borderTop:dark?"1px solid #334155":"1px solid #e5e9f5",
+              marginTop:4, paddingTop:8 }}>
+              <div style={{ fontSize:10, color:dark?"#94a3b8":"#9ca3af", fontWeight:600,
+                padding:"0 10px 6px", letterSpacing:"0.04em" }}>
+                기본 설정 (자동 저장)
+              </div>
+
+              {/* 기본 뷰 */}
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
+                padding:"4px 10px", fontSize:11, color:dark?"#e2e8f0":"#13274F" }}>
+                <span>기본 뷰</span>
+                <div style={{ display:"flex", gap:2, border:dark?"1px solid #334155":"1px solid #cbd5e1",
+                  borderRadius:6, padding:1, background:dark?"#0f172a":"#f8faff" }}>
+                  {[
+                    { v:"table", label:"표" },
+                    { v:"card",  label:"카드" },
+                  ].map(o => (
+                    <button key={o.v} onClick={() => setViewType(o.v)}
+                      style={{ fontSize:10, fontWeight:600, padding:"3px 8px", borderRadius:4,
+                        border:"none", cursor:"pointer", fontFamily:"inherit",
+                        background: viewType===o.v ? (dark?"#334155":"#13274F") : "transparent",
+                        color: viewType===o.v ? "#fff" : (dark?"#94a3b8":"#6b7280") }}>
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 테마 */}
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
+                padding:"4px 10px", fontSize:11, color:dark?"#e2e8f0":"#13274F" }}>
+                <span>테마</span>
+                <div style={{ display:"flex", gap:2, border:dark?"1px solid #334155":"1px solid #cbd5e1",
+                  borderRadius:6, padding:1, background:dark?"#0f172a":"#f8faff" }}>
+                  {[
+                    { v:false, label:"라이트" },
+                    { v:true,  label:"다크" },
+                  ].map(o => (
+                    <button key={String(o.v)} onClick={() => setDark(o.v)}
+                      style={{ fontSize:10, fontWeight:600, padding:"3px 8px", borderRadius:4,
+                        border:"none", cursor:"pointer", fontFamily:"inherit",
+                        background: dark===o.v ? (dark?"#334155":"#13274F") : "transparent",
+                        color: dark===o.v ? "#fff" : (dark?"#94a3b8":"#6b7280") }}>
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 기기 뷰 */}
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
+                padding:"4px 10px 8px", fontSize:11, color:dark?"#e2e8f0":"#13274F" }}>
+                <span>기기 뷰</span>
+                <div style={{ display:"flex", gap:2, border:dark?"1px solid #334155":"1px solid #cbd5e1",
+                  borderRadius:6, padding:1, background:dark?"#0f172a":"#f8faff" }}>
+                  {[
+                    { v:"auto",   label:"자동" },
+                    { v:"mobile", label:"모바일" },
+                    { v:"pc",     label:"PC" },
+                  ].map(o => (
+                    <button key={o.v} onClick={() => setTabView(o.v)}
+                      style={{ fontSize:10, fontWeight:600, padding:"3px 7px", borderRadius:4,
+                        border:"none", cursor:"pointer", fontFamily:"inherit",
+                        background: tabView===o.v ? (dark?"#334155":"#13274F") : "transparent",
+                        color: tabView===o.v ? "#fff" : (dark?"#94a3b8":"#6b7280") }}>
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
             <button
               style={{ fontSize:12, fontWeight:700, padding:"8px 14px", borderRadius:7, textAlign:"center",
                 background:dark?"#450a0a":"#fff1f2", color:dark?"#f87171":"#dc2626",
