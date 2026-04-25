@@ -607,7 +607,7 @@ export default function KiprisPage() {
             • <code style={{background:c("#f1f5f9","#334155"),padding:"0 3px",borderRadius:3}}>AP=[이름]</code> 출원인<br />
             • <code style={{background:c("#f1f5f9","#334155"),padding:"0 3px",borderRadius:3}}>AG=[이름]</code> 대리인<br />
             • <code style={{background:c("#f1f5f9","#334155"),padding:"0 3px",borderRadius:3}}>RH=[이름]</code> 권리자<br />
-            • <code style={{background:c("#f1f5f9","#334155"),padding:"0 3px",borderRadius:3}}>+</code> AND · <code style={{background:c("#f1f5f9","#334155"),padding:"0 3px",borderRadius:3}}>*</code> OR<br />
+            • <code style={{background:c("#f1f5f9","#334155"),padding:"0 3px",borderRadius:3}}>*</code> AND · <code style={{background:c("#f1f5f9","#334155"),padding:"0 3px",borderRadius:3}}>+</code> OR<br />
             • 검색창 조건과 자동 결합 (AND)
           </div>
         </div>
@@ -729,7 +729,7 @@ export default function KiprisPage() {
                     </div>
                   </div>
                   <div style={{fontSize:11,color:c("#9ca3af","#64748b"),paddingLeft:4}}>
-                    검색식 자동 변환: 출원인 → <code style={{background:c("#f1f5f9","#334155"),padding:"0 4px",borderRadius:3,fontSize:10}}>AP=[이름]</code> · 대리인 → <code style={{background:c("#f1f5f9","#334155"),padding:"0 4px",borderRadius:3,fontSize:10}}>AG=[이름]</code> · 좌측 패널은 추가 필터링용
+                    검색식 자동 변환: 출원인 → <code style={{background:c("#f1f5f9","#334155"),padding:"0 4px",borderRadius:3,fontSize:10}}>AP=[이름]</code> · 대리인 → <code style={{background:c("#f1f5f9","#334155"),padding:"0 4px",borderRadius:3,fontSize:10}}>AG=[이름]</code> · 모든 조건은 AND로 결합
                   </div>
                 </div>
               )}
