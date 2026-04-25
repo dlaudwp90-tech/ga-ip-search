@@ -497,7 +497,7 @@ export default function KiprisPage() {
                       지정상품 상세 정보는 KIPRIS Plus의 무료 API로 제공되지 않습니다.<br />
                       (BULK 다운로드 또는 KIPRIS 사이트 직접 조회만 가능)
                     </div>
-                    <a href={`https://www.kipris.or.kr/khome/search/searchResult.do?tab=trademark&searchQuery=${appNum.replace(/-/g,"")}`}
+                    <a href={`https://www.kipris.or.kr/khome/search/searchResult.do?tab=trademark&searchQuery=AN%3D%5B${appNum}%5D`}
                       target="_blank" rel="noreferrer"
                       style={{display:"inline-flex",alignItems:"center",gap:6,padding:"8px 14px",background:c("#13274F","#1e3a6e"),color:"#fff",fontSize:12,fontWeight:700,borderRadius:6,textDecoration:"none",cursor:"pointer"}}>
                       🔗 KIPRIS에서 직접 보기
