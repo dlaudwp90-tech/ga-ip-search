@@ -518,6 +518,22 @@ export default function KiprisPage() {
                   ⚠️ 상세정보 API 오류: {detailData.error}
                 </div>
               )}
+
+              {/* 디버그: 데이터 구조 확인용 */}
+              {detailData?.debug && (goods.length === 0 || !bib) && (
+                <details style={{marginTop:12, fontSize:10, color:c("#9ca3af","#64748b")}}>
+                  <summary style={{cursor:"pointer", padding:"6px 10px", background:c("#fef9c3","#422006"), borderRadius:6}}>
+                    🔧 디버그 정보 (KIPRIS 응답 구조 확인)
+                  </summary>
+                  <div style={{marginTop:6, padding:"8px 10px", background:c("#f8faff","#172035"), borderRadius:6, fontFamily:"monospace", whiteSpace:"pre-wrap", wordBreak:"break-all", maxHeight:200, overflow:"auto"}}>
+                    <strong>서지정보 응답 ({detailData.debug.bibLen} bytes):</strong>
+                    <br />{detailData.debug.bibSnippet}
+                    <br /><br />
+                    <strong>지정상품 응답 ({detailData.debug.goodsLen} bytes):</strong>
+                    <br />{detailData.debug.goodsSnippet}
+                  </div>
+                </details>
+              )}
             </>
           )}
         </div>
