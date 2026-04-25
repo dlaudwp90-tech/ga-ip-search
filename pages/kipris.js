@@ -728,8 +728,8 @@ export default function KiprisPage() {
                         style={{flex:1,border:"none",outline:"none",fontSize:13,color:c("#1f2937","#e2e8f0"),background:"transparent",fontFamily:"inherit",width:0,minWidth:0}} />
                     </div>
                   </div>
-                  <div style={{fontSize:11,color:c("#9ca3af","#64748b"),paddingLeft:4}}>
-                    검색식 자동 변환: 출원인 → <code style={{background:c("#f1f5f9","#334155"),padding:"0 4px",borderRadius:3,fontSize:10}}>AP=[이름]</code> · 대리인 → <code style={{background:c("#f1f5f9","#334155"),padding:"0 4px",borderRadius:3,fontSize:10}}>AG=[이름]</code> · 모든 조건은 AND로 결합
+                  <div style={{fontSize:11,color:c("#9ca3af","#64748b"),paddingLeft:4,lineHeight:1.6}}>
+                    검색식 자동 변환: 출원인→<code style={{background:c("#f1f5f9","#334155"),padding:"0 4px",borderRadius:3,fontSize:10}}>AP=[]</code> · 대리인→<code style={{background:c("#f1f5f9","#334155"),padding:"0 4px",borderRadius:3,fontSize:10}}>AG=[]</code> · 상품류→<code style={{background:c("#f1f5f9","#334155"),padding:"0 4px",borderRadius:3,fontSize:10}}>CL=[]</code> · 유사군→<code style={{background:c("#f1f5f9","#334155"),padding:"0 4px",borderRadius:3,fontSize:10}}>SC=[]</code> · 모든 조건은 AND
                   </div>
                 </div>
               )}
