@@ -497,17 +497,13 @@ export default function KiprisPage() {
                       지정상품 상세 정보는 KIPRIS Plus의 무료 API로 제공되지 않습니다.<br />
                       (BULK 다운로드 또는 KIPRIS 사이트 직접 조회만 가능)
                     </div>
-                    <a href={`https://www.kipris.or.kr/khome/main.do`} target="_blank" rel="noreferrer"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        const url = `http://kpat.kipris.or.kr/kpat/biblioa.do?method=biblioFrame&applno=${appNum.replace(/-/g,"")}`;
-                        window.open(url, "_blank");
-                      }}
+                    <a href={`https://www.kipris.or.kr/khome/search/searchResult.do?tab=trademark&searchQuery=${appNum.replace(/-/g,"")}`}
+                      target="_blank" rel="noreferrer"
                       style={{display:"inline-flex",alignItems:"center",gap:6,padding:"8px 14px",background:c("#13274F","#1e3a6e"),color:"#fff",fontSize:12,fontWeight:700,borderRadius:6,textDecoration:"none",cursor:"pointer"}}>
                       🔗 KIPRIS에서 직접 보기
                     </a>
                     <div style={{fontSize:10,color:c("#9ca3af","#64748b"),marginTop:8}}>
-                      → 출원번호 {appNum}의 상세 페이지로 이동
+                      → 출원번호 {appNum}의 KIPRIS 상표 검색 결과로 이동
                     </div>
                   </div>
                 )}
