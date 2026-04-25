@@ -492,19 +492,27 @@ export default function KiprisPage() {
                     </div>
                   </>
                 ) : (
-                  <div style={{fontSize:12,color:c("#9ca3af","#64748b"),padding:"10px 0"}}>지정상품 정보를 불러올 수 없습니다.</div>
+                  <div style={{padding:"14px 16px",background:c("#f8faff","#172035"),borderRadius:8,border:`1px dashed ${c("#cbd5e1","#475569")}`}}>
+                    <div style={{fontSize:12,color:c("#6b7280","#94a3b8"),lineHeight:1.6,marginBottom:10}}>
+                      지정상품 상세 정보는 KIPRIS Plus의 무료 API로 제공되지 않습니다.<br />
+                      (BULK 다운로드 또는 KIPRIS 사이트 직접 조회만 가능)
+                    </div>
+                    <a href={`https://www.kipris.or.kr/khome/main.do`} target="_blank" rel="noreferrer"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        const url = `http://kpat.kipris.or.kr/kpat/biblioa.do?method=biblioFrame&applno=${appNum.replace(/-/g,"")}`;
+                        window.open(url, "_blank");
+                      }}
+                      style={{display:"inline-flex",alignItems:"center",gap:6,padding:"8px 14px",background:c("#13274F","#1e3a6e"),color:"#fff",fontSize:12,fontWeight:700,borderRadius:6,textDecoration:"none",cursor:"pointer"}}>
+                      🔗 KIPRIS에서 직접 보기
+                    </a>
+                    <div style={{fontSize:10,color:c("#9ca3af","#64748b"),marginTop:8}}>
+                      → 출원번호 {appNum}의 상세 페이지로 이동
+                    </div>
+                  </div>
                 )}
               </section>
               {detailData?.error && <div style={{color:"#dc2626",fontSize:11,padding:"8px 12px",background:c("#fff1f2","#450a0a"),borderRadius:6}}>⚠️ {detailData.error}</div>}
-              {detailData?.debug && goods.length === 0 && (
-                <details style={{marginTop:12,fontSize:10,color:c("#9ca3af","#64748b")}}>
-                  <summary style={{cursor:"pointer",padding:"6px 10px",background:c("#fef9c3","#422006"),borderRadius:6}}>🔧 디버그</summary>
-                  <div style={{marginTop:6,padding:"8px 10px",background:c("#f8faff","#172035"),borderRadius:6,fontFamily:"monospace",whiteSpace:"pre-wrap",wordBreak:"break-all",maxHeight:200,overflow:"auto"}}>
-                    <strong>지정상품 URL:</strong><br />{detailData.debug.goodsUsedUrl}<br /><br />
-                    <strong>지정상품 응답 ({detailData.debug.goodsLen}b):</strong><br />{detailData.debug.goodsSnippet}
-                  </div>
-                </details>
-              )}
             </>
           )}
         </div>
