@@ -83,13 +83,14 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "검색 조건을 하나 이상 입력해주세요" });
     }
 
-    // 검색식 빌드: 모든 조건을 + (AND)로 결합
+    // 검색식 빌드: 모든 조건을 * (AND)로 결합
+    // KIPRIS 검색식: * = AND, + = OR (직관과 반대 주의!)
     const queryParts = [];
     if (tradeMarkName) queryParts.push(tradeMarkName.trim());
     if (applicantName) queryParts.push(`AP=[${applicantName.trim()}]`);
     if (agentName)     queryParts.push(`AG=[${agentName.trim()}]`);
-    if (extraQuery)    queryParts.push(extraQuery.trim()); // 좌측 패널 검색식 그대로 추가
-    const finalQuery = queryParts.join("+");
+    if (extraQuery)    queryParts.push(extraQuery.trim());
+    const finalQuery = queryParts.join("*");
 
     const params = new URLSearchParams({
       ServiceKey: ACCESS_KEY,
