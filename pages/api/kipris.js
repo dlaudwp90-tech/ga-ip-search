@@ -129,19 +129,20 @@ export default async function handler(req, res) {
   }
 
   // ════════════════════════════════════════════
-  // MODE: detail (서지 + 지정상품 + 출원인 병렬)
+  // MODE: detail (서지 + 지정상품 병렬)
+  // 정확한 엔드포인트:
+  //   - getBibliographyDetailInfoSearch  (서지상세)
+  //   - trademarkDesignationGoodstInfo   (지정상품)
   // ════════════════════════════════════════════
   if (mode === "detail") {
     if (!applicationNumber) return res.status(400).json({ error: "applicationNumber required" });
     const numClean = applicationNumber.replace(/\D/g, "");
     const base = "http://plus.kipris.or.kr/kipo-api/kipi/trademarkInfoSearchService";
-    const keyParam = `ServiceKey=${encodeURIComponent(ACCESS_KEY)}`;
 
-    // KIPRIS 상세 API 후보들 (이름 불확실한 경우 여러개 시도)
+    // 정확한 KIPRIS Plus 오퍼레이션 이름들
     const endpoints = {
-      bibliography: `${base}/trademarkBibliographyInfo?applicationNumber=${numClean}&${keyParam}`,
-      goods:        `${base}/trademarkDesignatedGoodstInfo?applicationNumber=${numClean}&${keyParam}`,
-      applicant:    `${base}/trademarkApplicantInfo?applicationNumber=${numClean}&${keyParam}`,
+      bibliography: `${base}/getBibliographyDetailInfoSearch?applicationNumber=${numClean}&ServiceKey=${encodeURIComponent(ACCESS_KEY)}`,
+      goods:        `${base}/trademarkDesignationGoodstInfo?applicationNumber=${numClean}&ServiceKey=${encodeURIComponent(ACCESS_KEY)}`,
     };
 
     const safeFetch = async (url) => {
@@ -152,48 +153,73 @@ export default async function handler(req, res) {
     };
 
     try {
-      const [bibXml, goodsXml, appXml] = await Promise.all([
+      const [bibXml, goodsXml] = await Promise.all([
         safeFetch(endpoints.bibliography),
         safeFetch(endpoints.goods),
-        safeFetch(endpoints.applicant),
       ]);
 
-      // 서지정보 파싱 (여러 태그 시도)
+      // ── 서지정보 파싱 ──
+      // 응답 구조: <biblioSummaryInfo> / <applicantInfo> / <agentInfo> / <designatedGoodInfo> 등이 들어있는 형태
       let bibliography = null;
-      for (const tag of ["biblioSummaryInfo", "bibliographyInfo", "item"]) {
+      let applicants = [];
+
+      // 서지요약 블록
+      for (const tag of ["biblioSummaryInfoArray", "biblioSummaryInfo", "item"]) {
         const blocks = getAll(bibXml, tag);
         if (blocks.length > 0) {
           const b = blocks[0];
           const g = (t) => get1(b, t);
           bibliography = {
-            applicationNumber:  fmtAppNum(g("applicationNumber")),
-            applicationDate:    fmtDate(g("applicationDate")),
-            registrationNumber: g("registrationNumber"),
-            registrationDate:   fmtDate(g("registrationDate")),
-            publicationNumber:  g("publicationNumber") || g("publicNumber"),
-            publicationDate:    fmtDate(g("publicationDate") || g("publicDate")),
-            title:              g("title"),
-            drawing:            g("drawing"),
-            bigDrawing:         g("bigDrawing"),
-            applicationStatus:  g("applicationStatus"),
-            classificationCode: g("classificationCode"),
-            viennaCode:         g("viennaCode"),
-            priorityNumber:     g("priorityNumber"),
-            priorityDate:       fmtDate(g("priorityDate")),
+            applicationNumber:   fmtAppNum(g("applicationNumber")),
+            applicationDate:     fmtDate(g("applicationDate")),
+            registrationNumber:  g("registrationNumber"),
+            registrationDate:    fmtDate(g("registrationDate")),
+            publicationNumber:   g("publicationNumber") || g("publicNumber"),
+            publicationDate:     fmtDate(g("publicationDate") || g("publicDate")),
+            registrationPublicNumber: g("registrationPublicNumber"),
+            registrationPublicDate:   fmtDate(g("registrationPublicDate")),
+            title:               g("title"),
+            drawing:             g("drawing"),
+            bigDrawing:          g("bigDrawing"),
+            applicationStatus:   g("applicationStatus"),
+            classificationCode:  g("classificationCode"),
+            viennaCode:          g("viennaCode"),
+            priorityNumber:      g("priorityNumber"),
+            priorityDate:        fmtDate(g("priorityDate")),
+            internationalRegisterNumber: g("internationalRegisterNumber"),
+            internationalRegisterDate:   fmtDate(g("internationalRegisterDate")),
           };
           break;
         }
       }
 
-      // 지정상품 파싱
+      // 출원인 정보 파싱 (applicantInfo, agentInfo, RegistrationLastHolderInfo 등)
+      const applicantBlocks = [
+        ...getAll(bibXml, "applicantInfo").map(b => ({ block: b, role: "출원인" })),
+        ...getAll(bibXml, "agentInfo").map(b => ({ block: b, role: "대리인" })),
+        ...getAll(bibXml, "rightHoler").map(b => ({ block: b, role: "권리자" })),
+        ...getAll(bibXml, "RegistrationLastHolderInfo").map(b => ({ block: b, role: "최종권리자" })),
+      ];
+      applicants = applicantBlocks.map(({ block, role }) => {
+        const g = (t) => get1(block, t);
+        return {
+          name:    g("name") || g("applicantName") || g("agentName"),
+          code:    g("code") || g("applicantCode") || g("agentCode") || g("customerNumber"),
+          address: g("address") || g("applicantAddress") || g("agentAddress"),
+          role,
+        };
+      }).filter(a => a.name);
+
+      // ── 지정상품 파싱 ──
+      // 응답 구조: <trademarkDesignationGoodstInfo> 또는 <item> 안에 designatedGoodInfo가 반복됨
       let designatedGoods = [];
-      for (const tag of ["designatedGoodstInfo", "designatedGoodsInfo", "goodsInfo", "item"]) {
+      for (const tag of ["designatedGoodInfo", "designatedGoodsInfo", "item"]) {
         const blocks = getAll(goodsXml, tag);
         if (blocks.length > 0) {
           designatedGoods = blocks.map(b => {
             const g = (t) => get1(b, t);
             return {
-              classificationCode: g("classificationCode") || g("goodsClass") || g("goodsClassificationCode"),
+              classificationCode: g("classificationCode") || g("goodsClassificationCode") || g("goodsClass"),
               goodName:           g("goodName") || g("classOfGoodService") || g("classOfGoodSerivice") || g("designatedGoodsName"),
               similarityCode:     g("similarityCode"),
             };
@@ -202,21 +228,21 @@ export default async function handler(req, res) {
         }
       }
 
-      // 출원인/대리인 파싱
-      let applicants = [];
-      for (const tag of ["applicantInfo", "applicantsInfo", "item"]) {
-        const blocks = getAll(appXml, tag);
-        if (blocks.length > 0) {
-          applicants = blocks.map(b => {
-            const g = (t) => get1(b, t);
-            return {
-              name:    g("name") || g("applicantName") || g("applicant"),
-              code:    g("code") || g("customerNumber") || g("applicantCode"),
-              address: g("address") || g("applicantAddress"),
-              role:    g("role") || "출원인",
-            };
-          }).filter(a => a.name);
-          break;
+      // 만약 지정상품이 비었다면 서지정보 XML에 들어있는 경우도 시도
+      if (designatedGoods.length === 0) {
+        for (const tag of ["designatedGoodInfo", "designatedGoodsInfo"]) {
+          const blocks = getAll(bibXml, tag);
+          if (blocks.length > 0) {
+            designatedGoods = blocks.map(b => {
+              const g = (t) => get1(b, t);
+              return {
+                classificationCode: g("classificationCode") || g("goodsClassificationCode") || g("goodsClass"),
+                goodName:           g("goodName") || g("classOfGoodService") || g("classOfGoodSerivice") || g("designatedGoodsName"),
+                similarityCode:     g("similarityCode"),
+              };
+            }).filter(g => g.goodName);
+            if (designatedGoods.length > 0) break;
+          }
         }
       }
 
@@ -224,7 +250,12 @@ export default async function handler(req, res) {
         bibliography,
         designatedGoods,
         applicants,
-        debug: { bibLen: bibXml.length, goodsLen: goodsXml.length, appLen: appXml.length },
+        debug: {
+          bibLen: bibXml.length,
+          goodsLen: goodsXml.length,
+          bibSnippet: bibXml.slice(0, 500),
+          goodsSnippet: goodsXml.slice(0, 500),
+        },
       });
     } catch (err) { return res.status(500).json({ error: err.message }); }
   }
