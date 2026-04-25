@@ -497,14 +497,28 @@ export default function KiprisPage() {
                       지정상품 상세 정보는 KIPRIS Plus의 무료 API로 제공되지 않습니다.<br />
                       (BULK 다운로드 또는 KIPRIS 사이트 직접 조회만 가능)
                     </div>
-                    <a href={`https://www.kipris.or.kr/khome/search/searchResult.do?tab=trademark&searchQuery=AN%3D%5B${appNum}%5D`}
-                      target="_blank" rel="noreferrer"
-                      style={{display:"inline-flex",alignItems:"center",gap:6,padding:"8px 14px",background:c("#13274F","#1e3a6e"),color:"#fff",fontSize:12,fontWeight:700,borderRadius:6,textDecoration:"none",cursor:"pointer"}}>
-                      🔗 KIPRIS에서 직접 보기
-                    </a>
-                    <div style={{fontSize:10,color:c("#9ca3af","#64748b"),marginTop:8}}>
-                      → 출원번호 {appNum}의 KIPRIS 상표 검색 결과로 이동
+                  <div style={{padding:"14px 16px",background:c("#f8faff","#172035"),borderRadius:8,border:`1px dashed ${c("#cbd5e1","#475569")}`}}>
+                    <div style={{fontSize:12,color:c("#6b7280","#94a3b8"),lineHeight:1.6,marginBottom:10}}>
+                      지정상품 상세 정보는 KIPRIS Plus 무료 API로 제공되지 않습니다.<br />
+                      아래 출원번호를 복사 후 KIPRIS에서 직접 확인해주세요.
                     </div>
+                    {/* 출원번호 복사 버튼 */}
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+                      <code style={{flex:1,padding:"8px 12px",background:c("#e5e9f5","#0f172a"),borderRadius:6,fontSize:13,fontWeight:700,color:c("#1a3a8f","#93c5fd"),letterSpacing:"0.5px"}}>{appNum}</code>
+                      <button onClick={() => navigator.clipboard.writeText(appNum).then(() => alert("복사됨!"))}
+                        style={{padding:"8px 12px",background:c("#e5e9f5","#334155"),border:"none",borderRadius:6,fontSize:12,fontWeight:700,cursor:"pointer",color:c("#374151","#cbd5e1"),fontFamily:"inherit",whiteSpace:"nowrap"}}>
+                        📋 복사
+                      </button>
+                    </div>
+                    <a href="https://www.kipris.or.kr/khome/search/searchResult.do?tab=trademark"
+                      target="_blank" rel="noreferrer"
+                      style={{display:"inline-flex",alignItems:"center",gap:6,padding:"8px 14px",background:c("#13274F","#1e3a6e"),color:"#fff",fontSize:12,fontWeight:700,borderRadius:6,textDecoration:"none"}}>
+                      🔗 KIPRIS 상표 검색 열기
+                    </a>
+                    <div style={{fontSize:10,color:c("#9ca3af","#64748b"),marginTop:8,lineHeight:1.5}}>
+                      ① 출원번호 복사 → ② KIPRIS 열기 → ③ 검색창에 붙여넣기
+                    </div>
+                  </div>
                   </div>
                 )}
               </section>
