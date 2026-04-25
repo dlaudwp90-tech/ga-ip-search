@@ -85,11 +85,29 @@ export default async function handler(req, res) {
 
     // 검색식 빌드: 모든 조건을 * (AND)로 결합
     // KIPRIS 검색식: * = AND, + = OR (직관과 반대 주의!)
+    // 필드 코드: AP(출원인), AG(대리인), CL(상품류), SC(유사군), RH(권리자)
     const queryParts = [];
-    if (tradeMarkName) queryParts.push(tradeMarkName.trim());
-    if (applicantName) queryParts.push(`AP=[${applicantName.trim()}]`);
-    if (agentName)     queryParts.push(`AG=[${agentName.trim()}]`);
-    if (extraQuery)    queryParts.push(extraQuery.trim());
+    if (tradeMarkName)      queryParts.push(tradeMarkName.trim());
+    if (applicantName)      queryParts.push(`AP=[${applicantName.trim()}]`);
+    if (agentName)          queryParts.push(`AG=[${agentName.trim()}]`);
+    if (classificationCode) {
+      // 쉼표로 여러 류 입력 시 OR로 묶음 (예: "35,41" → "(CL=[35]+CL=[41])")
+      const codes = classificationCode.replace(/[^0-9,]/g, "").split(",").filter(Boolean);
+      if (codes.length === 1) {
+        queryParts.push(`CL=[${codes[0].padStart(2, "0")}]`);
+      } else if (codes.length > 1) {
+        queryParts.push("(" + codes.map(c => `CL=[${c.padStart(2, "0")}]`).join("+") + ")");
+      }
+    }
+    if (similarityCode) {
+      const codes = similarityCode.trim().toUpperCase().split(",").map(s => s.trim()).filter(Boolean);
+      if (codes.length === 1) {
+        queryParts.push(`SC=[${codes[0]}]`);
+      } else if (codes.length > 1) {
+        queryParts.push("(" + codes.map(c => `SC=[${c}]`).join("+") + ")");
+      }
+    }
+    if (extraQuery) queryParts.push(extraQuery.trim());
     const finalQuery = queryParts.join("*");
 
     const params = new URLSearchParams({
@@ -99,10 +117,7 @@ export default async function handler(req, res) {
       pageNo: String(pageNo || 1),
     });
     if (finalQuery) params.append("searchString", finalQuery);
-    if (classificationCode) params.append("classificationCode", classificationCode.replace(/[^0-9,]/g, ""));
 
-    // 행정상태 필터 (출원/공고/등록 등)
-    // KIPRIS 응답 후 클라이언트 필터링도 가능하지만 서버에서 처리 가능한 케이스만
     const url = `http://plus.kipris.or.kr/kipo-api/kipi/trademarkInfoSearchService/getWordSearch?${params.toString()}`;
 
     try {
