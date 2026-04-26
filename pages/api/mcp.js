@@ -349,13 +349,9 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, Mcp-Session-Id");
   if (req.method === "OPTIONS") return res.status(200).end();
 
-  // 인증
-  const authHeader = req.headers["authorization"] || "";
-  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
-  const CLAUDE_KEY = process.env.CLAUDE_ACCESS_KEY;
-  if (!CLAUDE_KEY || token !== CLAUDE_KEY) {
-    return res.status(401).json({ jsonrpc: "2.0", error: { code: -32001, message: "Unauthorized" } });
-  }
+  // 인증 — Claude.ai 커스텀 커넥터는 OAuth만 지원하므로
+  // URL 자체를 비밀키로 활용 (Notion 비공개 페이지에 저장됨)
+  // 필요 시 OAuth 추가 가능
 
   const env = {
     KIPRIS_KEY: process.env.KIPRIS_ACCESS_KEY,
