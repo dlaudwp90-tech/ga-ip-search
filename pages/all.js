@@ -581,21 +581,25 @@ export default function AllPage() {
 
         // results 업데이트
         setResults(prev => {
-          const prevMap = new Map(prev.map((r, i) => [r.pageId, i]));
-          const updated = [...prev];
-
-          // 기존 항목 데이터 in-place 업데이트
-          for (const polledRow of polled) {
-            const idx = prevMap.get(polledRow.pageId);
-            if (idx !== undefined) {
-              if (polledRow.lastEditedTime && polledRow.lastEditedTime > (updated[idx].lastEditedTime || "")) {
+          if (sortKey === "edited_desc") {
+            // 최근 편집 순 정렬: 폴링 결과(이미 편집순 정렬)를 앞에 두고
+            // 폴링 범위 밖 기존 항목은 뒤에 유지
+            const polledIds = new Set(polled.map(r => r.pageId));
+            const rest = prev.filter(r => !polledIds.has(r.pageId));
+            return [...polled, ...rest];
+          } else {
+            // 다른 정렬: 기존 순서 유지하면서 데이터만 in-place 업데이트
+            const prevMap = new Map(prev.map((r, i) => [r.pageId, i]));
+            const updated = [...prev];
+            for (const polledRow of polled) {
+              const idx = prevMap.get(polledRow.pageId);
+              if (idx !== undefined && polledRow.lastEditedTime > (updated[idx].lastEditedTime || "")) {
                 updated[idx] = { ...updated[idx], ...polledRow };
               }
             }
+            // 신규 항목 맨 위에 추가
+            return newItems.length > 0 ? [...newItems, ...updated] : updated;
           }
-
-          // 신규 항목 맨 위에 추가
-          return newItems.length > 0 ? [...newItems, ...updated] : updated;
         });
 
         // 토스트 표시
@@ -616,7 +620,7 @@ export default function AllPage() {
     const id = setInterval(pollNotionData, 30000);
     return () => clearInterval(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, filters]);
+  }, [loading, filters, sortKey]); // sortKey 추가 — 정렬 변경 시 새 클로저 생성
 
   // ── 버튼 클릭 처리 ──
   const handleStatusSelect = useCallback(async (url, newStatus) => {
