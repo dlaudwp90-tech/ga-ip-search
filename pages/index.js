@@ -323,7 +323,7 @@ export default function Home() {
       }
     };
 
-    const id = setInterval(pollNotionData, 10000);
+    const id = setInterval(pollNotionData, 5000);
     return () => clearInterval(id);
   }, [isRecent]);
 
