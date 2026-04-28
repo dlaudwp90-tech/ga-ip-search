@@ -46,8 +46,9 @@ export default async function handler(req, res) {
       .join("\n");
 
     const pageId = page.id?.replace(/-/g, "") || "";
+    const lastEditedTime = page.last_edited_time || "";
     return { title, typeItems, statusItem, categoryItems, docWorkStatusItem,
-             appNum, appOwner, agentCode, deadline, url, fileLinks, pageId };
+             appNum, appOwner, agentCode, deadline, url, fileLinks, pageId, lastEditedTime };
   };
 
   try {
