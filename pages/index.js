@@ -124,7 +124,7 @@ export default function Home() {
     return window.matchMedia("(prefers-color-scheme: dark)").matches;
   });
   const [tabView,      setTabView]      = useState("auto"); // "auto"|"mobile"|"pc"
-  const [viewType,     setViewType]     = useState("card"); // "table"|"card"
+  const [viewType,     setViewType]     = useState("table"); // "table"|"card"
   const [fadeVisible,  setFadeVisible]  = useState(true);
   const [popup,        setPopup]        = useState(null);
   const [copied,       setCopied]       = useState({});
@@ -176,6 +176,11 @@ export default function Home() {
   const rowRefs        = useRef({});
   const mobileCardRefs = useRef({});
   const pcCardRefs     = useRef({});
+
+  // ── 실시간 폴링 ──
+  const resultsRef   = useRef(null);
+  const isPollingRef = useRef(false);
+  const [pollToast, setPollToast] = useState(null); // { text, type: "update"|"new" }
 
   // 1분마다 현재 시각 갱신 (1시간 뱃지 자동 소멸)
   // 시스템 다크모드 변경 자동 감지
@@ -255,6 +260,72 @@ export default function Home() {
     const id = setInterval(() => fetchReviewStates(urls), 30000);
     return () => clearInterval(id);
   }, [results, fetchReviewStates]);
+
+  // ── resultsRef: 폴링 클로저에서 최신 results 참조 ──
+  useEffect(() => {
+    resultsRef.current = results;
+  }, [results]);
+
+  // ── 노션 데이터 실시간 폴링 (30초) — recent 모드일 때만 ──
+  useEffect(() => {
+    if (!isRecent) return; // 검색 결과 화면에서는 폴링 안 함
+
+    const pollNotionData = async () => {
+      if (isPollingRef.current) return;
+      isPollingRef.current = true;
+
+      try {
+        const res = await fetch("/api/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode: "recent" }),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const polled = data.results || [];
+        if (!polled.length) return;
+
+        const current = resultsRef.current;
+        if (!current?.length) return;
+
+        const currentMap = new Map(current.map((r, i) => [r.pageId, { row: r, idx: i }]));
+
+        let updatedCount = 0;
+        const newItems = [];
+
+        for (const polledRow of polled) {
+          const existing = currentMap.get(polledRow.pageId);
+          if (existing) {
+            if (polledRow.lastEditedTime && polledRow.lastEditedTime > (existing.row.lastEditedTime || "")) {
+              updatedCount++;
+            }
+          } else {
+            newItems.push(polledRow);
+          }
+        }
+
+        if (updatedCount === 0 && newItems.length === 0) return;
+
+        // recent 모드는 항상 최근 편집 순 — 폴링 결과 전체로 교체
+        setResults(polled);
+
+        const toastText = newItems.length > 0
+          ? `✦ ${newItems.length}건 새로 추가됨`
+          : `↻ ${updatedCount}건 업데이트됨`;
+        const toastType = newItems.length > 0 ? "new" : "update";
+        setPollToast({ text: toastText, type: toastType });
+        setTimeout(() => setPollToast(null), 3500);
+
+      } catch {
+        // 폴링 실패는 무시
+      } finally {
+        isPollingRef.current = false;
+      }
+    };
+
+    const id = setInterval(pollNotionData, 30000);
+    return () => clearInterval(id);
+  }, [isRecent]);
 
   const handleStatusSelect = useCallback(async (url, newStatus) => {
     if (checkLocked) return;
@@ -763,6 +834,30 @@ export default function Home() {
         <meta name="twitter:image" content="https://ga-ip-search.vercel.app/og-image.png" />
         <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@600;700&family=Noto+Serif+KR:wght@400;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet" />
       </Head>
+
+      {/* ── 실시간 폴링 토스트 ── */}
+      {pollToast && (
+        <div style={{
+          position: "fixed", bottom: 28, left: "50%", transform: "translateX(-50%)",
+          zIndex: 9999, pointerEvents: "none",
+          background: pollToast.type === "new"
+            ? (dark ? "#14532d" : "#f0fdf4")
+            : (dark ? "#1e3a6e" : "#eef1fb"),
+          color: pollToast.type === "new"
+            ? (dark ? "#86efac" : "#166534")
+            : (dark ? "#93c5fd" : "#1a3a8f"),
+          border: `1.5px solid ${pollToast.type === "new"
+            ? (dark ? "#4ade80" : "#86efac")
+            : (dark ? "#60a5fa" : "#93c5fd")}`,
+          borderRadius: 20, padding: "8px 20px",
+          fontSize: 13, fontWeight: 700, fontFamily: "inherit",
+          boxShadow: "0 4px 16px rgba(0,0,0,0.18)",
+          whiteSpace: "nowrap",
+          animation: "pollToastIn 0.3s ease",
+        }}>
+          {pollToast.text}
+        </div>
+      )}
 
       {/* 파일 팝업 */}
       {filePopup && results && (() => {
@@ -2176,6 +2271,7 @@ export default function Home() {
         body { font-family:'Noto Sans KR','Malgun Gothic',sans-serif; min-height:100vh; }
         @keyframes slideUpFade { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
         @keyframes commentFadeIn { from{opacity:0} to{opacity:1} }
+        @keyframes pollToastIn { from{opacity:0;transform:translateX(-50%) translateY(12px)} to{opacity:1;transform:translateX(-50%) translateY(0)} }
         .comment-scroll::-webkit-scrollbar { width: 6px; }
         .comment-scroll::-webkit-scrollbar-track { background: #eef2ff; border-radius: 4px; }
         .comment-scroll::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 4px; }
