@@ -663,14 +663,14 @@ export default function AllPage() {
     if (!prevPos || Object.keys(prevPos).length === 0) return;
     prevPositionsRef.current = {};
 
-    const cur = resultsRef.current;
-    if (!cur?.length) return;
+    // resultsRef.current(useEffect 동기화, paint 후 갱신)가 아니라
+    // useLayoutEffect 클로저의 results(현재 렌더 값)를 직접 사용
+    if (!results?.length) return;
 
-    // 테이블뷰 + 카드뷰 ref 모두 처리
-    [[rowRefs, false], [pcCardRefs, true]].forEach(([refsObj, isCard]) => {
+    [[rowRefs, false], [pcCardRefs, true]].forEach(([refsObj]) => {
       Object.entries(refsObj.current).forEach(([idx, el]) => {
         if (!el) return;
-        const pageId = cur[Number(idx)]?.pageId;
+        const pageId = results[Number(idx)]?.pageId;
         if (!pageId) return;
         const old = prevPos[pageId];
         if (!old) return;
