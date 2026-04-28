@@ -617,7 +617,7 @@ export default function AllPage() {
       }
     };
 
-    const id = setInterval(pollNotionData, 30000);
+    const id = setInterval(pollNotionData, 10000);
     return () => clearInterval(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, filters, sortKey]); // sortKey 추가 — 정렬 변경 시 새 클로저 생성
