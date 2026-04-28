@@ -36,7 +36,8 @@ export default async function handler(req, res) {
       return match ? match[1] : line;
     }).join("\n");
     const pageId = page.id?.replace(/-/g, "") || "";
-    return { title, typeItems, statusItem, categoryItems, docWorkStatusItem, appNum, appOwner, agentCode, deadline, url, fileLinks, pageId };
+    const lastEditedTime = page.last_edited_time || "";
+    return { title, typeItems, statusItem, categoryItems, docWorkStatusItem, appNum, appOwner, agentCode, deadline, url, fileLinks, pageId, lastEditedTime };
   };
 
   // ─── 정렬 키 → Notion sorts 매핑 ──────────────────────
