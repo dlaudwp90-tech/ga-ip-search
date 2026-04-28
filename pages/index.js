@@ -1,6 +1,6 @@
 import React from "react";
 import { useClerk, useUser } from "@clerk/nextjs";
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
 
@@ -182,6 +182,9 @@ export default function Home() {
   const isPollingRef = useRef(false);
   const [pollToast, setPollToast] = useState(null); // { text, type: "update"|"new" }
 
+  // ── FLIP 애니메이션: 매 렌더마다 자동 위치 추적 ──
+  const positionMapRef = useRef(new Map());
+
   // 1분마다 현재 시각 갱신 (1시간 뱃지 자동 소멸)
   // 시스템 다크모드 변경 자동 감지
   useEffect(() => {
@@ -326,6 +329,65 @@ export default function Home() {
     const id = setInterval(pollNotionData, 5000);
     return () => clearInterval(id);
   }, [isRecent]);
+
+  // ── FLIP 애니메이션: 매 렌더마다 자동 위치 추적 ──
+  // 이전 렌더 시점에 저장한 pageId별 위치와 현재 위치를 비교 →
+  // 위치가 바뀐 요소는 이전 위치에서 새 위치로 부드럽게 슬라이드
+  useLayoutEffect(() => {
+    if (!results?.length) {
+      positionMapRef.current = new Map();
+      return;
+    }
+
+    const elements = new Map(); // pageId → { el, top, left }
+    const collect = (refMap) => {
+      Object.entries(refMap).forEach(([idx, el]) => {
+        if (!el) return;
+        const pageId = results[Number(idx)]?.pageId;
+        if (!pageId || elements.has(pageId)) return;
+        const rect = el.getBoundingClientRect();
+        if (rect.top === 0 && rect.left === 0 && rect.width === 0) return;
+        elements.set(pageId, { el, top: rect.top, left: rect.left });
+      });
+    };
+    collect(rowRefs.current);
+    collect(pcCardRefs.current);
+
+    const oldPositions = positionMapRef.current;
+
+    elements.forEach(({ el, top, left }, pageId) => {
+      const oldPos = oldPositions.get(pageId);
+      if (!oldPos) return;
+
+      const dy = oldPos.top - top;
+      const dx = oldPos.left - left;
+      if (Math.abs(dy) < 2 && Math.abs(dx) < 2) return;
+
+      el.style.transition = "none";
+      el.style.transform  = `translate(${dx}px, ${dy}px)`;
+
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          el.style.transition = "transform 0.5s cubic-bezier(0.22, 0.61, 0.36, 1)";
+          el.style.transform  = "";
+        });
+      });
+
+      const onEnd = (e) => {
+        if (e.propertyName !== "transform") return;
+        el.style.transition = "";
+        el.style.transform  = "";
+        el.removeEventListener("transitionend", onEnd);
+      };
+      el.addEventListener("transitionend", onEnd);
+    });
+
+    const nextMap = new Map();
+    elements.forEach(({ top, left }, pageId) => {
+      nextMap.set(pageId, { top, left });
+    });
+    positionMapRef.current = nextMap;
+  }, [results]);
 
   const handleStatusSelect = useCallback(async (url, newStatus) => {
     if (checkLocked) return;
