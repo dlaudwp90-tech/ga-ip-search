@@ -124,7 +124,7 @@ export default function Home() {
     return window.matchMedia("(prefers-color-scheme: dark)").matches;
   });
   const [tabView,      setTabView]      = useState("auto"); // "auto"|"mobile"|"pc"
-  const [viewType,     setViewType]     = useState("table"); // "table"|"card"
+  const [viewType,     setViewType]     = useState("card"); // "table"|"card"
   const [fadeVisible,  setFadeVisible]  = useState(true);
   const [popup,        setPopup]        = useState(null);
   const [copied,       setCopied]       = useState({});
