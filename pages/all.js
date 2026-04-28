@@ -1,5 +1,5 @@
 import React from "react";
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
 import { useClerk, useUser } from "@clerk/nextjs";
 import Head from "next/head";
 import { useRouter } from "next/router";
@@ -205,6 +205,11 @@ export default function AllPage() {
   const resultsRef   = useRef([]);
   const isPollingRef = useRef(false);
   const [pollToast, setPollToast] = useState(null); // { text, type: "update"|"new" }
+
+  // ── FLIP 애니메이션 ──
+  const pcCardRefs       = useRef({});   // PC 카드뷰 요소 ref
+  const prevPositionsRef = useRef({});   // 업데이트 전 각 pageId의 DOM 위치
+  const shouldAnimateRef = useRef(false);// 폴링 트리거 업데이트일 때만 true
 
   // 시스템 다크모드 변경 자동 감지
   const switchViewType = (next) => {
@@ -579,6 +584,33 @@ export default function AllPage() {
 
         if (updatedCount === 0 && newItems.length === 0) return;
 
+        // ── FLIP: setResults 전에 현재 DOM 위치 캡처 ──
+        // (순서 변경이 일어나는 edited_desc 또는 신규 항목 추가 시)
+        if (sortKey === "edited_desc" || newItems.length > 0) {
+          const positions = {};
+          const cur = resultsRef.current;
+          // 테이블뷰 행
+          Object.entries(rowRefs.current).forEach(([idx, el]) => {
+            if (!el) return;
+            const pageId = cur[Number(idx)]?.pageId;
+            if (pageId) {
+              const rect = el.getBoundingClientRect();
+              positions[pageId] = { top: rect.top, left: rect.left };
+            }
+          });
+          // PC 카드뷰 카드
+          Object.entries(pcCardRefs.current).forEach(([idx, el]) => {
+            if (!el) return;
+            const pageId = cur[Number(idx)]?.pageId;
+            if (pageId) {
+              const rect = el.getBoundingClientRect();
+              positions[pageId] = { top: rect.top, left: rect.left };
+            }
+          });
+          prevPositionsRef.current = positions;
+          shouldAnimateRef.current = true;
+        }
+
         // results 업데이트
         setResults(prev => {
           if (sortKey === "edited_desc") {
@@ -617,12 +649,53 @@ export default function AllPage() {
       }
     };
 
-    const id = setInterval(pollNotionData, 10000);
+    const id = setInterval(pollNotionData, 5000);
     return () => clearInterval(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, filters, sortKey]); // sortKey 추가 — 정렬 변경 시 새 클로저 생성
 
-  // ── 버튼 클릭 처리 ──
+  // ── FLIP 애니메이션: results 변경 직후 DOM 위치 비교 → 슬라이드 ──
+  useLayoutEffect(() => {
+    if (!shouldAnimateRef.current) return;
+    shouldAnimateRef.current = false;
+
+    const prevPos = prevPositionsRef.current;
+    if (!prevPos || Object.keys(prevPos).length === 0) return;
+    prevPositionsRef.current = {};
+
+    const cur = resultsRef.current;
+    if (!cur?.length) return;
+
+    // 테이블뷰 + 카드뷰 ref 모두 처리
+    [[rowRefs, false], [pcCardRefs, true]].forEach(([refsObj, isCard]) => {
+      Object.entries(refsObj.current).forEach(([idx, el]) => {
+        if (!el) return;
+        const pageId = cur[Number(idx)]?.pageId;
+        if (!pageId) return;
+        const old = prevPos[pageId];
+        if (!old) return;
+
+        const newRect = el.getBoundingClientRect();
+        const dy = old.top  - newRect.top;
+        const dx = old.left - newRect.left;
+        if (Math.abs(dy) < 1 && Math.abs(dx) < 1) return;
+
+        // Invert: 이전 위치처럼 보이도록 역방향 이동
+        el.style.transition = "none";
+        el.style.transform  = `translate(${dx}px, ${dy}px)`;
+
+        // Force reflow — 브라우저가 transform 적용을 인식하게
+        el.getBoundingClientRect();
+
+        // Play: 자연 위치로 부드럽게 이동
+        el.style.transition = "transform 0.45s cubic-bezier(0.25, 0.46, 0.45, 0.94)";
+        el.style.transform  = "";
+
+        const onEnd = () => { el.style.transition = ""; el.style.transform = ""; };
+        el.addEventListener("transitionend", onEnd, { once: true });
+      });
+    });
+  }, [results]);
   const handleStatusSelect = useCallback(async (url, newStatus) => {
     if (checkLocked) return;
     const prevStatus = reviewStates[url] ?? null;
@@ -1891,6 +1964,7 @@ export default function AllPage() {
                   opacity: fadeVisible ? 1 : 0, transition: "opacity 0.28s ease" }}>
                   {results.map((row, i) => (
                     <div key={i} id={`pc-card-${i}`}
+                      ref={el => pcCardRefs.current[i] = el}
                       style={{ background:dark?"#1e293b":"#fff",
                       border:dark?"1px solid #334155":"1px solid #e5e9f5",
                       borderRadius:14, padding:"14px 16px",
