@@ -125,7 +125,7 @@ export default function AllPage() {
     return window.matchMedia("(prefers-color-scheme: dark)").matches;
   });
   const [tabView, setTabView] = useState("auto");
-  const [viewType, setViewType] = useState("table");
+  const [viewType, setViewType] = useState("card");
   const [fadeVisible, setFadeVisible] = useState(true);
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
