@@ -331,15 +331,14 @@ export default function Home() {
   }, [isRecent]);
 
   // ── FLIP 애니메이션: 매 렌더마다 자동 위치 추적 ──
-  // 이전 렌더 시점에 저장한 pageId별 위치와 현재 위치를 비교 →
-  // 위치가 바뀐 요소는 이전 위치에서 새 위치로 부드럽게 슬라이드
+  // Phase 1 → 2초 축소 대기 → Phase 2 → S커브 이동 → Phase 3 → 원래 크기 복원
   useLayoutEffect(() => {
     if (!results?.length) {
       positionMapRef.current = new Map();
       return;
     }
 
-    const elements = new Map(); // pageId → { el, top, left }
+    const elements = new Map();
     const collect = (refMap) => {
       Object.entries(refMap).forEach(([idx, el]) => {
         if (!el) return;
@@ -364,22 +363,37 @@ export default function Home() {
       if (Math.abs(dy) < 2 && Math.abs(dx) < 2) return;
 
       el.style.transition = "none";
-      el.style.transform  = `translate(${dx}px, ${dy}px)`;
+      el.style.transform  = `translate(${dx}px, ${dy}px) scale(1)`;
+      el.getBoundingClientRect();
 
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          el.style.transition = "transform 0.5s cubic-bezier(0.22, 0.61, 0.36, 1)";
-          el.style.transform  = "";
-        });
-      });
+      // Phase 1: 현재 자리에서 2초 동안 살짝 축소
+      el.style.transition = "transform 0.35s cubic-bezier(0.33, 1, 0.68, 1)";
+      el.style.transform  = `translate(${dx}px, ${dy}px) scale(0.91)`;
 
-      const onEnd = (e) => {
-        if (e.propertyName !== "transform") return;
-        el.style.transition = "";
-        el.style.transform  = "";
-        el.removeEventListener("transitionend", onEnd);
-      };
-      el.addEventListener("transitionend", onEnd);
+      // Phase 2: 2초 후 → S커브 이동
+      const MOVE_DURATION = 900;
+      const t2 = setTimeout(() => {
+        el.style.transition = `transform ${MOVE_DURATION}ms cubic-bezier(0.37, 0, 0.63, 1)`;
+        el.style.transform  = "translate(0px, 0px) scale(0.91)";
+
+        // Phase 3: 이동 완료 후 → 원래 크기 복원
+        const t3 = setTimeout(() => {
+          el.style.transition = "transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)";
+          el.style.transform  = "translate(0px, 0px) scale(1)";
+
+          const onEnd = (e) => {
+            if (e.propertyName !== "transform") return;
+            el.style.transition = "";
+            el.style.transform  = "";
+            el.removeEventListener("transitionend", onEnd);
+          };
+          el.addEventListener("transitionend", onEnd);
+        }, MOVE_DURATION + 30);
+
+        el._flipT3 = t3;
+      }, 2000);
+
+      el._flipT2 = t2;
     });
 
     const nextMap = new Map();
