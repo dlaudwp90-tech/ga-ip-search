@@ -627,15 +627,15 @@ export default function AllPage() {
   }, [loading, filters, sortKey]); // sortKey 추가 — 정렬 변경 시 새 클로저 생성
 
   // ── FLIP 애니메이션: 매 렌더마다 자동 위치 추적 ──
-  // 상단 이동(dy > 0): 축소(2s) → S커브 이동(6s) → 원래 크기 복원
-  // 하단 이동(dy < 0): S커브 이동(6s) 만 — 크기 변화 없음
+  // 상단 이동(dy > 0): 1s 축소 → 1s 대기 → 3s 이동 → 1s 복원 (총 6s)
+  // 하단 이동(dy < 0): 2s 자기자리 유지 → 3s 이동 (크기 변화 없음)
   useLayoutEffect(() => {
     if (!results?.length) {
       positionMapRef.current = new Map();
       return;
     }
 
-    const elements = new Map(); // pageId → { el, top, left }
+    const elements = new Map();
     const collect = (refMap) => {
       Object.entries(refMap).forEach(([idx, el]) => {
         if (!el) return;
@@ -651,44 +651,61 @@ export default function AllPage() {
 
     const oldPositions = positionMapRef.current;
 
+    // 새 위치 맵을 즉시 저장 (다음 렌더에서 비교 기준)
+    const nextMap = new Map();
+    elements.forEach(({ top, left }, pageId) => {
+      nextMap.set(pageId, { top, left });
+    });
+    positionMapRef.current = nextMap;
+
     elements.forEach(({ el, top, left }, pageId) => {
       const oldPos = oldPositions.get(pageId);
       if (!oldPos) return;
 
-      const dy = oldPos.top - top;   // 양수 = 위로 이동, 음수 = 아래로 이동
+      const dy = oldPos.top - top;
       const dx = oldPos.left - left;
       if (Math.abs(dy) < 2 && Math.abs(dx) < 2) return;
 
-      // 기존 진행 중인 timeout 정리
-      if (el._flipT2) clearTimeout(el._flipT2);
-      if (el._flipT3) clearTimeout(el._flipT3);
-
-      // Invert: 즉시 이전 위치로 이동
-      el.style.transition = "none";
-      el.style.transform  = `translate(${dx}px, ${dy}px) scale(1)`;
-      el.getBoundingClientRect(); // reflow
+      // 진행 중인 timeout 정리 (이전 애니메이션 중단)
+      if (el._flipT2) { clearTimeout(el._flipT2); el._flipT2 = null; }
+      if (el._flipT3) { clearTimeout(el._flipT3); el._flipT3 = null; }
 
       const isMovingUp = dy > 0;
 
+      // ═══ Step 1: INVERT — 즉시 이전 위치로 이동 (transition 없이) ═══
+      el.style.transition = "none";
+      el.style.transform  = `translate(${dx}px, ${dy}px)`;
+      // 강제 reflow — 브라우저가 invert를 즉시 paint하도록
+      // eslint-disable-next-line no-unused-expressions
+      el.offsetHeight;
+
       if (isMovingUp) {
-        // ═══ 상단 이동 카드: 6초 시퀀스 ═══
-        // Phase 1a (0~1s): scale 1 → 0.92, translate 유지
+        // ═══════════════════════════════════════
+        //   상단 이동 카드 (최신화된 카드)
+        // ═══════════════════════════════════════
+        // 0~1s : 자기 자리에서 scale 1 → 0.92 축소
+        // 1~2s : 축소된 채 대기
+        // 2~5s : 새 자리로 S커브 이동 (scale 0.92 유지)
+        // 5~6s : scale 0.92 → 1 복원
+
+        // 이중 rAF: invert가 확실히 paint된 다음 프레임에 축소 transition 시작
         requestAnimationFrame(() => {
-          el.style.transition = "transform 1s cubic-bezier(0.33, 1, 0.68, 1)";
-          el.style.transform  = `translate(${dx}px, ${dy}px) scale(0.92)`;
+          requestAnimationFrame(() => {
+            // Phase 1a: 1초 축소 (translate은 그대로 = 자기 자리에서 작아짐)
+            el.style.transition = "transform 1s cubic-bezier(0.33, 1, 0.68, 1)";
+            el.style.transform  = `translate(${dx}px, ${dy}px) scale(0.92)`;
+          });
         });
 
-        // Phase 1b (1~2s): scale 0.92 유지 — transition 안 거니 그대로 정지
-
-        // Phase 2 (2~5s): translate → 0, scale 0.92 유지 (3초 S커브)
+        // Phase 2: 2초 후 → 3초 S커브 이동 (scale 0.92 유지)
         el._flipT2 = setTimeout(() => {
           el.style.transition = "transform 3s cubic-bezier(0.37, 0, 0.63, 1)";
           el.style.transform  = "translate(0px, 0px) scale(0.92)";
         }, 2000);
 
-        // Phase 3 (5~6s): scale 0.92 → 1 (1초 복원)
+        // Phase 3: 5초 후 → 1초 크기 복원
         el._flipT3 = setTimeout(() => {
-          el.style.transition = "transform 1s cubic-bezier(0.34, 1.56, 0.64, 1)";
+          el.style.transition = "transform 1s cubic-bezier(0.33, 1, 0.68, 1)";
           el.style.transform  = "translate(0px, 0px) scale(1)";
 
           const onEnd = (e) => {
@@ -701,12 +718,16 @@ export default function AllPage() {
         }, 5000);
 
       } else {
-        // ═══ 하단 이동 카드: 크기 변화 없이, 위 카드와 동기화하여 이동 ═══
-        // 0~2s: 이전 자리에 머무름 (위 카드가 축소+대기하는 동안)
-        // 2~5s: 3초간 부드러운 S커브 이동
+        // ═══════════════════════════════════════
+        //   하단 이동 카드 (최신화되지 않은 카드)
+        // ═══════════════════════════════════════
+        // 0~2s : 자기(이전) 자리에 머무름 — invert 적용 후 transition 안 걸려서 그대로
+        // 2~5s : 새 자리로 S커브 이동 (scale 변화 없음 — 절대 축소 안 됨)
+
         el._flipT2 = setTimeout(() => {
           el.style.transition = "transform 3s cubic-bezier(0.37, 0, 0.63, 1)";
-          el.style.transform  = "translate(0px, 0px) scale(1)";
+          // scale 명시 안 함 → 기본 scale(1) 유지
+          el.style.transform  = "translate(0px, 0px)";
 
           const onEnd = (e) => {
             if (e.propertyName !== "transform") return;
@@ -718,13 +739,6 @@ export default function AllPage() {
         }, 2000);
       }
     });
-
-    // 새 위치 맵 저장
-    const nextMap = new Map();
-    elements.forEach(({ top, left }, pageId) => {
-      nextMap.set(pageId, { top, left });
-    });
-    positionMapRef.current = nextMap;
   }, [results]);
 
   // ── 버튼 클릭 처리 ──
