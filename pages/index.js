@@ -331,8 +331,8 @@ export default function Home() {
   }, [isRecent]);
 
   // ── FLIP 애니메이션: 매 렌더마다 자동 위치 추적 ──
-  // 상단 이동(dy > 0): 축소(2s) → S커브 이동(6s) → 원래 크기 복원
-  // 하단 이동(dy < 0): S커브 이동(6s) 만 — 크기 변화 없음
+  // 상단 이동(dy > 0): 1s 축소 → 1s 대기 → 3s 이동 → 1s 복원 (총 6s)
+  // 하단 이동(dy < 0): 2s 자기자리 유지 → 3s 이동 (크기 변화 없음)
   useLayoutEffect(() => {
     if (!results?.length) {
       positionMapRef.current = new Map();
@@ -355,6 +355,13 @@ export default function Home() {
 
     const oldPositions = positionMapRef.current;
 
+    // 새 위치 맵을 즉시 저장
+    const nextMap = new Map();
+    elements.forEach(({ top, left }, pageId) => {
+      nextMap.set(pageId, { top, left });
+    });
+    positionMapRef.current = nextMap;
+
     elements.forEach(({ el, top, left }, pageId) => {
       const oldPos = oldPositions.get(pageId);
       if (!oldPos) return;
@@ -363,34 +370,35 @@ export default function Home() {
       const dx = oldPos.left - left;
       if (Math.abs(dy) < 2 && Math.abs(dx) < 2) return;
 
-      if (el._flipT2) clearTimeout(el._flipT2);
-      if (el._flipT3) clearTimeout(el._flipT3);
-
-      el.style.transition = "none";
-      el.style.transform  = `translate(${dx}px, ${dy}px) scale(1)`;
-      el.getBoundingClientRect();
+      if (el._flipT2) { clearTimeout(el._flipT2); el._flipT2 = null; }
+      if (el._flipT3) { clearTimeout(el._flipT3); el._flipT3 = null; }
 
       const isMovingUp = dy > 0;
 
+      // Step 1: INVERT — 즉시 이전 위치로 이동 (transition 없이)
+      el.style.transition = "none";
+      el.style.transform  = `translate(${dx}px, ${dy}px)`;
+      // 강제 reflow
+      // eslint-disable-next-line no-unused-expressions
+      el.offsetHeight;
+
       if (isMovingUp) {
-        // ═══ 상단 이동 카드: 6초 시퀀스 ═══
-        // Phase 1a (0~1s): 1초 축소
+        // ═══ 상단 이동 카드 ═══
+        // 0~1s 축소, 1~2s 대기, 2~5s 이동, 5~6s 복원
         requestAnimationFrame(() => {
-          el.style.transition = "transform 1s cubic-bezier(0.33, 1, 0.68, 1)";
-          el.style.transform  = `translate(${dx}px, ${dy}px) scale(0.92)`;
+          requestAnimationFrame(() => {
+            el.style.transition = "transform 1s cubic-bezier(0.33, 1, 0.68, 1)";
+            el.style.transform  = `translate(${dx}px, ${dy}px) scale(0.92)`;
+          });
         });
 
-        // Phase 1b (1~2s): scale 0.92 유지 — transition 안 거니 정지
-
-        // Phase 2 (2~5s): 3초 S커브 이동
         el._flipT2 = setTimeout(() => {
           el.style.transition = "transform 3s cubic-bezier(0.37, 0, 0.63, 1)";
           el.style.transform  = "translate(0px, 0px) scale(0.92)";
         }, 2000);
 
-        // Phase 3 (5~6s): 1초 크기 복원
         el._flipT3 = setTimeout(() => {
-          el.style.transition = "transform 1s cubic-bezier(0.34, 1.56, 0.64, 1)";
+          el.style.transition = "transform 1s cubic-bezier(0.33, 1, 0.68, 1)";
           el.style.transform  = "translate(0px, 0px) scale(1)";
 
           const onEnd = (e) => {
@@ -403,12 +411,11 @@ export default function Home() {
         }, 5000);
 
       } else {
-        // ═══ 하단 이동 카드: 크기 변화 없이, 위 카드와 동기화 ═══
-        // 0~2s: 자기 자리에 그대로
-        // 2~5s: 3초 부드러운 이동
+        // ═══ 하단 이동 카드 (축소 절대 X) ═══
+        // 0~2s: 이전 자리에 머무름, 2~5s: 부드럽게 이동
         el._flipT2 = setTimeout(() => {
           el.style.transition = "transform 3s cubic-bezier(0.37, 0, 0.63, 1)";
-          el.style.transform  = "translate(0px, 0px) scale(1)";
+          el.style.transform  = "translate(0px, 0px)";
 
           const onEnd = (e) => {
             if (e.propertyName !== "transform") return;
@@ -420,12 +427,6 @@ export default function Home() {
         }, 2000);
       }
     });
-
-    const nextMap = new Map();
-    elements.forEach(({ top, left }, pageId) => {
-      nextMap.set(pageId, { top, left });
-    });
-    positionMapRef.current = nextMap;
   }, [results]);
 
   const handleStatusSelect = useCallback(async (url, newStatus) => {
