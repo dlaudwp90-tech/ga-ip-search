@@ -366,19 +366,19 @@ export default function Home() {
       el.style.transform  = `translate(${dx}px, ${dy}px) scale(1)`;
       el.getBoundingClientRect();
 
-      // Phase 1: 현재 자리에서 2초 동안 살짝 축소
-      el.style.transition = "transform 0.35s cubic-bezier(0.33, 1, 0.68, 1)";
+      // Phase 1: 현재 자리에서 1초 동안 살짝 축소 → 그 후 1초 대기 (총 2초 후 이동 시작)
+      el.style.transition = "transform 1s cubic-bezier(0.33, 1, 0.68, 1)";
       el.style.transform  = `translate(${dx}px, ${dy}px) scale(0.91)`;
 
-      // Phase 2: 2초 후 → S커브 이동
-      const MOVE_DURATION = 900;
+      // Phase 2: 2초 후 → S커브 이동 (3초)
+      const MOVE_DURATION = 3000;
       const t2 = setTimeout(() => {
         el.style.transition = `transform ${MOVE_DURATION}ms cubic-bezier(0.37, 0, 0.63, 1)`;
         el.style.transform  = "translate(0px, 0px) scale(0.91)";
 
-        // Phase 3: 이동 완료 후 → 원래 크기 복원
+        // Phase 3: 이동 완료 후 → 원래 크기 복원 (1초)
         const t3 = setTimeout(() => {
-          el.style.transition = "transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)";
+          el.style.transition = "transform 1s cubic-bezier(0.34, 1.56, 0.64, 1)";
           el.style.transform  = "translate(0px, 0px) scale(1)";
 
           const onEnd = (e) => {
