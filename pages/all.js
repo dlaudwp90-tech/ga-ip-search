@@ -641,9 +641,13 @@ export default function AllPage() {
         if (!el) return;
         const pageId = results[Number(idx)]?.pageId;
         if (!pageId || elements.has(pageId)) return;
-        const rect = el.getBoundingClientRect();
-        if (rect.top === 0 && rect.left === 0 && rect.width === 0) return;
-        elements.set(pageId, { el, top: rect.top, left: rect.left });
+        // offsetTop/offsetLeft: 레이아웃 기준 위치 (스크롤·transform 영향 없음)
+        // viewport 기반 getBoundingClientRect는 스크롤 변동 시 모든 카드가
+        // 같은 방향으로 이동한 것처럼 보여 dy 계산이 잘못됨
+        if (el.offsetWidth === 0 && el.offsetHeight === 0) return; // unmount/hidden
+        const top  = el.offsetTop;
+        const left = el.offsetLeft;
+        elements.set(pageId, { el, top, left });
       });
     };
     collect(rowRefs.current);
