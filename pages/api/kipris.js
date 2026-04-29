@@ -1,4 +1,5 @@
-// pages/api/kipris.js  v5
+// pages/api/kipris.js  v6
+// 변경: detail 모드에 TradeMarkClassificationInfoService 별도 호출 추가하여 지정상품 정상 표시
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
@@ -83,15 +84,11 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "검색 조건을 하나 이상 입력해주세요" });
     }
 
-    // 검색식 빌드: 모든 조건을 * (AND)로 결합
-    // KIPRIS 검색식: * = AND, + = OR (직관과 반대 주의!)
-    // 필드 코드: AP(출원인), AG(대리인), CL(상품류), SC(유사군), RH(권리자)
     const queryParts = [];
     if (tradeMarkName)      queryParts.push(tradeMarkName.trim());
     if (applicantName)      queryParts.push(`AP=[${applicantName.trim()}]`);
     if (agentName)          queryParts.push(`AG=[${agentName.trim()}]`);
     if (classificationCode) {
-      // 쉼표로 여러 류 입력 시 OR로 묶음 (예: "35,41" → "(CL=[35]+CL=[41])")
       const codes = classificationCode.replace(/[^0-9,]/g, "").split(",").filter(Boolean);
       if (codes.length === 1) {
         queryParts.push(`CL=[${codes[0].padStart(2, "0")}]`);
@@ -142,7 +139,6 @@ export default async function handler(req, res) {
         };
       });
 
-      // 클라이언트측 행정상태 필터링
       if (statusFilter && Array.isArray(statusFilter) && statusFilter.length > 0) {
         items = items.filter(it => {
           const st = (it.applicationStatus || "");
@@ -163,17 +159,22 @@ export default async function handler(req, res) {
 
   // ════════════════════════════════════════════
   // MODE: detail
-  // 서지정보: getBibliographyDetailInfoSearch (정상 작동)
-  // 지정상품: KIPRIS Plus 무료 API 미제공 → 서지정보 응답에 포함된 경우만 추출
+  // 서지정보: getBibliographyDetailInfoSearch
+  // 지정상품: TradeMarkClassificationInfoService/tradeMarkClassificationInfo (별도 API)
   // ════════════════════════════════════════════
   if (mode === "detail") {
     if (!applicationNumber) return res.status(400).json({ error: "applicationNumber required" });
     const numClean = applicationNumber.replace(/\D/g, "");
     const base = "http://plus.kipris.or.kr/kipo-api/kipi/trademarkInfoSearchService";
     const bibliographyUrl = `${base}/getBibliographyDetailInfoSearch?applicationNumber=${numClean}&accessKey=${encodeURIComponent(ACCESS_KEY)}`;
+    const goodsUrl = `http://plus.kipris.or.kr/openapi/rest/TradeMarkClassificationInfoService/tradeMarkClassificationInfo?identificationNumber=${numClean}&docsStart=1&docsCount=500&accessKey=${encodeURIComponent(ACCESS_KEY)}`;
 
     try {
-      const bibXml = await (await fetch(bibliographyUrl)).text();
+      // 두 API 병렬 호출 (지정상품 API 실패해도 서지정보는 보여주도록 catch)
+      const [bibXml, goodsXml] = await Promise.all([
+        fetch(bibliographyUrl).then(r => r.text()).catch(() => ""),
+        fetch(goodsUrl).then(r => r.text()).catch(() => ""),
+      ]);
 
       // ── 서지정보 파싱 ──
       let bibliography = null;
@@ -234,20 +235,58 @@ export default async function handler(req, res) {
         ...grabPersons(bibXml, "RegistrationLastHolderInfoArray", "RegistrationLastHolderInfo", "최종권리자"),
       ];
 
-      // 지정상품: 서지정보 응답 안에 포함된 경우만 추출 시도
+      // ── 지정상품 파싱 (TradeMarkClassificationInfoService) ──
+      // 응답 구조: <items><tradeMarkClassificationInfo>...</tradeMarkClassificationInfo>...</items>
+      // 같은 출원에 대해 출원시/등록시/갱신시 데이터가 누적되어 있음
+      // → 가장 최신 데이터만 필터링: (1)등록>출원  (2)최대 serialNumber  (3)최신 NICE 버전
       let designatedGoods = [];
-      for (const tag of ["designatedGoodInfo", "designatedGoodsInfo"]) {
-        const blocks = getAll(bibXml, tag);
-        if (blocks.length > 0) {
-          designatedGoods = blocks.map(b => {
-            const g = (t) => get1(b, t);
-            return {
-              classificationCode: g("classificationCode") || g("goodsClassificationCode") || g("goodsClass"),
-              goodName:           g("goodName") || g("classOfGoodService") || g("classOfGoodSerivice") || g("designatedGoodsName"),
-              similarityCode:     g("similarityCode"),
-            };
-          }).filter(g => g.goodName);
-          if (designatedGoods.length > 0) break;
+      const goodsBlocks = getAll(goodsXml, "tradeMarkClassificationInfo");
+
+      if (goodsBlocks.length > 0) {
+        const allGoods = goodsBlocks.map(b => {
+          const g = (t) => get1(b, t);
+          return {
+            status:                  g("status"),
+            serialNumber:            parseInt(g("serialNumber")) || 0,
+            classOfGoodSerialNumber: parseInt(g("classOfGoodSerialNumber")) || 0,
+            classificationVersion:   g("classificationVersion"),
+            goodsClassificationCode: g("goodsClassificationCode"),
+            // API 문서상 표기는 classofgoodServiceName / classOfGoodServiceName,
+            // 일부 응답에는 오타(classofgoodSerivceName)도 존재 → 모두 대응
+            goodName: g("classofgoodServiceName") || g("classOfGoodServiceName") || g("classofgoodSerivceName"),
+            additionDeletionCode:    g("additionDeletionCode"),
+          };
+        }).filter(x => x.goodName);
+
+        if (allGoods.length > 0) {
+          // (1) 상태 우선순위: 등록 > 출원 (등록 데이터가 하나라도 있으면 등록만 사용)
+          const hasReg = allGoods.some(x => x.status === "등록");
+          let pool = allGoods.filter(x => x.status === (hasReg ? "등록" : "출원"));
+          if (pool.length === 0) pool = allGoods;
+
+          // (2) 같은 status 안에서 가장 큰 serialNumber만 (최신 갱신본)
+          const maxSerial = pool.reduce((m, x) => Math.max(m, x.serialNumber), 0);
+          pool = pool.filter(x => x.serialNumber === maxSerial);
+
+          // (3) 분류 버전이 숫자(NICE)인 것이 있으면 가장 큰 NICE 버전 우선
+          //     (옛 한국분류 'E'와 NICE 분류가 섞여 있을 때 NICE 우선)
+          const numericVers = pool
+            .map(x => parseInt(x.classificationVersion))
+            .filter(v => Number.isFinite(v));
+          if (numericVers.length > 0) {
+            const maxV = String(Math.max(...numericVers));
+            const filteredV = pool.filter(x => x.classificationVersion === maxV);
+            if (filteredV.length > 0) pool = filteredV;
+          }
+
+          // (4) 지정상품 일련번호 순 정렬
+          pool.sort((a, b) => a.classOfGoodSerialNumber - b.classOfGoodSerialNumber);
+
+          designatedGoods = pool.map(x => ({
+            classificationCode: x.goodsClassificationCode || "",
+            goodName:           x.goodName,
+            similarityCode:     "",
+          }));
         }
       }
 
