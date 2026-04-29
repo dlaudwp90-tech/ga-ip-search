@@ -370,51 +370,54 @@ export default function Home() {
       el.style.transform  = `translate(${dx}px, ${dy}px) scale(1)`;
       el.getBoundingClientRect();
 
-      const isMovingUp      = dy > 0;
-      const MOVE_DURATION   = 6000;
-      const PHASE1_DURATION = 2000;
+      const isMovingUp = dy > 0;
 
       if (isMovingUp) {
-        // Phase 1: 2초간 살짝 축소
-        el.style.transition = "transform 2s cubic-bezier(0.33, 1, 0.68, 1)";
-        el.style.transform  = `translate(${dx}px, ${dy}px) scale(0.92)`;
+        // ═══ 상단 이동 카드: 6초 시퀀스 ═══
+        // Phase 1a (0~1s): 1초 축소
+        requestAnimationFrame(() => {
+          el.style.transition = "transform 1s cubic-bezier(0.33, 1, 0.68, 1)";
+          el.style.transform  = `translate(${dx}px, ${dy}px) scale(0.92)`;
+        });
 
-        // Phase 2: S커브 이동 (6초)
+        // Phase 1b (1~2s): scale 0.92 유지 — transition 안 거니 정지
+
+        // Phase 2 (2~5s): 3초 S커브 이동
         el._flipT2 = setTimeout(() => {
-          el.style.transition = `transform ${MOVE_DURATION}ms cubic-bezier(0.37, 0, 0.63, 1)`;
+          el.style.transition = "transform 3s cubic-bezier(0.37, 0, 0.63, 1)";
           el.style.transform  = "translate(0px, 0px) scale(0.92)";
+        }, 2000);
 
-          // Phase 3: 원래 크기 복원
-          el._flipT3 = setTimeout(() => {
-            el.style.transition = "transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)";
-            el.style.transform  = "translate(0px, 0px) scale(1)";
+        // Phase 3 (5~6s): 1초 크기 복원
+        el._flipT3 = setTimeout(() => {
+          el.style.transition = "transform 1s cubic-bezier(0.34, 1.56, 0.64, 1)";
+          el.style.transform  = "translate(0px, 0px) scale(1)";
 
-            const onEnd = (e) => {
-              if (e.propertyName !== "transform") return;
-              el.style.transition = "";
-              el.style.transform  = "";
-              el.removeEventListener("transitionend", onEnd);
-            };
-            el.addEventListener("transitionend", onEnd);
-          }, MOVE_DURATION + 30);
-        }, PHASE1_DURATION);
+          const onEnd = (e) => {
+            if (e.propertyName !== "transform") return;
+            el.style.transition = "";
+            el.style.transform  = "";
+            el.removeEventListener("transitionend", onEnd);
+          };
+          el.addEventListener("transitionend", onEnd);
+        }, 5000);
 
       } else {
-        // 하단 이동: 크기 변화 없이 S커브 이동만
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            el.style.transition = `transform ${MOVE_DURATION}ms cubic-bezier(0.37, 0, 0.63, 1)`;
-            el.style.transform  = "translate(0px, 0px) scale(1)";
+        // ═══ 하단 이동 카드: 크기 변화 없이, 위 카드와 동기화 ═══
+        // 0~2s: 자기 자리에 그대로
+        // 2~5s: 3초 부드러운 이동
+        el._flipT2 = setTimeout(() => {
+          el.style.transition = "transform 3s cubic-bezier(0.37, 0, 0.63, 1)";
+          el.style.transform  = "translate(0px, 0px) scale(1)";
 
-            const onEnd = (e) => {
-              if (e.propertyName !== "transform") return;
-              el.style.transition = "";
-              el.style.transform  = "";
-              el.removeEventListener("transitionend", onEnd);
-            };
-            el.addEventListener("transitionend", onEnd);
-          });
-        });
+          const onEnd = (e) => {
+            if (e.propertyName !== "transform") return;
+            el.style.transition = "";
+            el.style.transform  = "";
+            el.removeEventListener("transitionend", onEnd);
+          };
+          el.addEventListener("transitionend", onEnd);
+        }, 2000);
       }
     });
 
