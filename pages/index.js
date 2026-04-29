@@ -345,9 +345,11 @@ export default function Home() {
         if (!el) return;
         const pageId = results[Number(idx)]?.pageId;
         if (!pageId || elements.has(pageId)) return;
-        const rect = el.getBoundingClientRect();
-        if (rect.top === 0 && rect.left === 0 && rect.width === 0) return;
-        elements.set(pageId, { el, top: rect.top, left: rect.left });
+        // offsetTop/offsetLeft: 레이아웃 기준 위치 (스크롤·transform 영향 없음)
+        if (el.offsetWidth === 0 && el.offsetHeight === 0) return;
+        const top  = el.offsetTop;
+        const left = el.offsetLeft;
+        elements.set(pageId, { el, top, left });
       });
     };
     collect(rowRefs.current);
