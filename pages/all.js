@@ -627,16 +627,13 @@ export default function AllPage() {
   }, [loading, filters, sortKey]); // sortKey 추가 — 정렬 변경 시 새 클로저 생성
 
   // ── FLIP 애니메이션: 매 렌더마다 자동 위치 추적 ──
-  // 이전 렌더 시점에 저장한 pageId별 위치와 현재 위치를 비교 →
-  // 위치가 바뀐 요소는 이전 위치에서 새 위치로 부드럽게 슬라이드
+  // Phase 1 → 2초 축소 대기 → Phase 2 → S커브 이동 → Phase 3 → 원래 크기 복원
   useLayoutEffect(() => {
     if (!results?.length) {
       positionMapRef.current = new Map();
       return;
     }
 
-    // 현재 렌더된 모든 요소 → pageId별로 수집
-    // 같은 pageId가 여러 ref에 잡힐 수 있으나 첫 매칭만 사용
     const elements = new Map(); // pageId → { el, top, left }
     const collect = (refMap) => {
       Object.entries(refMap).forEach(([idx, el]) => {
@@ -644,7 +641,6 @@ export default function AllPage() {
         const pageId = results[Number(idx)]?.pageId;
         if (!pageId || elements.has(pageId)) return;
         const rect = el.getBoundingClientRect();
-        // offsetParent가 없는 요소(unmounted/display:none)는 제외
         if (rect.top === 0 && rect.left === 0 && rect.width === 0) return;
         elements.set(pageId, { el, top: rect.top, left: rect.left });
       });
@@ -654,38 +650,52 @@ export default function AllPage() {
 
     const oldPositions = positionMapRef.current;
 
-    // 위치 변경된 요소에 FLIP 적용
     elements.forEach(({ el, top, left }, pageId) => {
       const oldPos = oldPositions.get(pageId);
-      if (!oldPos) return; // 신규 요소 — 애니메이션 없음
+      if (!oldPos) return;
 
       const dy = oldPos.top - top;
       const dx = oldPos.left - left;
-      if (Math.abs(dy) < 2 && Math.abs(dx) < 2) return; // 미세 변동 무시
+      if (Math.abs(dy) < 2 && Math.abs(dx) < 2) return;
 
-      // Invert: 이전 위치처럼 보이게 즉시 역방향 transform
+      // 기존 진행 중인 애니메이션 정리
       el.style.transition = "none";
-      el.style.transform  = `translate(${dx}px, ${dy}px)`;
+      el.style.transform  = `translate(${dx}px, ${dy}px) scale(1)`;
+      el.getBoundingClientRect(); // reflow
 
-      // 다음 프레임에서 Play: transition 적용 후 transform 제거 → 자연 위치로 슬라이드
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          el.style.transition = "transform 0.5s cubic-bezier(0.22, 0.61, 0.36, 1)";
-          el.style.transform  = "";
-        });
-      });
+      // Phase 1: 현재 자리에서 2초 동안 살짝 축소
+      el.style.transition = "transform 0.35s cubic-bezier(0.33, 1, 0.68, 1)";
+      el.style.transform  = `translate(${dx}px, ${dy}px) scale(0.91)`;
 
-      // 애니메이션 종료 후 정리
-      const onEnd = (e) => {
-        if (e.propertyName !== "transform") return;
-        el.style.transition = "";
-        el.style.transform  = "";
-        el.removeEventListener("transitionend", onEnd);
-      };
-      el.addEventListener("transitionend", onEnd);
+      // Phase 2: 2초 후 → S커브(ease-in-out sine) 로 이동
+      // sin 기반 ease-in-out: 속도 기울기가 0→+→0 으로 수렴하는 완전한 S곡선
+      const MOVE_DURATION = 900; // ms
+      const t2 = setTimeout(() => {
+        el.style.transition = `transform ${MOVE_DURATION}ms cubic-bezier(0.37, 0, 0.63, 1)`;
+        el.style.transform  = "translate(0px, 0px) scale(0.91)";
+
+        // Phase 3: 이동 완료 후 → 원래 크기로 복원
+        const t3 = setTimeout(() => {
+          el.style.transition = "transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)";
+          el.style.transform  = "translate(0px, 0px) scale(1)";
+
+          // 모든 애니메이션 종료 후 style 정리
+          const onEnd = (e) => {
+            if (e.propertyName !== "transform") return;
+            el.style.transition = "";
+            el.style.transform  = "";
+            el.removeEventListener("transitionend", onEnd);
+          };
+          el.addEventListener("transitionend", onEnd);
+        }, MOVE_DURATION + 30);
+
+        el._flipT3 = t3;
+      }, 2000);
+
+      el._flipT2 = t2;
     });
 
-    // 새 위치 맵 저장 (다음 렌더에서 비교 기준)
+    // 새 위치 맵 저장
     const nextMap = new Map();
     elements.forEach(({ top, left }, pageId) => {
       nextMap.set(pageId, { top, left });
