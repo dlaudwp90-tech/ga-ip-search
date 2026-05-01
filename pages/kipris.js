@@ -1,4 +1,6 @@
-// pages/kipris.js  v6
+// pages/kipris.js  v7
+// v7 변경: 상세 패널에 유사군코드 디버그 토글 추가 (raw API 응답 진단용)
+//          → 토글 ON → /api/kipris detail 모드를 debug:true 로 호출 → _debug 정보 표시
 // v6 변경: ① 검색 결과 카드에 출원일자/대리인명 표시
 //          ② 상세 패널 인명정보에 역할별 코드 라벨 분기 (특허고객번호 / 대리인 코드)
 //          ③ 상세 패널 지정상품에 유사군코드 뱃지 표시 (similarityCodes 배열)
@@ -81,6 +83,7 @@ export default function KiprisPage() {
   const [detailMode, setDetailMode] = useState(null);
   const [detailData, setDetailData] = useState(null);
   const [detailLoad, setDetailLoad] = useState(false);
+  const [simDebug, setSimDebug] = useState(false); // 유사군코드 진단 모드
 
   // 최근 출원
   const [recentList, setRecentList] = useState([]);
@@ -192,9 +195,22 @@ export default function KiprisPage() {
         fetch("/api/kipris", { method:"POST", headers:{"Content-Type":"application/json"},
           body: JSON.stringify({ mode:"history", applicationNumber: num }) }),
         fetch("/api/kipris", { method:"POST", headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({ mode:"detail",  applicationNumber: num }) }),
+          body: JSON.stringify({ mode:"detail",  applicationNumber: num, debug: simDebug }) }),
       ]);
       setHistoryResults({[num]: await hRes.json()});
+      setDetailData(await dRes.json());
+    } catch (e) { setDetailData({ error: e.message }); }
+    setDetailLoad(false);
+  };
+
+  // 디버그 토글이 켜진 상태에서 현재 보고 있는 상세를 다시 불러옴
+  const reloadDetailWithDebug = async (turnOn) => {
+    setSimDebug(turnOn);
+    if (!detailMode?.appNum) return;
+    setDetailLoad(true);
+    try {
+      const dRes = await fetch("/api/kipris", { method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ mode:"detail", applicationNumber: detailMode.appNum, debug: turnOn }) });
       setDetailData(await dRes.json());
     } catch (e) { setDetailData({ error: e.message }); }
     setDetailLoad(false);
@@ -498,7 +514,45 @@ export default function KiprisPage() {
                 )}
               </section>
               <section style={{marginBottom:18}}>
-                <h3 style={{fontSize:12,fontWeight:700,color:c("#13274F","#e2e8f0"),marginBottom:8,paddingBottom:4,borderBottom:`2px solid ${c("#1a3a8f","#3b82f6")}`,display:"flex",alignItems:"center",gap:6}}>🛒 지정상품 · 유사군코드</h3>
+                <h3 style={{fontSize:12,fontWeight:700,color:c("#13274F","#e2e8f0"),marginBottom:8,paddingBottom:4,borderBottom:`2px solid ${c("#1a3a8f","#3b82f6")}`,display:"flex",alignItems:"center",justifyContent:"space-between",gap:6}}>
+                  <span style={{display:"flex",alignItems:"center",gap:6}}>🛒 지정상품 · 유사군코드</span>
+                  <button
+                    onClick={() => reloadDetailWithDebug(!simDebug)}
+                    title="유사군코드가 비어 있을 때 raw API 응답을 진단합니다"
+                    style={{
+                      fontSize:9,fontWeight:700,padding:"3px 8px",borderRadius:4,
+                      border:`1px solid ${simDebug ? c("#dc2626","#7f1d1d") : c("#cbd5e1","#475569")}`,
+                      background: simDebug ? c("#fef2f2","#450a0a") : c("#f8faff","#1e293b"),
+                      color: simDebug ? c("#dc2626","#fca5a5") : c("#6b7280","#94a3b8"),
+                      cursor:"pointer", fontFamily:"inherit",
+                    }}>
+                    {simDebug ? "🐞 디버그 ON" : "🐞 디버그"}
+                  </button>
+                </h3>
+                {simDebug && detailData?._debug && (
+                  <div style={{marginBottom:10,padding:"10px 12px",background:c("#fef2f2","#1a0e0e"),border:`1px solid ${c("#fecaca","#7f1d1d")}`,borderRadius:8,fontSize:10,fontFamily:"monospace",color:c("#7f1d1d","#fca5a5"),lineHeight:1.5,maxHeight:300,overflowY:"auto",whiteSpace:"pre-wrap",wordBreak:"break-all"}}>
+                    {(() => {
+                      const d = detailData._debug;
+                      const lines = [];
+                      lines.push(`【응답 길이】 bib=${d.lengths.bibXml} goods=${d.lengths.goodsXml} sim1=${d.lengths.simXml1} sim2=${d.lengths.simXml2}`);
+                      lines.push(`【resultCode】 bib=${d.resultCodes.bib||'-'} goods=${d.resultCodes.goods||'-'} sim1=${d.resultCodes.sim1||'-'} sim2=${d.resultCodes.sim2||'-'}`);
+                      const errs = Object.entries(d.errorMsgs).filter(([,v])=>v);
+                      if (errs.length>0) lines.push(`【에러】 ${errs.map(([k,v])=>k+':'+v).join(' | ')}`);
+                      lines.push(`【지정상품】 ${d.goodsBlockCount}개 블록 / 매칭된 유사군: ${d.goodsWithSimCount}/${d.designatedGoodsCount}`);
+                      lines.push(`【수집된 sim 블록】 ${d.allSimsCount}개`);
+                      lines.push("");
+                      lines.push(`▼ goodsXml 첫 블록 (필드: ${d.goodsFieldsFound.join(', ')})`);
+                      lines.push(d.goodsFirstBlockSample || "(없음)");
+                      lines.push("");
+                      lines.push(`▼ sim1 (trademarkSimilarityCodeInfo) wrapper=${d.sim1Sniff.wrapperTag||'못찾음'} count=${d.sim1Sniff.count} fields=[${d.sim1Sniff.fields.join(', ')}]`);
+                      lines.push(d.sim1Sniff.firstBlockSample || "(없음)");
+                      lines.push("");
+                      lines.push(`▼ sim2 (trademarkAsignProductSearchInfo) wrapper=${d.sim2Sniff.wrapperTag||'못찾음'} count=${d.sim2Sniff.count} fields=[${d.sim2Sniff.fields.join(', ')}]`);
+                      lines.push(d.sim2Sniff.firstBlockSample || "(없음)");
+                      return lines.join("\n");
+                    })()}
+                  </div>
+                )}
                 {goods.length > 0 ? (
                   <>
                     <div style={{marginBottom:12}}>
