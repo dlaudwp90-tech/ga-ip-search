@@ -1,4 +1,8 @@
-// pages/kipris.js  v5
+// pages/kipris.js  v6
+// v6 변경: ① 검색 결과 카드에 출원일자/대리인명 표시
+//          ② 상세 패널 인명정보에 역할별 코드 라벨 분기 (특허고객번호 / 대리인 코드)
+//          ③ 상세 패널 지정상품에 유사군코드 뱃지 표시 (similarityCodes 배열)
+//          ④ 서지정보 표에 출원번호+출원일자를 한 줄로 결합하는 옵션 라벨 추가
 
 import { useState, useEffect, useRef } from "react";
 import Head from "next/head";
@@ -361,8 +365,16 @@ export default function KiprisPage() {
               </div>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:14,fontWeight:700,color:c("#1a3a8f","#93c5fd"),marginBottom:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.tradeMarkName || "(상표명 없음)"}</div>
-                <div style={{fontSize:11,color:c("#6b7280","#94a3b8")}}>출원번호: <span style={{fontWeight:600,color:c("#374151","#cbd5e1"),fontFamily:"monospace"}}>{item.applicationNumber}</span></div>
+                <div style={{fontSize:11,color:c("#6b7280","#94a3b8")}}>
+                  출원번호: <span style={{fontWeight:600,color:c("#374151","#cbd5e1"),fontFamily:"monospace"}}>{item.applicationNumber}</span>
+                  {item.applicationDate && (
+                    <span style={{marginLeft:8,fontSize:10,color:c("#9ca3af","#64748b")}}>
+                      · 출원일: <span style={{fontFamily:"monospace",color:c("#6b7280","#94a3b8")}}>{item.applicationDate}</span>
+                    </span>
+                  )}
+                </div>
                 {item.applicantName && <div style={{fontSize:11,color:c("#9ca3af","#64748b"),marginTop:1}}>출원인: {item.applicantName}</div>}
+                {item.agentName && <div style={{fontSize:11,color:c("#9ca3af","#64748b"),marginTop:1}}>대리인: {item.agentName}</div>}
                 {item.classificationCode && <div style={{fontSize:11,color:c("#9ca3af","#64748b")}}>류코드: {item.classificationCode}</div>}
               </div>
               <div style={{flexShrink:0,textAlign:"right"}}>
@@ -391,7 +403,17 @@ export default function KiprisPage() {
     goods.forEach(g => {
       const k = g.classificationCode || "기타";
       if (!goodsByClass[k]) goodsByClass[k] = [];
-      goodsByClass[k].push(g.goodName);
+      goodsByClass[k].push({
+        name: g.goodName,
+        sims: g.similarityCodes || [],
+      });
+    });
+    // 모든 유사군코드 모음 (류별 헤더에 표시)
+    const allSimsByClass = {};
+    Object.entries(goodsByClass).forEach(([cls, items]) => {
+      const set = new Set();
+      items.forEach(it => (it.sims || []).forEach(s => set.add(s)));
+      allSimsByClass[cls] = [...set].sort();
     });
 
     const drawingUrl = bib?.bigDrawing || bib?.drawing || searchItem?.bigDrawing || searchItem?.drawing || null;
@@ -459,7 +481,11 @@ export default function KiprisPage() {
                           <span style={{fontSize:10,fontWeight:700,background:c("#dbeafe","#1e3a6e"),color:c("#1e40af","#93c5fd"),padding:"2px 6px",borderRadius:4}}>{a.role}</span>
                           <span style={{fontSize:13,fontWeight:700,color:c("#1f2937","#e2e8f0")}}>{a.name}</span>
                         </div>
-                        {a.code && <div style={{fontSize:11,color:c("#9ca3af","#64748b"),fontFamily:"monospace"}}>특허고객번호: {a.code}</div>}
+                        {a.code && (
+                          <div style={{fontSize:11,color:c("#9ca3af","#64748b"),fontFamily:"monospace"}}>
+                            {a.role === "대리인" ? "대리인 코드" : "특허고객번호"}: {a.code}
+                          </div>
+                        )}
                         {a.address && <div style={{fontSize:11,color:c("#9ca3af","#64748b"),marginTop:2}}>{a.address}</div>}
                       </div>
                     ))}
@@ -472,15 +498,43 @@ export default function KiprisPage() {
                 )}
               </section>
               <section style={{marginBottom:18}}>
-                <h3 style={{fontSize:12,fontWeight:700,color:c("#13274F","#e2e8f0"),marginBottom:8,paddingBottom:4,borderBottom:`2px solid ${c("#1a3a8f","#3b82f6")}`,display:"flex",alignItems:"center",gap:6}}>🛒 지정상품</h3>
+                <h3 style={{fontSize:12,fontWeight:700,color:c("#13274F","#e2e8f0"),marginBottom:8,paddingBottom:4,borderBottom:`2px solid ${c("#1a3a8f","#3b82f6")}`,display:"flex",alignItems:"center",gap:6}}>🛒 지정상품 · 유사군코드</h3>
                 {goods.length > 0 ? (
                   <>
                     <div style={{marginBottom:12}}>
-                      <div style={{fontSize:10,fontWeight:600,color:c("#9ca3af","#64748b"),marginBottom:4}}>▼ 키프리스 형식 (류별 분류)</div>
-                      {Object.entries(goodsByClass).map(([cls,names]) => (
-                        <div key={cls} style={{padding:"8px 12px",background:c("#f8faff","#172035"),borderRadius:8,border:`1px solid ${c("#e5e9f5","#2a3a55")}`,marginBottom:6}}>
-                          <div style={{fontSize:11,fontWeight:700,color:c("#1a3a8f","#93c5fd"),marginBottom:4}}>제{cls}류 ({names.length}개)</div>
-                          <div style={{fontSize:12,color:c("#1f2937","#e2e8f0"),lineHeight:1.6}}>{names.join(" / ")}</div>
+                      <div style={{fontSize:10,fontWeight:600,color:c("#9ca3af","#64748b"),marginBottom:4}}>▼ 류별 분류 (각 상품 옆 파란 뱃지 = 유사군코드)</div>
+                      {Object.entries(goodsByClass).map(([cls,items]) => (
+                        <div key={cls} style={{padding:"10px 12px",background:c("#f8faff","#172035"),borderRadius:8,border:`1px solid ${c("#e5e9f5","#2a3a55")}`,marginBottom:6}}>
+                          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:6,flexWrap:"wrap"}}>
+                            <div style={{fontSize:11,fontWeight:700,color:c("#1a3a8f","#93c5fd")}}>제{cls}류 ({items.length}개)</div>
+                            {allSimsByClass[cls] && allSimsByClass[cls].length > 0 && (
+                              <div style={{display:"flex",alignItems:"center",gap:4,flexWrap:"wrap"}}>
+                                <span style={{fontSize:9,color:c("#9ca3af","#64748b"),fontWeight:600}}>이 류의 유사군코드:</span>
+                                {allSimsByClass[cls].map(s => (
+                                  <span key={s} style={{fontSize:9,fontWeight:700,fontFamily:"monospace",background:c("#e0f2fe","#0c4a6e"),color:c("#075985","#7dd3fc"),padding:"1px 5px",borderRadius:3,whiteSpace:"nowrap"}}>{s}</span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <div style={{display:"flex",flexDirection:"column",gap:0}}>
+                            {items.map((g,gi) => (
+                              <div key={gi} style={{display:"flex",alignItems:"flex-start",gap:8,padding:"5px 0",borderTop: gi === 0 ? "none" : `1px dashed ${c("#e5e9f5","#2a3a55")}`}}>
+                                <div style={{flex:1,fontSize:12,color:c("#1f2937","#e2e8f0"),lineHeight:1.5,wordBreak:"keep-all",overflowWrap:"break-word"}}>
+                                  <span style={{fontSize:10,color:c("#9ca3af","#64748b"),marginRight:4,fontFamily:"monospace"}}>{gi+1}.</span>
+                                  {g.name}
+                                </div>
+                                {g.sims && g.sims.length > 0 ? (
+                                  <div style={{display:"flex",flexWrap:"wrap",gap:3,flexShrink:0,maxWidth:"45%",justifyContent:"flex-end"}}>
+                                    {g.sims.map(s => (
+                                      <span key={s} style={{fontSize:10,fontWeight:700,fontFamily:"monospace",background:c("#dbeafe","#1e3a6e"),color:c("#1e40af","#93c5fd"),padding:"2px 6px",borderRadius:4,whiteSpace:"nowrap"}}>{s}</span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span style={{fontSize:10,color:c("#cbd5e1","#475569"),fontFamily:"monospace",flexShrink:0}}>—</span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       ))}
                     </div>
