@@ -1,5 +1,7 @@
-// pages/api/kipris.js  v6
-// 변경: detail 모드에 TradeMarkClassificationInfoService 별도 호출 추가하여 지정상품 정상 표시
+// pages/api/kipris.js  v7
+// v7 변경: detail 모드에 trademarkSimilarityCodeInfo (서지정보) 호출 추가
+//          → 각 지정상품에 대응되는 유사군코드(similarityCodes) 매칭하여 반환
+// v6 변경: detail 모드에 TradeMarkClassificationInfoService 별도 호출 추가하여 지정상품 정상 표시
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
@@ -161,6 +163,8 @@ export default async function handler(req, res) {
   // MODE: detail
   // 서지정보: getBibliographyDetailInfoSearch
   // 지정상품: TradeMarkClassificationInfoService/tradeMarkClassificationInfo (별도 API)
+  // 유사군코드: trademarkInfoSearchService/trademarkSimilarityCodeInfo (서지정보)
+  //   → 같은 응답에 출원시/등록시 데이터 누적, classOfGoodSerialNumber 로 지정상품과 매칭
   // ════════════════════════════════════════════
   if (mode === "detail") {
     if (!applicationNumber) return res.status(400).json({ error: "applicationNumber required" });
@@ -168,12 +172,14 @@ export default async function handler(req, res) {
     const base = "http://plus.kipris.or.kr/kipo-api/kipi/trademarkInfoSearchService";
     const bibliographyUrl = `${base}/getBibliographyDetailInfoSearch?applicationNumber=${numClean}&accessKey=${encodeURIComponent(ACCESS_KEY)}`;
     const goodsUrl = `http://plus.kipris.or.kr/openapi/rest/TradeMarkClassificationInfoService/tradeMarkClassificationInfo?identificationNumber=${numClean}&docsStart=1&docsCount=500&accessKey=${encodeURIComponent(ACCESS_KEY)}`;
+    const simUrl = `${base}/trademarkSimilarityCodeInfo?applicationNumber=${numClean}&accessKey=${encodeURIComponent(ACCESS_KEY)}`;
 
     try {
-      // 두 API 병렬 호출 (지정상품 API 실패해도 서지정보는 보여주도록 catch)
-      const [bibXml, goodsXml] = await Promise.all([
+      // 세 API 병렬 호출 (지정상품/유사군 API 실패해도 서지정보는 보여주도록 catch)
+      const [bibXml, goodsXml, simXml] = await Promise.all([
         fetch(bibliographyUrl).then(r => r.text()).catch(() => ""),
         fetch(goodsUrl).then(r => r.text()).catch(() => ""),
+        fetch(simUrl).then(r => r.text()).catch(() => ""),
       ]);
 
       // ── 서지정보 파싱 ──
@@ -242,6 +248,31 @@ export default async function handler(req, res) {
       let designatedGoods = [];
       const goodsBlocks = getAll(goodsXml, "tradeMarkClassificationInfo");
 
+      // ── 유사군코드 파싱 (trademarkSimilarityCodeInfo) ──
+      // 응답 구조: <items><trademarkSimilarityCodeInfo>...</trademarkSimilarityCodeInfo>...</items>
+      //   주요 필드: serialNumber, classOfGoodSerialNumber, classificationVersion,
+      //              goodsClassificationCode, similarityCode, status
+      // 한 지정상품에 여러 유사군코드가 매핑될 수 있고, 출원시/등록시 데이터가 함께 옴
+      // → (status, classificationVersion, goodsClassificationCode, classOfGoodSerialNumber) 키로 묶어서 매칭
+      const simBlocksRaw = [
+        ...getAll(simXml, "trademarkSimilarityCodeInfo"),
+        ...getAll(simXml, "similarityCodeInfo"),
+      ];
+      // 각 sim 블록을 정규화
+      const allSims = simBlocksRaw.map(b => {
+        const g = (t) => get1(b, t);
+        const sim = (g("similarityCode") || g("similarGroupCode") || "").trim();
+        return {
+          status:                  g("status"),
+          serialNumber:            parseInt(g("serialNumber")) || 0,
+          classOfGoodSerialNumber: parseInt(g("classOfGoodSerialNumber")) || 0,
+          classificationVersion:   g("classificationVersion"),
+          goodsClassificationCode: (g("goodsClassificationCode") || g("classificationCode") || "").trim(),
+          // similarity code 자체에 공백/콤마로 구분된 복수 값이 들어올 수도 있음
+          codes: sim.split(/[,\s]+/).map(s => s.trim()).filter(Boolean),
+        };
+      }).filter(x => x.codes.length > 0);
+
       if (goodsBlocks.length > 0) {
         const allGoods = goodsBlocks.map(b => {
           const g = (t) => get1(b, t);
@@ -282,10 +313,48 @@ export default async function handler(req, res) {
           // (4) 지정상품 일련번호 순 정렬
           pool.sort((a, b) => a.classOfGoodSerialNumber - b.classOfGoodSerialNumber);
 
+          // ── 유사군코드 매칭 ──
+          // 1차: 정확히 같은 (status, version, classCode, classOfGoodSerial) 매칭
+          // 2차: status 무시하고 (version, classCode, classOfGoodSerial) 매칭
+          // 3차: version 도 무시하고 (classCode, classOfGoodSerial) 매칭
+          const matchSims = (good) => {
+            const found = new Set();
+            const collect = (filterFn) => {
+              allSims.filter(filterFn).forEach(s => s.codes.forEach(c => found.add(c)));
+            };
+            const ver = good.classificationVersion;
+            const cls = (good.goodsClassificationCode || "").trim();
+            const ser = good.classOfGoodSerialNumber;
+            // 1차
+            collect(s =>
+              s.status === good.status &&
+              s.classificationVersion === ver &&
+              s.goodsClassificationCode === cls &&
+              s.classOfGoodSerialNumber === ser
+            );
+            // 2차
+            if (found.size === 0) {
+              collect(s =>
+                s.classificationVersion === ver &&
+                s.goodsClassificationCode === cls &&
+                s.classOfGoodSerialNumber === ser
+              );
+            }
+            // 3차
+            if (found.size === 0) {
+              collect(s =>
+                s.goodsClassificationCode === cls &&
+                s.classOfGoodSerialNumber === ser
+              );
+            }
+            return [...found];
+          };
+
           designatedGoods = pool.map(x => ({
-            classificationCode: x.goodsClassificationCode || "",
-            goodName:           x.goodName,
-            similarityCode:     "",
+            classificationCode:      x.goodsClassificationCode || "",
+            goodName:                x.goodName,
+            classOfGoodSerialNumber: x.classOfGoodSerialNumber,
+            similarityCodes:         matchSims(x),
           }));
         }
       }
