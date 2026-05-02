@@ -1,10 +1,6 @@
-// pages/kipris.js  v7
+// pages/kipris.js  v8
+// v8 변경: 디버그 패널이 4개 sim 후보 endpoint 응답을 모두 표시하도록 변경 (winner 표시)
 // v7 변경: 상세 패널에 유사군코드 디버그 토글 추가 (raw API 응답 진단용)
-//          → 토글 ON → /api/kipris detail 모드를 debug:true 로 호출 → _debug 정보 표시
-// v6 변경: ① 검색 결과 카드에 출원일자/대리인명 표시
-//          ② 상세 패널 인명정보에 역할별 코드 라벨 분기 (특허고객번호 / 대리인 코드)
-//          ③ 상세 패널 지정상품에 유사군코드 뱃지 표시 (similarityCodes 배열)
-//          ④ 서지정보 표에 출원번호+출원일자를 한 줄로 결합하는 옵션 라벨 추가
 
 import { useState, useEffect, useRef } from "react";
 import Head from "next/head";
@@ -530,25 +526,27 @@ export default function KiprisPage() {
                   </button>
                 </h3>
                 {simDebug && detailData?._debug && (
-                  <div style={{marginBottom:10,padding:"10px 12px",background:c("#fef2f2","#1a0e0e"),border:`1px solid ${c("#fecaca","#7f1d1d")}`,borderRadius:8,fontSize:10,fontFamily:"monospace",color:c("#7f1d1d","#fca5a5"),lineHeight:1.5,maxHeight:300,overflowY:"auto",whiteSpace:"pre-wrap",wordBreak:"break-all"}}>
+                  <div style={{marginBottom:10,padding:"10px 12px",background:c("#fef2f2","#1a0e0e"),border:`1px solid ${c("#fecaca","#7f1d1d")}`,borderRadius:8,fontSize:10,fontFamily:"monospace",color:c("#7f1d1d","#fca5a5"),lineHeight:1.5,maxHeight:400,overflowY:"auto",whiteSpace:"pre-wrap",wordBreak:"break-all"}}>
                     {(() => {
                       const d = detailData._debug;
                       const lines = [];
-                      lines.push(`【응답 길이】 bib=${d.lengths.bibXml} goods=${d.lengths.goodsXml} sim1=${d.lengths.simXml1} sim2=${d.lengths.simXml2}`);
-                      lines.push(`【resultCode】 bib=${d.resultCodes.bib||'-'} goods=${d.resultCodes.goods||'-'} sim1=${d.resultCodes.sim1||'-'} sim2=${d.resultCodes.sim2||'-'}`);
-                      const errs = Object.entries(d.errorMsgs).filter(([,v])=>v);
-                      if (errs.length>0) lines.push(`【에러】 ${errs.map(([k,v])=>k+':'+v).join(' | ')}`);
-                      lines.push(`【지정상품】 ${d.goodsBlockCount}개 블록 / 매칭된 유사군: ${d.goodsWithSimCount}/${d.designatedGoodsCount}`);
-                      lines.push(`【수집된 sim 블록】 ${d.allSimsCount}개`);
+                      lines.push(`【bib】 길이=${d.bibLength} resultCode=${d.bibResultCode||'-'} ${d.bibErrorMsg ? 'err='+d.bibErrorMsg : ''}`);
+                      lines.push(`【goods】 길이=${d.goodsLength} 블록=${d.goodsBlockCount}개 매칭=${d.goodsWithSimCount}/${d.designatedGoodsCount}`);
+                      lines.push(`【수집된 sim 블록】 ${d.allSimsCount}개  Winner: ${d.simWinnerName || '없음'}`);
                       lines.push("");
                       lines.push(`▼ goodsXml 첫 블록 (필드: ${d.goodsFieldsFound.join(', ')})`);
                       lines.push(d.goodsFirstBlockSample || "(없음)");
                       lines.push("");
-                      lines.push(`▼ sim1 (trademarkSimilarityCodeInfo) wrapper=${d.sim1Sniff.wrapperTag||'못찾음'} count=${d.sim1Sniff.count} fields=[${d.sim1Sniff.fields.join(', ')}]`);
-                      lines.push(d.sim1Sniff.firstBlockSample || "(없음)");
-                      lines.push("");
-                      lines.push(`▼ sim2 (trademarkAsignProductSearchInfo) wrapper=${d.sim2Sniff.wrapperTag||'못찾음'} count=${d.sim2Sniff.count} fields=[${d.sim2Sniff.fields.join(', ')}]`);
-                      lines.push(d.sim2Sniff.firstBlockSample || "(없음)");
+                      (d.simCandidates || []).forEach((c, i) => {
+                        const win = i === d.simWinnerIdx ? "  ★ WINNER" : "";
+                        lines.push(`━━━ 후보 ${i+1}/${d.simCandidates.length}${win} ━━━`);
+                        lines.push(`  name: ${c.name}`);
+                        lines.push(`  url:  ${c.url}`);
+                        lines.push(`  길이=${c.length} resultCode=${c.resultCode||'-'} ${c.errorMsg ? 'err='+c.errorMsg : ''}`);
+                        lines.push(`  wrapper=${c.sniff.wrapperTag||'못찾음'} count=${c.sniff.count} fields=[${c.sniff.fields.join(', ')}]`);
+                        lines.push(c.sniff.firstBlockSample || "(빈 응답)");
+                        lines.push("");
+                      });
                       return lines.join("\n");
                     })()}
                   </div>
