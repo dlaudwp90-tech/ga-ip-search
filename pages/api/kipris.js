@@ -1,506 +1,883 @@
-// pages/api/kipris.js  v8
-// v8 변경: ① 유사군코드 후보 endpoint 2개 시도 (trademarkSimilarityCodeInfo + trademarkAsignProductSearchInfo)
-//          ② wrapper/필드명을 폭넓게 시도 (응답 구조가 문서와 다를 수 있음)
-//          ③ tradeMarkClassificationInfo 응답에서도 유사군코드 추출 시도 (한 응답에 함께 있을 수도)
-//          ④ detail 응답에 _debug 필드 포함 (실제 endpoint 응답 진단용)
-// v7 변경: detail 모드에 trademarkSimilarityCodeInfo 호출 추가
-// v6 변경: detail 모드에 TradeMarkClassificationInfoService 별도 호출 추가하여 지정상품 정상 표시
+// pages/kipris.js  v8
+// v8 변경: 디버그 패널이 4개 sim 후보 endpoint 응답을 모두 표시하도록 변경 (winner 표시)
+// v7 변경: 상세 패널에 유사군코드 디버그 토글 추가 (raw API 응답 진단용)
 
-export default async function handler(req, res) {
-  if (req.method !== "POST") return res.status(405).end();
+import { useState, useEffect, useRef } from "react";
+import Head from "next/head";
+import { useRouter } from "next/router";
 
-  const ACCESS_KEY = process.env.KIPRIS_ACCESS_KEY;
-  if (!ACCESS_KEY) return res.status(500).json({ error: "KIPRIS_ACCESS_KEY 미설정" });
+const STAGES = [
+  { key:"출원접수", label:"출원\n접수" },
+  { key:"방식심사", label:"방식\n심사" },
+  { key:"실체심사", label:"실체\n심사" },
+  { key:"심판",     label:"심판" },
+  { key:"등록",     label:"등록\n완료" },
+];
 
-  const {
-    mode, applicationNumber,
-    tradeMarkName, classificationCode, similarityCode, applicantName, agentName, extraQuery, pageNo,
-    word, rejectionContent, sendDate,
-    statusFilter,
-  } = req.body;
+function inferStage(items) {
+  if (!items || items.length === 0) return 0;
+  const latest = items[items.length-1]?.step;
+  const hasReg = items.some(i => i.registrationNumber?.trim());
+  const titles = items.map(i => i.documentTitle).join(" ");
+  if (hasReg || latest === "등록") return 4;
+  if (latest === "심판") return 3;
+  if (titles.includes("거절") || titles.includes("의견제출") || titles.includes("보정")) return 2;
+  if (titles.includes("심사") || titles.includes("통지")) return 2;
+  if (titles.includes("방식")) return 1;
+  return 0;
+}
 
-  const getAll = (t, tag) => {
-    const r = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\/${tag}>`, "g");
-    const out = []; let m;
-    while ((m = r.exec(t)) !== null) out.push(m[1].trim());
-    return out;
+const STEP_COLOR = {
+  "출원": { bg:"#dbeafe", text:"#1e40af", dBg:"#1e3a6e", dText:"#93c5fd" },
+  "심판": { bg:"#fce7f3", text:"#9d174d", dBg:"#500724", dText:"#f9a8d4" },
+  "등록": { bg:"#dcfce7", text:"#166534", dBg:"#14532d", dText:"#86efac" },
+};
+
+const extractAppNums = (t) => [...new Set((t||"").match(/\d{2}-\d{4}-\d{7}/g) || [])];
+
+// 행정상태 필터 옵션
+const STATUS_OPTIONS = [
+  { key: "출원", label: "출원" },
+  { key: "공고", label: "공고" },
+  { key: "등록", label: "등록" },
+  { key: "거절", label: "거절" },
+  { key: "포기", label: "포기/취하" },
+  { key: "소멸", label: "소멸" },
+];
+
+export default function KiprisPage() {
+  const router = useRouter();
+  const [dark, setDark] = useState(false);
+
+  // 기본 탭 = 상표검색
+  const [searchMode, setSearchMode] = useState("trademark");
+
+  // 입력 상태
+  const [inputAppNum, setInputAppNum] = useState("");
+  const [inputTmName, setInputTmName] = useState("");
+  const [inputClass,  setInputClass]  = useState("");
+  const [inputSim,    setInputSim]    = useState("");
+  const [inputAppli,  setInputAppli]  = useState("");
+  const [inputAgent,  setInputAgent]  = useState("");
+  const [inputExtraQuery, setInputExtraQuery] = useState(""); // 좌측 패널 추가 검색식
+
+  // 행정상태 필터
+  const [statusFilter, setStatusFilter] = useState(["출원", "공고", "등록"]);
+
+  // 결과
+  const [loading, setLoading] = useState(false);
+  const [resultMode, setResultMode] = useState(null);
+  const [historyResults, setHistoryResults] = useState({});
+  const [searchResults, setSearchResults] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [searched, setSearched] = useState(false);
+
+  // 레이아웃
+  const [layoutReady, setLayoutReady] = useState(false);
+  const [showRecent, setShowRecent] = useState(false); // 기본 닫힘 (상표검색 탭이므로)
+  const [showFilter, setShowFilter] = useState(true);  // 좌측 필터 패널
+  const [detailMode, setDetailMode] = useState(null);
+  const [detailData, setDetailData] = useState(null);
+  const [detailLoad, setDetailLoad] = useState(false);
+  const [simDebug, setSimDebug] = useState(false); // 유사군코드 진단 모드
+
+  // 최근 출원
+  const [recentList, setRecentList] = useState([]);
+  const [recentLoad, setRecentLoad] = useState(true);
+  const [selectedNum, setSelectedNum] = useState(null);
+
+  const tmInputRef = useRef(null);
+  const appInputRef = useRef(null);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    setDark(mq.matches);
+    mq.addEventListener("change", e => setDark(e.matches));
+  }, []);
+
+  useEffect(() => {
+    const t = setTimeout(() => setLayoutReady(true), 800);
+    return () => clearTimeout(t);
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/kipris-recent", { method:"POST", headers:{"Content-Type":"application/json"}, body:"{}" })
+      .then(r => r.json()).then(d => setRecentList(d.results || [])).catch(()=>{}).finally(()=>setRecentLoad(false));
+  }, []);
+
+  const c = (l, dk) => dark ? dk : l;
+
+  const handleTabChange = (tab) => {
+    setSearchMode(tab);
+    setDetailMode(null); setDetailData(null);
+    // 출원번호 탭: 우측 최근 출원 / 상표 검색 탭: 좌측 필터
+    setShowRecent(tab === "appnum");
+    setShowFilter(tab === "trademark");
+    setTimeout(() => {
+      if (tab === "appnum") appInputRef.current?.focus();
+      else tmInputRef.current?.focus();
+    }, 50);
   };
-  const get1 = (t, tag) => getAll(t, tag)[0] || "";
-  const fmtDate = (d) => {
-    if (!d) return "";
-    const s = d.replace(/[^\d]/g, "");
-    if (s.length === 8) return `${s.slice(0,4)}.${s.slice(4,6)}.${s.slice(6,8)}`;
-    return d;
+
+  const doHistory = async (nums) => {
+    const newRes = {};
+    await Promise.all(nums.map(async num => {
+      try {
+        const res = await fetch("/api/kipris", { method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({ mode:"history", applicationNumber: num }) });
+        newRes[num] = await res.json();
+      } catch (e) { newRes[num] = { error: e.message }; }
+    }));
+    setHistoryResults(newRes);
+    setResultMode("history");
   };
-  const fmtAppNum = (raw) => {
-    const s = (raw || "").replace(/[^\d]/g, "");
-    return s.length === 13 ? `${s.slice(0,2)}-${s.slice(2,6)}-${s.slice(6)}` : raw;
+
+  const doSearch = async (page = 1) => {
+    try {
+      const res = await fetch("/api/kipris", { method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({
+          mode:"search",
+          tradeMarkName: inputTmName,
+          classificationCode: inputClass,
+          similarityCode: inputSim,
+          applicantName: inputAppli,
+          agentName: inputAgent,
+          extraQuery: inputExtraQuery,
+          pageNo: page,
+          statusFilter: statusFilter.length === STATUS_OPTIONS.length ? null : statusFilter,
+        })
+      });
+      setSearchResults(await res.json());
+      setResultMode("search");
+    } catch (e) { setSearchResults({ error: e.message, items: [] }); }
   };
-  const detectService = (a) => ((a || "").replace(/\D/g,"").slice(0,2) === "30" ? "DG" : "TM");
 
-  // ════════════════════════════════════════════
-  // MODE: history
-  // ════════════════════════════════════════════
-  if (!mode || mode === "history") {
-    if (!applicationNumber) return res.status(400).json({ error: "applicationNumber required" });
-    const numClean = applicationNumber.replace(/\D/g, "");
-    const svc = detectService(applicationNumber);
-    const urlMap = {
-      TM: `http://plus.kipris.or.kr/openapi/rest/RelatedDocsonfileTMService/relatedDocsonfileInfo?applicationNumber=${numClean}&accessKey=${encodeURIComponent(ACCESS_KEY)}`,
-      DG: `http://plus.kipris.or.kr/openapi/rest/RelatedDocsonfileDGService/relatedDocsonfileInfo?applicationNumber=${numClean}&accessKey=${encodeURIComponent(ACCESS_KEY)}`,
-    };
-    try {
-      const xml = await (await fetch(urlMap[svc])).text();
-      let items = [];
-      for (const tag of ["relateddocsonfileInfo", "item"]) {
-        const blocks = getAll(xml, tag);
-        if (blocks.length > 0) {
-          items = blocks.map(b => {
-            const g = (t) => get1(b, t);
-            return {
-              applicationNumber:  fmtAppNum(g("applicationNumber")),
-              documentNumber:     g("documentNumber"),
-              documentDate:       g("documentDate"),
-              documentDateFmt:    fmtDate(g("documentDate")),
-              documentTitle:      g("documentTitle"),
-              status:             g("status"),
-              step:               g("step"),
-              registrationNumber: g("registrationNumber"),
-            };
-          });
-          break;
-        }
-      }
-      const registrationNumber = items.map(i => i.registrationNumber).find(r => r?.trim()) || null;
-      const latestStep = items.length > 0 ? items[items.length-1].step : null;
-      return res.status(200).json({
-        resultCode: get1(xml, "resultCode"), items, registrationNumber, latestStep, serviceType: svc,
-      });
-    } catch (err) { return res.status(500).json({ error: err.message }); }
-  }
-
-  // ════════════════════════════════════════════
-  // MODE: search (KIPRIS 검색식으로 매핑)
-  // 출원인 → AP=[이름], 대리인 → AG=[이름]
-  // 여러 조건 결합: + (AND), * (OR)
-  // ════════════════════════════════════════════
-  if (mode === "search") {
-    if (!tradeMarkName && !classificationCode && !similarityCode && !applicantName && !agentName && !extraQuery) {
-      return res.status(400).json({ error: "검색 조건을 하나 이상 입력해주세요" });
+  const handleSubmit = async (page = 1) => {
+    setLoading(true); setSearched(true); setDetailMode(null); setDetailData(null);
+    setCurrentPage(page); setHistoryResults({}); setSearchResults(null);
+    if (searchMode === "appnum") {
+      const nums = extractAppNums(inputAppNum);
+      if (nums.length > 0) await doHistory(nums);
+    } else {
+      await doSearch(page);
     }
+    setLoading(false);
+  };
 
-    const queryParts = [];
-    if (tradeMarkName)      queryParts.push(tradeMarkName.trim());
-    if (applicantName)      queryParts.push(`AP=[${applicantName.trim()}]`);
-    if (agentName)          queryParts.push(`AG=[${agentName.trim()}]`);
-    if (classificationCode) {
-      const codes = classificationCode.replace(/[^0-9,]/g, "").split(",").filter(Boolean);
-      if (codes.length === 1) {
-        queryParts.push(`CL=[${codes[0].padStart(2, "0")}]`);
-      } else if (codes.length > 1) {
-        queryParts.push("(" + codes.map(c => `CL=[${c.padStart(2, "0")}]`).join("+") + ")");
-      }
-    }
-    if (similarityCode) {
-      const codes = similarityCode.trim().toUpperCase().split(",").map(s => s.trim()).filter(Boolean);
-      if (codes.length === 1) {
-        queryParts.push(`SC=[${codes[0]}]`);
-      } else if (codes.length > 1) {
-        queryParts.push("(" + codes.map(c => `SC=[${c}]`).join("+") + ")");
-      }
-    }
-    if (extraQuery) queryParts.push(extraQuery.trim());
-    const finalQuery = queryParts.join("*");
+  const handlePageChange = async (page) => {
+    setLoading(true); setCurrentPage(page);
+    await doSearch(page);
+    setLoading(false);
+    document.querySelector(".left-scroll")?.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
-    const params = new URLSearchParams({
-      ServiceKey: ACCESS_KEY,
-      searchRecentYear: "0",
-      numOfRows: "30",
-      pageNo: String(pageNo || 1),
-    });
-    if (finalQuery) params.append("searchString", finalQuery);
+  const handleSelectRecent = (num) => {
+    setSelectedNum(num); setSearchMode("appnum"); setInputAppNum(num);
+    setShowRecent(true); setShowFilter(false);
+    setLoading(true); setSearched(true); setHistoryResults({}); setSearchResults(null); setDetailMode(null);
+    fetch("/api/kipris", { method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ mode:"history", applicationNumber: num }) })
+      .then(r => r.json())
+      .then(d => { setHistoryResults({[num]: d}); setResultMode("history"); })
+      .catch(e => setHistoryResults({[num]: { error: e.message }}))
+      .finally(() => setLoading(false));
+  };
 
-    const url = `http://plus.kipris.or.kr/kipo-api/kipi/trademarkInfoSearchService/getWordSearch?${params.toString()}`;
-
+  const handleItemClick = async (num) => {
+    setDetailMode({ appNum: num });
+    setDetailLoad(true); setDetailData(null);
     try {
-      const xml = await (await fetch(url)).text();
-      let items = getAll(xml, "item").map(b => {
-        const g = (t) => get1(b, t);
-        const rawNum = g("applicationNumber");
-        return {
-          applicationNumber:    fmtAppNum(rawNum),
-          applicationNumberRaw: rawNum,
-          tradeMarkName:        g("title"),
-          drawing:              g("drawing"),
-          bigDrawing:           g("bigDrawing"),
-          applicantName:        g("applicantName"),
-          agentName:            g("agentName"),
-          applicationDate:      fmtDate(g("applicationDate")),
-          applicationStatus:    g("applicationStatus"),
-          classificationCode:   g("classificationCode"),
-          registrationNumber:   g("registrationNumber"),
-          registrationDate:     fmtDate(g("registrationDate")),
-          regPrivilegeName:     g("regPrivilegeName"),
-        };
-      });
-
-      if (statusFilter && Array.isArray(statusFilter) && statusFilter.length > 0) {
-        items = items.filter(it => {
-          const st = (it.applicationStatus || "");
-          return statusFilter.some(f => st.includes(f));
-        });
-      }
-
-      return res.status(200).json({
-        resultCode: get1(xml, "resultCode"),
-        items,
-        totalCount: parseInt(get1(xml, "totalCount")) || items.length,
-        pageNo: parseInt(get1(xml, "pageNo")) || (pageNo || 1),
-        numOfRows: parseInt(get1(xml, "numOfRows")) || 30,
-        finalQuery,
-      });
-    } catch (err) { return res.status(500).json({ error: err.message }); }
-  }
-
-  // ════════════════════════════════════════════
-  // MODE: detail
-  // 서지정보: getBibliographyDetailInfoSearch
-  // 지정상품: TradeMarkClassificationInfoService/tradeMarkClassificationInfo (별도 API)
-  // 유사군코드 후보 1: trademarkInfoSearchService/trademarkSimilarityCodeInfo (서지정보)
-  // 유사군코드 후보 2: TradeMarkClassificationInfoService/trademarkAsignProductSearchInfo (부가기능)
-  //   → 두 endpoint 모두 응답 구조가 문서로 명확히 알 수 없어 둘 다 시도
-  //   → tradeMarkClassificationInfo 응답에도 유사군코드가 함께 있을 가능성 → 그것도 추출 시도
-  // ════════════════════════════════════════════
-  if (mode === "detail") {
-    if (!applicationNumber) return res.status(400).json({ error: "applicationNumber required" });
-    const numClean = applicationNumber.replace(/\D/g, "");
-    const debug = !!req.body.debug;
-
-    const base = "http://plus.kipris.or.kr/kipo-api/kipi/trademarkInfoSearchService";
-    const baseClass = "http://plus.kipris.or.kr/openapi/rest/TradeMarkClassificationInfoService";
-    const bibliographyUrl = `${base}/getBibliographyDetailInfoSearch?applicationNumber=${numClean}&accessKey=${encodeURIComponent(ACCESS_KEY)}`;
-    const goodsUrl  = `${baseClass}/tradeMarkClassificationInfo?identificationNumber=${numClean}&docsStart=1&docsCount=500&accessKey=${encodeURIComponent(ACCESS_KEY)}`;
-    const simUrl1   = `${base}/trademarkSimilarityCodeInfo?applicationNumber=${numClean}&accessKey=${encodeURIComponent(ACCESS_KEY)}`;
-    const simUrl2   = `${baseClass}/trademarkAsignProductSearchInfo?identificationNumber=${numClean}&docsStart=1&docsCount=500&accessKey=${encodeURIComponent(ACCESS_KEY)}`;
-
-    try {
-      // 네 API 병렬 호출 (보조 API 실패해도 서지정보는 보여주도록 catch)
-      const [bibXml, goodsXml, simXml1, simXml2] = await Promise.all([
-        fetch(bibliographyUrl).then(r => r.text()).catch(() => ""),
-        fetch(goodsUrl).then(r => r.text()).catch(() => ""),
-        fetch(simUrl1).then(r => r.text()).catch(() => ""),
-        fetch(simUrl2).then(r => r.text()).catch(() => ""),
+      const [hRes, dRes] = await Promise.all([
+        fetch("/api/kipris", { method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({ mode:"history", applicationNumber: num }) }),
+        fetch("/api/kipris", { method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({ mode:"detail",  applicationNumber: num, debug: simDebug }) }),
       ]);
+      setHistoryResults({[num]: await hRes.json()});
+      setDetailData(await dRes.json());
+    } catch (e) { setDetailData({ error: e.message }); }
+    setDetailLoad(false);
+  };
 
-      // ── 서지정보 파싱 ──
-      let bibliography = null;
-      let applicants = [];
+  // 디버그 토글이 켜진 상태에서 현재 보고 있는 상세를 다시 불러옴
+  const reloadDetailWithDebug = async (turnOn) => {
+    setSimDebug(turnOn);
+    if (!detailMode?.appNum) return;
+    setDetailLoad(true);
+    try {
+      const dRes = await fetch("/api/kipris", { method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ mode:"detail", applicationNumber: detailMode.appNum, debug: turnOn }) });
+      setDetailData(await dRes.json());
+    } catch (e) { setDetailData({ error: e.message }); }
+    setDetailLoad(false);
+  };
 
-      for (const tag of ["biblioSummaryInfo", "biblioSummaryInfoArray", "item"]) {
-        const blocks = getAll(bibXml, tag);
-        if (blocks.length > 0) {
-          const innerBlocks = getAll(blocks[0], "biblioSummaryInfo");
-          const b = innerBlocks.length > 0 ? innerBlocks[0] : blocks[0];
-          const g = (t) => get1(b, t);
-          if (g("applicationNumber")) {
-            bibliography = {
-              applicationNumber:        fmtAppNum(g("applicationNumber")),
-              applicationDate:          fmtDate(g("applicationDate")),
-              registrationNumber:       g("registrationNumber"),
-              registrationDate:         fmtDate(g("registrationDate")),
-              publicationNumber:        g("publicationNumber") || g("publicNumber"),
-              publicationDate:          fmtDate(g("publicationDate") || g("publicDate")),
-              registrationPublicNumber: g("registrationPublicNumber"),
-              registrationPublicDate:   fmtDate(g("registrationPublicDate")),
-              title:                    g("title"),
-              drawing:                  g("drawing"),
-              bigDrawing:               g("bigDrawing"),
-              applicationStatus:        g("applicationStatus"),
-              classificationCode:       g("classificationCode"),
-              viennaCode:               g("viennaCode"),
-              priorityNumber:           g("priorityNumber"),
-              priorityDate:             fmtDate(g("priorityDate")),
-              internationalRegisterNumber: g("internationalRegisterNumber"),
-              internationalRegisterDate:   fmtDate(g("internationalRegisterDate")),
-            };
-            break;
-          }
-        }
-      }
+  const handleCloseDetail = () => { setDetailMode(null); setDetailData(null); };
 
-      // 출원인/대리인 등
-      const grabPersons = (xml, arrayTag, itemTag, role) => {
-        const arrays = getAll(xml, arrayTag);
-        const blocks = arrays.length > 0
-          ? arrays.flatMap(a => getAll(a, itemTag))
-          : getAll(xml, itemTag);
-        return blocks.map(b => {
-          const g = (t) => get1(b, t);
-          return {
-            name:    g("name") || g("applicantName") || g("agentName"),
-            code:    g("code") || g("applicantCode") || g("agentCode") || g("customerNumber"),
-            address: g("address") || g("applicantAddress") || g("agentAddress"),
-            role,
-          };
-        }).filter(x => x.name);
-      };
-      applicants = [
-        ...grabPersons(bibXml, "applicantInfoArray", "applicantInfo", "출원인"),
-        ...grabPersons(bibXml, "agentInfoArray", "agentInfo", "대리인"),
-        ...grabPersons(bibXml, "rightHolderInfoArray", "rightHolderInfo", "권리자"),
-        ...grabPersons(bibXml, "RegistrationLastHolderInfoArray", "RegistrationLastHolderInfo", "최종권리자"),
-      ];
+  const handleClear = () => {
+    setInputAppNum(""); setInputTmName(""); setInputClass(""); setInputSim("");
+    setInputAppli(""); setInputAgent(""); setInputExtraQuery("");
+    setSearched(false); setHistoryResults({}); setSearchResults(null);
+    setSelectedNum(null); setResultMode(null); setDetailMode(null); setDetailData(null); setCurrentPage(1);
+  };
 
-      // ── 지정상품 파싱 (TradeMarkClassificationInfoService) ──
-      // 응답 구조: <items><tradeMarkClassificationInfo>...</tradeMarkClassificationInfo>...</items>
-      // 같은 출원에 대해 출원시/등록시/갱신시 데이터가 누적되어 있음
-      // → 가장 최신 데이터만 필터링: (1)등록>출원  (2)최대 serialNumber  (3)최신 NICE 버전
-      let designatedGoods = [];
-      const goodsBlocks = getAll(goodsXml, "tradeMarkClassificationInfo");
+  const handleResetFilter = () => {
+    setStatusFilter(["출원", "공고", "등록"]);
+    setInputExtraQuery("");
+  };
 
-      // ── 유사군코드 파싱 ──
-      // 두 후보 endpoint를 모두 시도. wrapper tag명이 문서로 명확하지 않아 폭넓게 시도
-      // 또한 tradeMarkClassificationInfo 응답에도 유사군코드 필드가 함께 있을 가능성 있음
-      const SIM_WRAPPER_TAGS = [
-        "trademarkSimilarityCodeInfo",
-        "similarityCodeInfo",
-        "trademarkAsignProductSearchInfo",
-        "asignProductInfo",
-        "asignProductSearchInfo",
-        "biblioSummaryInfo",
-      ];
-      const SIM_FIELD_NAMES = ["similarityCode", "similarGroupCode", "similarCode", "asignProductMainCode", "similarityCodes"];
-      const collectSimBlocks = (xml) => {
-        const out = [];
-        for (const tag of SIM_WRAPPER_TAGS) {
-          const blks = getAll(xml, tag);
-          if (blks.length > 0) out.push(...blks);
-        }
-        return out;
-      };
-      const normalizeSimBlock = (b) => {
-        const g = (t) => get1(b, t);
-        let sim = "";
-        for (const f of SIM_FIELD_NAMES) {
-          const v = g(f);
-          if (v) { sim = v; break; }
-        }
-        return {
-          status:                  g("status"),
-          serialNumber:            parseInt(g("serialNumber")) || 0,
-          classOfGoodSerialNumber: parseInt(g("classOfGoodSerialNumber")) || 0,
-          classificationVersion:   g("classificationVersion"),
-          goodsClassificationCode: (g("goodsClassificationCode") || g("classificationCode") || "").trim(),
-          codes: (sim || "").split(/[,\s]+/).map(s => s.trim()).filter(Boolean),
-        };
-      };
-      // 후보 1, 2, 그리고 goodsXml 자체에도 유사군 필드가 있을 가능성 → 셋 다 모음
-      const allSimsRaw = [
-        ...collectSimBlocks(simXml1),
-        ...collectSimBlocks(simXml2),
-        // tradeMarkClassificationInfo 블록에서도 유사군 필드 있는지 시도
-        ...goodsBlocks,
-      ].map(normalizeSimBlock).filter(x => x.codes.length > 0);
+  const toggleStatusFilter = (key) => {
+    setStatusFilter(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
+  };
 
-      if (goodsBlocks.length > 0) {
-        const allGoods = goodsBlocks.map(b => {
-          const g = (t) => get1(b, t);
-          return {
-            status:                  g("status"),
-            serialNumber:            parseInt(g("serialNumber")) || 0,
-            classOfGoodSerialNumber: parseInt(g("classOfGoodSerialNumber")) || 0,
-            classificationVersion:   g("classificationVersion"),
-            goodsClassificationCode: g("goodsClassificationCode"),
-            // API 문서상 표기는 classofgoodServiceName / classOfGoodServiceName,
-            // 일부 응답에는 오타(classofgoodSerivceName)도 존재 → 모두 대응
-            goodName: g("classofgoodServiceName") || g("classOfGoodServiceName") || g("classofgoodSerivceName"),
-            additionDeletionCode:    g("additionDeletionCode"),
-          };
-        }).filter(x => x.goodName);
+  // ── 레이아웃 ──
+  // 좌측 필터 (상표검색일 때만) | 메인(검색+결과) | 우측(최근/상세)
+  const isSplit = layoutReady;
+  const rightPanel = detailMode ? "detail" : (showRecent ? "recent" : null);
+  const hasRight = rightPanel !== null && isSplit;
+  const hasLeftFilter = searchMode === "trademark" && showFilter && isSplit && !detailMode;
 
-        if (allGoods.length > 0) {
-          // (1) 상태 우선순위: 등록 > 출원 (등록 데이터가 하나라도 있으면 등록만 사용)
-          const hasReg = allGoods.some(x => x.status === "등록");
-          let pool = allGoods.filter(x => x.status === (hasReg ? "등록" : "출원"));
-          if (pool.length === 0) pool = allGoods;
+  // 너비 계산
+  let leftFilterW = "0%", mainW = "100%", rightW = "0%";
+  if (hasLeftFilter && hasRight) { leftFilterW = "18%"; mainW = "47%"; rightW = "35%"; }
+  else if (hasLeftFilter)         { leftFilterW = "20%"; mainW = "80%"; rightW = "0%"; }
+  else if (hasRight)              { leftFilterW = "0%";  mainW = "55%"; rightW = "45%"; }
 
-          // (2) 같은 status 안에서 가장 큰 serialNumber만 (최신 갱신본)
-          const maxSerial = pool.reduce((m, x) => Math.max(m, x.serialNumber), 0);
-          pool = pool.filter(x => x.serialNumber === maxSerial);
+  // ── 이력 타임라인 ──
+  const renderHistory = (appNum, data) => {
+    if (!data) return null;
+    if (data.error) return <div style={{color:"#dc2626",fontSize:13,padding:"10px 14px",background:c("#fff1f2","#450a0a"),borderRadius:8}}>⚠️ {data.error}</div>;
+    const items = data.items || [];
+    const stageIdx = inferStage(items);
+    const regNum = data.registrationNumber;
+    return (
+      <div style={{background:c("#fff","#1e293b"),border:`1px solid ${c("#e5e9f5","#334155")}`,borderRadius:14,padding:"18px 20px",marginBottom:16,boxShadow:"0 2px 12px rgba(19,39,79,0.07)"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:8}}>
+          <div>
+            <div style={{fontSize:15,fontWeight:800,color:c("#1a3a8f","#93c5fd")}}>📋 {appNum}</div>
+            {regNum && <div style={{fontSize:12,color:c("#166534","#86efac"),fontWeight:700,marginTop:3}}>✅ 등록번호: {regNum}</div>}
+          </div>
+          {data.latestStep && (() => {
+            const sc = STEP_COLOR[data.latestStep] || STEP_COLOR["출원"];
+            return <span style={{background:c(sc.bg,sc.dBg),color:c(sc.text,sc.dText),borderRadius:20,padding:"4px 14px",fontSize:12,fontWeight:700}}>현재: {data.latestStep} 단계</span>;
+          })()}
+        </div>
+        <div style={{marginBottom:20}}>
+          <div style={{display:"flex",alignItems:"flex-start",gap:0}}>
+            {STAGES.map((stage, si) => {
+              const isDone = si < stageIdx;
+              const isCurrent = si === stageIdx;
+              return (
+                <div key={si} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center"}}>
+                  <div style={{display:"flex",alignItems:"center",width:"100%"}}>
+                    <div style={{flex:1,height:3,background:(isDone||isCurrent)?c("#1a3a8f","#3b82f6"):c("#e5e9f5","#334155")}} />
+                    <div style={{
+                      width: isCurrent?20:16, height: isCurrent?20:16, borderRadius:"50%", flexShrink:0,
+                      background: (isDone||isCurrent)?c("#1a3a8f","#3b82f6"):c("#e5e9f5","#334155"),
+                      border: isCurrent?`3px solid ${c("#93c5fd","#93c5fd")}`:"none",
+                      boxShadow: isCurrent?"0 0 0 3px rgba(59,130,246,0.25)":"none",
+                      display:"flex",alignItems:"center",justifyContent:"center",zIndex:1,
+                    }}>
+                      {isDone && <span style={{fontSize:9,color:"#fff",fontWeight:900}}>✓</span>}
+                      {isCurrent && <span style={{width:8,height:8,borderRadius:"50%",background:"#fff"}} />}
+                    </div>
+                    <div style={{flex:1,height:3,background: isDone?c("#1a3a8f","#3b82f6"):c("#e5e9f5","#334155")}} />
+                  </div>
+                  <div style={{marginTop:6,textAlign:"center",fontSize:10,fontWeight: isCurrent?800:500,color: isCurrent?c("#1a3a8f","#93c5fd"):isDone?c("#374151","#cbd5e1"):c("#9ca3af","#64748b"),whiteSpace:"pre-line",lineHeight:1.3}}>{stage.label}</div>
+                  {isCurrent && <div style={{fontSize:9,color:c("#1a3a8f","#93c5fd"),fontWeight:700,marginTop:2}}>← 현재</div>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        {items.length > 0 ? (
+          <div>
+            <div style={{fontSize:11,color:c("#9ca3af","#64748b"),marginBottom:8,fontWeight:600}}>📄 전체 행정처리 이력 ({items.length}건)</div>
+            <div style={{display:"flex",flexDirection:"column",gap:5}}>
+              {[...items].reverse().map((item, idx) => {
+                const sc = STEP_COLOR[item.step] || STEP_COLOR["출원"];
+                const isFirst = idx === 0;
+                return (
+                  <div key={idx} style={{display:"flex",gap:10,alignItems:"flex-start",padding:"9px 12px",background: isFirst?c("#eff6ff","#162032"):c(idx%2===0?"#f8faff":"#fff",idx%2===0?"#172035":"#1e293b"),borderRadius:9,border:`1px solid ${isFirst?c("#bfdbfe","#1e3a6e"):c("#e5e9f5","#2a3a55")}`}}>
+                    <div style={{flexShrink:0,minWidth:76,fontSize:11,color:c("#9ca3af","#64748b"),fontWeight:600,paddingTop:2}}>{item.documentDateFmt}</div>
+                    <div style={{flexShrink:0,paddingTop:1}}>
+                      <span style={{background:c(sc.bg,sc.dBg),color:c(sc.text,sc.dText),borderRadius:5,padding:"1px 7px",fontSize:10,fontWeight:700}}>{item.step}</span>
+                    </div>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:13,fontWeight:isFirst?700:500,color:c("#1f2937","#e2e8f0")}}>{item.documentTitle}</div>
+                      {item.status && <div style={{fontSize:11,color:c("#6b7280","#94a3b8"),marginTop:1}}>처리상태: {item.status}</div>}
+                      {item.registrationNumber && <div style={{fontSize:11,color:c("#166534","#86efac"),fontWeight:700,marginTop:1}}>등록번호: {item.registrationNumber}</div>}
+                    </div>
+                    {isFirst && <div style={{flexShrink:0,fontSize:10,color:c("#3b82f6","#93c5fd"),fontWeight:700,paddingTop:2}}>최신</div>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : <div style={{textAlign:"center",padding:"20px 0",color:c("#9ca3af","#64748b"),fontSize:13}}>조회된 이력이 없습니다.</div>}
+      </div>
+    );
+  };
 
-          // (3) 분류 버전이 숫자(NICE)인 것이 있으면 가장 큰 NICE 버전 우선
-          //     (옛 한국분류 'E'와 NICE 분류가 섞여 있을 때 NICE 우선)
-          const numericVers = pool
-            .map(x => parseInt(x.classificationVersion))
-            .filter(v => Number.isFinite(v));
-          if (numericVers.length > 0) {
-            const maxV = String(Math.max(...numericVers));
-            const filteredV = pool.filter(x => x.classificationVersion === maxV);
-            if (filteredV.length > 0) pool = filteredV;
-          }
-
-          // (4) 지정상품 일련번호 순 정렬
-          pool.sort((a, b) => a.classOfGoodSerialNumber - b.classOfGoodSerialNumber);
-
-          // ── 유사군코드 매칭 ──
-          // 1차: 정확히 같은 (status, version, classCode, classOfGoodSerial) 매칭
-          // 2차: status 무시하고 (version, classCode, classOfGoodSerial) 매칭
-          // 3차: version 도 무시하고 (classCode, classOfGoodSerial) 매칭
-          // 4차: classOfGoodSerial 만으로 매칭 (분류코드도 무시)
-          const matchSims = (good) => {
-            const found = new Set();
-            const collect = (filterFn) => {
-              allSimsRaw.filter(filterFn).forEach(s => s.codes.forEach(c => found.add(c)));
-            };
-            const ver = good.classificationVersion;
-            const cls = (good.goodsClassificationCode || "").trim();
-            const ser = good.classOfGoodSerialNumber;
-            collect(s =>
-              s.status === good.status &&
-              s.classificationVersion === ver &&
-              s.goodsClassificationCode === cls &&
-              s.classOfGoodSerialNumber === ser
-            );
-            if (found.size === 0) collect(s =>
-              s.classificationVersion === ver &&
-              s.goodsClassificationCode === cls &&
-              s.classOfGoodSerialNumber === ser
-            );
-            if (found.size === 0) collect(s =>
-              s.goodsClassificationCode === cls &&
-              s.classOfGoodSerialNumber === ser
-            );
-            if (found.size === 0 && ser > 0) collect(s =>
-              s.classOfGoodSerialNumber === ser
-            );
-            return [...found];
-          };
-
-          designatedGoods = pool.map(x => ({
-            classificationCode:      x.goodsClassificationCode || "",
-            goodName:                x.goodName,
-            classOfGoodSerialNumber: x.classOfGoodSerialNumber,
-            similarityCodes:         matchSims(x),
-          }));
-        }
-      }
-
-      // ── 디버그 정보 ──
-      // 어떤 endpoint가 어떤 응답을 줬는지, 어떤 wrapper/필드가 발견됐는지 진단용
-      // debug:true 일 때만 응답에 포함
-      let _debug = null;
-      if (debug) {
-        // 첫 번째 sim 블록의 모든 자식 태그명 추출 (디버그용)
-        const sniffTags = (xml, wrapperTag) => {
-          const blocks = getAll(xml, wrapperTag);
-          if (blocks.length === 0) return null;
-          const tags = [...new Set([...(blocks[0].matchAll(/<([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>/g))].map(m => m[1]))];
-          return { wrapperTag, count: blocks.length, fields: tags, firstBlockSample: blocks[0].slice(0, 500) };
-        };
-        const sniffAny = (xml) => {
-          for (const tag of SIM_WRAPPER_TAGS) {
-            const r = sniffTags(xml, tag);
-            if (r) return r;
-          }
-          // 그래도 못 찾으면 첫 200자만 노출
-          return { wrapperTag: null, count: 0, fields: [], firstBlockSample: (xml || "").slice(0, 500) };
-        };
-        const goodsBlockSample = goodsBlocks[0] || "";
-        const goodsTags = goodsBlockSample
-          ? [...new Set([...(goodsBlockSample.matchAll(/<([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>/g))].map(m => m[1]))]
-          : [];
-
-        _debug = {
-          urls: { bibliographyUrl, goodsUrl, simUrl1, simUrl2 },
-          lengths: {
-            bibXml: bibXml.length, goodsXml: goodsXml.length,
-            simXml1: simXml1.length, simXml2: simXml2.length,
-          },
-          resultCodes: {
-            bib:    get1(bibXml, "resultCode") || get1(bibXml, "successYN"),
-            goods:  get1(goodsXml, "resultCode") || get1(goodsXml, "successYN"),
-            sim1:   get1(simXml1, "resultCode") || get1(simXml1, "successYN"),
-            sim2:   get1(simXml2, "resultCode") || get1(simXml2, "successYN"),
-          },
-          errorMsgs: {
-            bib:    get1(bibXml, "errMessage") || get1(bibXml, "msg") || get1(bibXml, "message"),
-            goods:  get1(goodsXml, "errMessage") || get1(goodsXml, "msg") || get1(goodsXml, "message"),
-            sim1:   get1(simXml1, "errMessage") || get1(simXml1, "msg") || get1(simXml1, "message"),
-            sim2:   get1(simXml2, "errMessage") || get1(simXml2, "msg") || get1(simXml2, "message"),
-          },
-          goodsBlockCount: goodsBlocks.length,
-          goodsFieldsFound: goodsTags,
-          goodsFirstBlockSample: goodsBlockSample.slice(0, 500),
-          sim1Sniff: sniffAny(simXml1),
-          sim2Sniff: sniffAny(simXml2),
-          allSimsCount: allSimsRaw.length,
-          designatedGoodsCount: designatedGoods.length,
-          goodsWithSimCount: designatedGoods.filter(g => g.similarityCodes.length > 0).length,
-        };
-      }
-
-      return res.status(200).json({ bibliography, designatedGoods, applicants, _debug });
-    } catch (err) { return res.status(500).json({ error: err.message }); }
-  }
-
-  // ════════════════════════════════════════════
-  // MODE: rejection
-  // ════════════════════════════════════════════
-  if (mode === "rejection") {
-    const params = new URLSearchParams({
-      accessKey: ACCESS_KEY, tradeMark: "true", patent: "false", utility: "false", design: "false",
-      docsCount: "30", docsStart: String(pageNo || 1), descSort: "true",
+  // ── 페이지네이션 ──
+  const renderPagination = () => {
+    if (!searchResults || !searchResults.items?.length) return null;
+    const total = searchResults.totalCount || 0;
+    const per = searchResults.numOfRows || 30;
+    const totalPages = Math.max(1, Math.ceil(total / per));
+    if (totalPages <= 1) return null;
+    const maxShow = 7;
+    let startP = Math.max(1, currentPage - Math.floor(maxShow/2));
+    let endP = Math.min(totalPages, startP + maxShow - 1);
+    if (endP - startP + 1 < maxShow) startP = Math.max(1, endP - maxShow + 1);
+    const pages = Array.from({length: endP - startP + 1}, (_, i) => startP + i);
+    const btnStyle = (active) => ({
+      minWidth:32, height:32, padding:"0 8px",
+      background: active ? c("#13274F","#1e3a6e") : c("#fff","#1e293b"),
+      color: active ? "#fff" : c("#374151","#cbd5e1"),
+      border:`1px solid ${active ? c("#13274F","#1e3a6e") : c("#e5e9f5","#334155")}`,
+      borderRadius:6, cursor:"pointer", fontFamily:"inherit", fontSize:12, fontWeight:700,
+      display:"inline-flex", alignItems:"center", justifyContent:"center",
     });
-    if (applicationNumber) params.append("applicationNumber", applicationNumber.replace(/\D/g, ""));
-    if (word)              params.append("word",              word);
-    if (rejectionContent)  params.append("rejectionContent",  rejectionContent);
-    if (sendDate)          params.append("sendDate",          sendDate);
-    if (!applicationNumber && !word && !rejectionContent) {
-      return res.status(400).json({ error: "applicationNumber/word/rejectionContent 중 하나 필요" });
-    }
-    const url = `http://plus.kipris.or.kr/openapi/rest/IntermediateDocumentREService/advancedSearchInfo?${params.toString()}`;
-    try {
-      const xml = await (await fetch(url)).text();
-      const items = getAll(xml, "advancedSearchInfo").map(b => {
-        const g = (t) => get1(b, t);
-        return {
-          applicationNumber: fmtAppNum(g("applicationNumber")),
-          sendNumber:        g("sendNumber"),
-          sendDate:          fmtDate(g("sendDate")),
-          title:             g("title"),
-          filePath:          g("filePath"),
-        };
-      });
-      return res.status(200).json({ resultCode: get1(xml, "resultCode"), items });
-    } catch (err) { return res.status(500).json({ error: err.message }); }
-  }
+    return (
+      <div style={{display:"flex",justifyContent:"center",gap:4,marginTop:20,marginBottom:16,flexWrap:"wrap"}}>
+        <button style={btnStyle(false)} onClick={()=>handlePageChange(1)} disabled={currentPage===1}>«</button>
+        <button style={btnStyle(false)} onClick={()=>handlePageChange(Math.max(1,currentPage-1))} disabled={currentPage===1}>‹</button>
+        {startP>1 && <><button style={btnStyle(false)} onClick={()=>handlePageChange(1)}>1</button><span style={{padding:"0 4px",color:c("#9ca3af","#64748b")}}>…</span></>}
+        {pages.map(p => <button key={p} style={btnStyle(p===currentPage)} onClick={()=>handlePageChange(p)}>{p}</button>)}
+        {endP<totalPages && <><span style={{padding:"0 4px",color:c("#9ca3af","#64748b")}}>…</span><button style={btnStyle(false)} onClick={()=>handlePageChange(totalPages)}>{totalPages}</button></>}
+        <button style={btnStyle(false)} onClick={()=>handlePageChange(Math.min(totalPages,currentPage+1))} disabled={currentPage===totalPages}>›</button>
+        <button style={btnStyle(false)} onClick={()=>handlePageChange(totalPages)} disabled={currentPage===totalPages}>»</button>
+        <div style={{display:"flex",alignItems:"center",marginLeft:8,fontSize:11,color:c("#9ca3af","#64748b")}}>총 {total.toLocaleString()}건 · {currentPage}/{totalPages}페이지</div>
+      </div>
+    );
+  };
 
-  // ════════════════════════════════════════════
-  // MODE: register
-  // ════════════════════════════════════════════
-  if (mode === "register") {
-    if (!applicationNumber) return res.status(400).json({ error: "applicationNumber required" });
-    const numClean = applicationNumber.replace(/\D/g, "");
-    const url = `http://plus.kipris.or.kr/openapi/rest/IntermediateDocumentRGService/bibliographicInfo?applicationNumber=${numClean}&accessKey=${encodeURIComponent(ACCESS_KEY)}`;
-    try {
-      const xml = await (await fetch(url)).text();
-      const items = getAll(xml, "bibliographicInfo").map(b => {
-        const g = (t) => get1(b, t);
-        return {
-          applicationNumber:  fmtAppNum(g("applicationNumber")),
-          sendNumber:         g("sendNumber"),
-          documentSendNumber: g("documentSendNumber"),
-          sendDate:           fmtDate(g("sendDate")),
-          documentSentence:   g("documentSentence"),
-          documentName:       g("documentName"),
-          documentDrawupDate: fmtDate(g("documentDrawupDate")),
-          inventionName:      g("inventionName"),
-          demandItemcount:    g("demandItemcount"),
-        };
-      });
-      return res.status(200).json({ resultCode: get1(xml, "resultCode"), items });
-    } catch (err) { return res.status(500).json({ error: err.message }); }
-  }
+  // ── 검색 결과 ──
+  const renderSearchResults = () => {
+    if (!searchResults) return null;
+    if (searchResults.error) return <div style={{color:"#dc2626",fontSize:13,padding:"12px 16px",background:c("#fff1f2","#450a0a"),borderRadius:10}}>⚠️ {searchResults.error}</div>;
+    const items = searchResults.items || [];
+    const total = searchResults.totalCount || 0;
+    return (
+      <div>
+        <div style={{fontSize:12,color:c("#6b7280","#94a3b8"),marginBottom:12}}>
+          검색 결과 <strong>{total.toLocaleString()}</strong>건 · {currentPage}페이지 · 페이지당 30건 · 클릭하면 좌측에 이력, 우측에 상세정보 표시
+          {searchResults.finalQuery && <span style={{marginLeft:8,fontSize:10,color:c("#9ca3af","#64748b"),fontFamily:"monospace"}}>[검색식: {searchResults.finalQuery}]</span>}
+        </div>
+        {items.length === 0 && <div style={{textAlign:"center",paddingTop:40,color:c("#9ca3af","#64748b")}}><div style={{fontSize:32,marginBottom:12}}>🔍</div>검색 결과가 없습니다.</div>}
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {items.map((item, idx) => (
+            <div key={idx} style={{display:"flex",gap:14,alignItems:"center",background:c("#fff","#1e293b"),border:`1px solid ${c("#e5e9f5","#334155")}`,borderRadius:12,padding:"12px 16px",boxShadow:"0 1px 6px rgba(19,39,79,0.06)",cursor:"pointer",transition:"all .15s"}}
+              onClick={() => handleItemClick(item.applicationNumber)}
+              onMouseEnter={e=>e.currentTarget.style.boxShadow="0 4px 16px rgba(19,39,79,0.14)"}
+              onMouseLeave={e=>e.currentTarget.style.boxShadow="0 1px 6px rgba(19,39,79,0.06)"}>
+              <div style={{width:64,height:64,flexShrink:0,background:c("#f1f5f9","#334155"),borderRadius:8,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${c("#e5e9f5","#475569")}`}}>
+                {item.drawing ? <img src={item.drawing} alt={item.tradeMarkName} style={{width:"100%",height:"100%",objectFit:"contain"}} onError={e=>e.target.style.display="none"} /> : <span style={{fontSize:22,color:c("#cbd5e1","#475569")}}>™</span>}
+              </div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:14,fontWeight:700,color:c("#1a3a8f","#93c5fd"),marginBottom:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.tradeMarkName || "(상표명 없음)"}</div>
+                <div style={{fontSize:11,color:c("#6b7280","#94a3b8")}}>
+                  출원번호: <span style={{fontWeight:600,color:c("#374151","#cbd5e1"),fontFamily:"monospace"}}>{item.applicationNumber}</span>
+                  {item.applicationDate && (
+                    <span style={{marginLeft:8,fontSize:10,color:c("#9ca3af","#64748b")}}>
+                      · 출원일: <span style={{fontFamily:"monospace",color:c("#6b7280","#94a3b8")}}>{item.applicationDate}</span>
+                    </span>
+                  )}
+                </div>
+                {item.applicantName && <div style={{fontSize:11,color:c("#9ca3af","#64748b"),marginTop:1}}>출원인: {item.applicantName}</div>}
+                {item.agentName && <div style={{fontSize:11,color:c("#9ca3af","#64748b"),marginTop:1}}>대리인: {item.agentName}</div>}
+                {item.classificationCode && <div style={{fontSize:11,color:c("#9ca3af","#64748b")}}>류코드: {item.classificationCode}</div>}
+              </div>
+              <div style={{flexShrink:0,textAlign:"right"}}>
+                {item.applicationStatus && <span style={{display:"block",background: item.applicationStatus.includes("등록")?c("#dcfce7","#14532d"):c("#fef9c3","#422006"),color: item.applicationStatus.includes("등록")?c("#166534","#86efac"):c("#854d0e","#fde68a"),borderRadius:5,padding:"3px 8px",fontSize:10,fontWeight:700,marginBottom:4}}>{item.applicationStatus}</span>}
+                <span style={{fontSize:10,color:c("#9ca3af","#64748b")}}>클릭 → 상세</span>
+              </div>
+            </div>
+          ))}
+        </div>
+        {renderPagination()}
+      </div>
+    );
+  };
 
-  return res.status(400).json({ error: "mode must be one of: history, search, detail, rejection, register" });
+  // ── 상세 패널 ──
+  const renderDetailPanel = () => {
+    const appNum = detailMode?.appNum;
+    if (!appNum) return null;
+    const histData = historyResults[appNum];
+    const searchItem = searchResults?.items?.find(i => i.applicationNumber === appNum);
+    const bib = detailData?.bibliography;
+    const goods = detailData?.designatedGoods || [];
+    const applicants = detailData?.applicants || [];
+
+    const goodsByClass = {};
+    goods.forEach(g => {
+      const k = g.classificationCode || "기타";
+      if (!goodsByClass[k]) goodsByClass[k] = [];
+      goodsByClass[k].push({
+        name: g.goodName,
+        sims: g.similarityCodes || [],
+      });
+    });
+    // 모든 유사군코드 모음 (류별 헤더에 표시)
+    const allSimsByClass = {};
+    Object.entries(goodsByClass).forEach(([cls, items]) => {
+      const set = new Set();
+      items.forEach(it => (it.sims || []).forEach(s => set.add(s)));
+      allSimsByClass[cls] = [...set].sort();
+    });
+
+    const drawingUrl = bib?.bigDrawing || bib?.drawing || searchItem?.bigDrawing || searchItem?.drawing || null;
+    const tmName = bib?.title || searchItem?.tradeMarkName || "(상표명 없음)";
+
+    return (
+      <div style={{height:"100%",display:"flex",flexDirection:"column",background:c("#fff","#1e293b"),border:`1px solid ${c("#e5e9f5","#334155")}`,borderRadius:16,overflow:"hidden",boxShadow:"0 2px 20px rgba(19,39,79,0.09)"}}>
+        <div style={{padding:"14px 18px",borderBottom:`1px solid ${c("#f1f5f9","#334155")}`,flexShrink:0,background:c("#f8faff","#162032"),display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div>
+            <div style={{fontSize:13,fontWeight:700,color:c("#13274F","#e2e8f0"),display:"flex",alignItems:"center",gap:6}}><span>📑</span> 상표 상세정보</div>
+            <div style={{fontSize:11,color:c("#9ca3af","#64748b"),marginTop:3,fontFamily:"monospace"}}>{appNum}</div>
+          </div>
+          <button onClick={handleCloseDetail} title="닫기"
+            style={{background:c("#fff","#334155"),border:`1px solid ${c("#e5e9f5","#475569")}`,borderRadius:"50%",width:30,height:30,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:c("#6b7280","#cbd5e1"),fontWeight:700,transition:"all .15s"}}
+            onMouseEnter={e=>{e.currentTarget.style.background=c("#fef2f2","#450a0a");e.currentTarget.style.color="#dc2626";}}
+            onMouseLeave={e=>{e.currentTarget.style.background=c("#fff","#334155");e.currentTarget.style.color=c("#6b7280","#cbd5e1");}}>✕</button>
+        </div>
+        <div style={{flex:1,overflowY:"auto",padding:"16px 18px"}}>
+          {detailLoad ? (
+            <div style={{textAlign:"center",paddingTop:40}}>
+              <div style={{width:30,height:30,border:"3px solid #d0d9f0",borderTop:"3px solid #1a3a8f",borderRadius:"50%",animation:"spin .8s linear infinite",margin:"0 auto 12px"}} />
+              <div style={{fontSize:12,color:c("#6b7280","#94a3b8")}}>상세정보 로딩 중...</div>
+            </div>
+          ) : (
+            <>
+              <div style={{background:c("#f8faff","#0f172a"),borderRadius:10,padding:20,marginBottom:16,textAlign:"center",border:`1px solid ${c("#e5e9f5","#334155")}`}}>
+                {drawingUrl ? <img src={drawingUrl} alt={tmName} style={{maxWidth:"100%",maxHeight:200,objectFit:"contain"}} onError={e=>{e.target.style.display="none";e.target.nextSibling.style.display="flex";}} /> : null}
+                <div style={{display: drawingUrl?"none":"flex",alignItems:"center",justifyContent:"center",height:120,color:c("#cbd5e1","#475569"),fontSize:40}}>™</div>
+                <div style={{marginTop:10,fontSize:14,fontWeight:700,color:c("#13274F","#e2e8f0")}}>{tmName}</div>
+              </div>
+              <section style={{marginBottom:18}}>
+                <h3 style={{fontSize:12,fontWeight:700,color:c("#13274F","#e2e8f0"),marginBottom:8,paddingBottom:4,borderBottom:`2px solid ${c("#1a3a8f","#3b82f6")}`,display:"flex",alignItems:"center",gap:6}}>📋 서지정보</h3>
+                <table style={{width:"100%",fontSize:12,borderCollapse:"collapse"}}>
+                  <tbody>
+                    {[
+                      ["출원번호", appNum],
+                      ["출원일자", bib?.applicationDate || searchItem?.applicationDate],
+                      ["상표명", tmName],
+                      ["출원상태", bib?.applicationStatus || searchItem?.applicationStatus],
+                      ["상품류", bib?.classificationCode || searchItem?.classificationCode],
+                      ["등록번호", bib?.registrationNumber || searchItem?.registrationNumber],
+                      ["등록일자", bib?.registrationDate || searchItem?.registrationDate],
+                      ["출원공고번호", bib?.publicationNumber],
+                      ["출원공고일자", bib?.publicationDate],
+                      ["등록공고번호", bib?.registrationPublicNumber],
+                      ["등록공고일자", bib?.registrationPublicDate],
+                      ["우선권주장", bib?.priorityNumber],
+                      ["비엔나코드", bib?.viennaCode],
+                    ].filter(([,v]) => v).map(([k,v],i) => (
+                      <tr key={i} style={{borderBottom:`1px solid ${c("#f1f5f9","#334155")}`}}>
+                        <td style={{padding:"6px 0",color:c("#6b7280","#94a3b8"),fontWeight:600,width:100,verticalAlign:"top"}}>{k}</td>
+                        <td style={{padding:"6px 0",color:c("#1f2937","#e2e8f0")}}>{v}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </section>
+              <section style={{marginBottom:18}}>
+                <h3 style={{fontSize:12,fontWeight:700,color:c("#13274F","#e2e8f0"),marginBottom:8,paddingBottom:4,borderBottom:`2px solid ${c("#1a3a8f","#3b82f6")}`,display:"flex",alignItems:"center",gap:6}}>👥 인명정보</h3>
+                {applicants.length > 0 ? (
+                  <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                    {applicants.map((a,i) => (
+                      <div key={i} style={{padding:"8px 12px",background:c("#f8faff","#172035"),borderRadius:8,border:`1px solid ${c("#e5e9f5","#2a3a55")}`}}>
+                        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
+                          <span style={{fontSize:10,fontWeight:700,background:c("#dbeafe","#1e3a6e"),color:c("#1e40af","#93c5fd"),padding:"2px 6px",borderRadius:4}}>{a.role}</span>
+                          <span style={{fontSize:13,fontWeight:700,color:c("#1f2937","#e2e8f0")}}>{a.name}</span>
+                        </div>
+                        {a.code && (
+                          <div style={{fontSize:11,color:c("#9ca3af","#64748b"),fontFamily:"monospace"}}>
+                            {a.role === "대리인" ? "대리인 코드" : "특허고객번호"}: {a.code}
+                          </div>
+                        )}
+                        {a.address && <div style={{fontSize:11,color:c("#9ca3af","#64748b"),marginTop:2}}>{a.address}</div>}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{fontSize:12,color:c("#9ca3af","#64748b"),padding:"10px 0"}}>
+                    {searchItem?.applicantName && <div>출원인: <strong>{searchItem.applicantName}</strong></div>}
+                    {searchItem?.agentName && <div style={{marginTop:2}}>대리인: <strong>{searchItem.agentName}</strong></div>}
+                  </div>
+                )}
+              </section>
+              <section style={{marginBottom:18}}>
+                <h3 style={{fontSize:12,fontWeight:700,color:c("#13274F","#e2e8f0"),marginBottom:8,paddingBottom:4,borderBottom:`2px solid ${c("#1a3a8f","#3b82f6")}`,display:"flex",alignItems:"center",justifyContent:"space-between",gap:6}}>
+                  <span style={{display:"flex",alignItems:"center",gap:6}}>🛒 지정상품 · 유사군코드</span>
+                  <button
+                    onClick={() => reloadDetailWithDebug(!simDebug)}
+                    title="유사군코드가 비어 있을 때 raw API 응답을 진단합니다"
+                    style={{
+                      fontSize:9,fontWeight:700,padding:"3px 8px",borderRadius:4,
+                      border:`1px solid ${simDebug ? c("#dc2626","#7f1d1d") : c("#cbd5e1","#475569")}`,
+                      background: simDebug ? c("#fef2f2","#450a0a") : c("#f8faff","#1e293b"),
+                      color: simDebug ? c("#dc2626","#fca5a5") : c("#6b7280","#94a3b8"),
+                      cursor:"pointer", fontFamily:"inherit",
+                    }}>
+                    {simDebug ? "🐞 디버그 ON" : "🐞 디버그"}
+                  </button>
+                </h3>
+                {simDebug && detailData?._debug && (
+                  <div style={{marginBottom:10,padding:"10px 12px",background:c("#fef2f2","#1a0e0e"),border:`1px solid ${c("#fecaca","#7f1d1d")}`,borderRadius:8,fontSize:10,fontFamily:"monospace",color:c("#7f1d1d","#fca5a5"),lineHeight:1.5,maxHeight:400,overflowY:"auto",whiteSpace:"pre-wrap",wordBreak:"break-all"}}>
+                    {(() => {
+                      const d = detailData._debug;
+                      const lines = [];
+                      lines.push(`【bib】 길이=${d.bibLength} resultCode=${d.bibResultCode||'-'} ${d.bibErrorMsg ? 'err='+d.bibErrorMsg : ''}`);
+                      lines.push(`【goods】 길이=${d.goodsLength} 블록=${d.goodsBlockCount}개 매칭=${d.goodsWithSimCount}/${d.designatedGoodsCount}`);
+                      lines.push(`【수집된 sim 블록】 ${d.allSimsCount}개  Winner: ${d.simWinnerName || '없음'}`);
+                      lines.push("");
+                      lines.push(`▼ goodsXml 첫 블록 (필드: ${d.goodsFieldsFound.join(', ')})`);
+                      lines.push(d.goodsFirstBlockSample || "(없음)");
+                      lines.push("");
+                      (d.simCandidates || []).forEach((c, i) => {
+                        const win = i === d.simWinnerIdx ? "  ★ WINNER" : "";
+                        lines.push(`━━━ 후보 ${i+1}/${d.simCandidates.length}${win} ━━━`);
+                        lines.push(`  name: ${c.name}`);
+                        lines.push(`  url:  ${c.url}`);
+                        lines.push(`  길이=${c.length} resultCode=${c.resultCode||'-'} ${c.errorMsg ? 'err='+c.errorMsg : ''}`);
+                        lines.push(`  wrapper=${c.sniff.wrapperTag||'못찾음'} count=${c.sniff.count} fields=[${c.sniff.fields.join(', ')}]`);
+                        lines.push(c.sniff.firstBlockSample || "(빈 응답)");
+                        lines.push("");
+                      });
+                      return lines.join("\n");
+                    })()}
+                  </div>
+                )}
+                {goods.length > 0 ? (
+                  <>
+                    <div style={{marginBottom:12}}>
+                      <div style={{fontSize:10,fontWeight:600,color:c("#9ca3af","#64748b"),marginBottom:4}}>▼ 류별 분류 (각 상품 옆 파란 뱃지 = 유사군코드)</div>
+                      {Object.entries(goodsByClass).map(([cls,items]) => (
+                        <div key={cls} style={{padding:"10px 12px",background:c("#f8faff","#172035"),borderRadius:8,border:`1px solid ${c("#e5e9f5","#2a3a55")}`,marginBottom:6}}>
+                          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:6,flexWrap:"wrap"}}>
+                            <div style={{fontSize:11,fontWeight:700,color:c("#1a3a8f","#93c5fd")}}>제{cls}류 ({items.length}개)</div>
+                            {allSimsByClass[cls] && allSimsByClass[cls].length > 0 && (
+                              <div style={{display:"flex",alignItems:"center",gap:4,flexWrap:"wrap"}}>
+                                <span style={{fontSize:9,color:c("#9ca3af","#64748b"),fontWeight:600}}>이 류의 유사군코드:</span>
+                                {allSimsByClass[cls].map(s => (
+                                  <span key={s} style={{fontSize:9,fontWeight:700,fontFamily:"monospace",background:c("#e0f2fe","#0c4a6e"),color:c("#075985","#7dd3fc"),padding:"1px 5px",borderRadius:3,whiteSpace:"nowrap"}}>{s}</span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <div style={{display:"flex",flexDirection:"column",gap:0}}>
+                            {items.map((g,gi) => (
+                              <div key={gi} style={{display:"flex",alignItems:"flex-start",gap:8,padding:"5px 0",borderTop: gi === 0 ? "none" : `1px dashed ${c("#e5e9f5","#2a3a55")}`}}>
+                                <div style={{flex:1,fontSize:12,color:c("#1f2937","#e2e8f0"),lineHeight:1.5,wordBreak:"keep-all",overflowWrap:"break-word"}}>
+                                  <span style={{fontSize:10,color:c("#9ca3af","#64748b"),marginRight:4,fontFamily:"monospace"}}>{gi+1}.</span>
+                                  {g.name}
+                                </div>
+                                {g.sims && g.sims.length > 0 ? (
+                                  <div style={{display:"flex",flexWrap:"wrap",gap:3,flexShrink:0,maxWidth:"45%",justifyContent:"flex-end"}}>
+                                    {g.sims.map(s => (
+                                      <span key={s} style={{fontSize:10,fontWeight:700,fontFamily:"monospace",background:c("#dbeafe","#1e3a6e"),color:c("#1e40af","#93c5fd"),padding:"2px 6px",borderRadius:4,whiteSpace:"nowrap"}}>{s}</span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span style={{fontSize:10,color:c("#cbd5e1","#475569"),fontFamily:"monospace",flexShrink:0}}>—</span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div>
+                      <div style={{fontSize:10,fontWeight:600,color:c("#9ca3af","#64748b"),marginBottom:4}}>▼ 쉼표 구분 1행 형식 (복사용)</div>
+                      <div style={{padding:"10px 12px",background:c("#fef9c3","#422006"),borderRadius:8,border:`1px solid ${c("#fde68a","#854d0e")}`,fontSize:11,color:c("#854d0e","#fde68a"),lineHeight:1.6,wordBreak:"keep-all",overflowWrap:"break-word"}}>
+                        {goods.map(g => g.goodName).join(",")}
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div style={{padding:"14px 16px",background:c("#f8faff","#172035"),borderRadius:8,border:`1px dashed ${c("#cbd5e1","#475569")}`}}>
+                    <div style={{fontSize:12,color:c("#6b7280","#94a3b8"),lineHeight:1.6,marginBottom:10}}>
+                      지정상품 상세 정보는 KIPRIS Plus의 무료 API로 제공되지 않습니다.<br />
+                      (BULK 다운로드 또는 KIPRIS 사이트 직접 조회만 가능)
+                    </div>
+                  <div style={{padding:"14px 16px",background:c("#f8faff","#172035"),borderRadius:8,border:`1px dashed ${c("#cbd5e1","#475569")}`}}>
+                    <div style={{fontSize:12,color:c("#6b7280","#94a3b8"),lineHeight:1.6,marginBottom:10}}>
+                      지정상품 상세 정보는 KIPRIS Plus 무료 API로 제공되지 않습니다.<br />
+                      아래 출원번호를 복사 후 KIPRIS에서 직접 확인해주세요.
+                    </div>
+                    {/* 출원번호 복사 버튼 */}
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+                      <code style={{flex:1,padding:"8px 12px",background:c("#e5e9f5","#0f172a"),borderRadius:6,fontSize:13,fontWeight:700,color:c("#1a3a8f","#93c5fd"),letterSpacing:"0.5px"}}>{appNum}</code>
+                      <button onClick={() => navigator.clipboard.writeText(appNum).then(() => alert("복사됨!"))}
+                        style={{padding:"8px 12px",background:c("#e5e9f5","#334155"),border:"none",borderRadius:6,fontSize:12,fontWeight:700,cursor:"pointer",color:c("#374151","#cbd5e1"),fontFamily:"inherit",whiteSpace:"nowrap"}}>
+                        📋 복사
+                      </button>
+                    </div>
+                    <a href="https://www.kipris.or.kr/khome/search/searchResult.do?tab=trademark"
+                      target="_blank" rel="noreferrer"
+                      style={{display:"inline-flex",alignItems:"center",gap:6,padding:"8px 14px",background:c("#13274F","#1e3a6e"),color:"#fff",fontSize:12,fontWeight:700,borderRadius:6,textDecoration:"none"}}>
+                      🔗 KIPRIS 상표 검색 열기
+                    </a>
+                    <div style={{fontSize:10,color:c("#9ca3af","#64748b"),marginTop:8,lineHeight:1.5}}>
+                      ① 출원번호 복사 → ② KIPRIS 열기 → ③ 검색창에 붙여넣기
+                    </div>
+                  </div>
+                  </div>
+                )}
+              </section>
+              {detailData?.error && <div style={{color:"#dc2626",fontSize:11,padding:"8px 12px",background:c("#fff1f2","#450a0a"),borderRadius:6}}>⚠️ {detailData.error}</div>}
+            </>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // ── 최근 출원 패널 ──
+  const renderRecentPanel = () => (
+    <div style={{background:c("#fff","#1e293b"),border:`1px solid ${c("#e5e9f5","#334155")}`,borderRadius:16,height:"100%",display:"flex",flexDirection:"column",boxShadow:"0 2px 20px rgba(19,39,79,0.09)",overflow:"hidden"}}>
+      <div style={{padding:"14px 18px 11px",borderBottom:`1px solid ${c("#f1f5f9","#334155")}`,flexShrink:0,background:c("#f8faff","#162032")}}>
+        <div style={{fontSize:13,fontWeight:700,color:c("#13274F","#e2e8f0"),display:"flex",alignItems:"center",gap:6}}><span>🕐</span> 최근 출원 현황 (가엔 DB)</div>
+        <div style={{fontSize:11,color:c("#9ca3af","#64748b"),marginTop:3}}>최신순 30건 · 클릭하면 이력 조회</div>
+      </div>
+      <div style={{flex:1,overflowY:"auto",padding:"8px 10px"}}>
+        {recentLoad ? <div style={{textAlign:"center",paddingTop:40,color:c("#9ca3af","#64748b"),fontSize:13}}>불러오는 중...</div> :
+         recentList.length === 0 ? <div style={{textAlign:"center",paddingTop:40,color:c("#9ca3af","#64748b"),fontSize:13}}>출원번호 데이터 없음</div> :
+         recentList.flatMap((item,i) => item.nums.map((num,ni) => {
+           const isSel = selectedNum === num;
+           return (
+             <button key={`${i}-${ni}`} onClick={()=>handleSelectRecent(num)}
+               style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"9px 10px",marginBottom:4,background: isSel?c("#dbeafe","#1e3a6e"):c(i%2===0?"#fff":"#f8faff",i%2===0?"#1e293b":"#172035"),border:`1.5px solid ${isSel?c("#93c5fd","#3b82f6"):c("#e5e9f5","#2a3a55")}`,borderRadius:10,cursor:"pointer",fontFamily:"inherit",transition:"all .15s",textAlign:"left"}}
+               onMouseEnter={e=>{if(!isSel)e.currentTarget.style.background=c("#f0f4ff","#1e3a5f");}}
+               onMouseLeave={e=>{if(!isSel)e.currentTarget.style.background=c(i%2===0?"#fff":"#f8faff",i%2===0?"#1e293b":"#172035");}}>
+               <span style={{fontSize:10,fontWeight:700,color:c("#9ca3af","#64748b"),flexShrink:0,minWidth:18}}>{i+ni+1}</span>
+               <div style={{flex:1,minWidth:0}}>
+                 <div style={{fontSize:12,fontWeight:700,color: isSel?c("#1a3a8f","#93c5fd"):c("#374151","#cbd5e1"),fontFamily:"monospace"}}>{num}</div>
+                 <div style={{fontSize:10,color:c("#9ca3af","#64748b"),overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:1}}>{item.title}</div>
+               </div>
+               {isSel && <span style={{fontSize:12,color:c("#1a3a8f","#93c5fd"),flexShrink:0}}>▶</span>}
+             </button>
+           );
+         }))}
+      </div>
+    </div>
+  );
+
+  // ── 좌측 검색필터 패널 (추가 필터링용) ──
+  const renderFilterPanel = () => (
+    <div style={{background:c("#fff","#1e293b"),border:`1px solid ${c("#e5e9f5","#334155")}`,borderRadius:16,height:"100%",display:"flex",flexDirection:"column",boxShadow:"0 2px 20px rgba(19,39,79,0.09)",overflow:"hidden"}}>
+      {/* 헤더 */}
+      <div style={{padding:"14px 18px",borderBottom:`1px solid ${c("#f1f5f9","#334155")}`,flexShrink:0,background:c("#f8faff","#162032"),display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <div style={{fontSize:13,fontWeight:700,color:c("#13274F","#e2e8f0"),display:"flex",alignItems:"center",gap:6}}>
+          <span>🎚️</span> 추가 필터
+        </div>
+        <button onClick={() => setShowFilter(false)} title="필터 닫기"
+          style={{background:"none",border:"none",cursor:"pointer",color:c("#9ca3af","#64748b"),fontSize:16,fontWeight:700}}>✕</button>
+      </div>
+
+      {/* 필터 내용 */}
+      <div style={{flex:1,overflowY:"auto",padding:"14px 16px"}}>
+
+        {/* 안내 */}
+        <div style={{padding:"8px 10px",background:c("#fef9c3","#422006"),borderRadius:6,marginBottom:14,fontSize:11,color:c("#854d0e","#fde68a"),lineHeight:1.5}}>
+          💡 검색창의 조건과 함께 적용되는 추가 필터입니다.
+        </div>
+
+        {/* 권리구분 */}
+        <div style={{marginBottom:16}}>
+          <h4 style={{fontSize:12,fontWeight:700,color:c("#13274F","#e2e8f0"),marginBottom:8}}>권리구분</h4>
+          <div style={{fontSize:11,color:c("#6b7280","#94a3b8"),padding:"6px 10px",background:c("#f1f5f9","#172035"),borderRadius:6}}>
+            상표 (40-) — 기본값
+          </div>
+        </div>
+
+        {/* 행정상태 */}
+        <div style={{marginBottom:16}}>
+          <h4 style={{fontSize:12,fontWeight:700,color:c("#13274F","#e2e8f0"),marginBottom:8,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span>행정상태</span>
+            <button onClick={() => setStatusFilter([])} style={{fontSize:10,background:"none",border:"none",color:c("#9ca3af","#64748b"),cursor:"pointer",fontFamily:"inherit"}}>전체해제</button>
+          </h4>
+          <div style={{display:"flex",flexDirection:"column",gap:4}}>
+            {STATUS_OPTIONS.map(opt => (
+              <label key={opt.key} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 8px",borderRadius:6,cursor:"pointer",background: statusFilter.includes(opt.key)?c("#eff6ff","#172035"):"transparent",transition:"background .15s"}}>
+                <input type="checkbox" checked={statusFilter.includes(opt.key)} onChange={() => toggleStatusFilter(opt.key)}
+                  style={{width:14,height:14,accentColor:c("#1a3a8f","#3b82f6"),cursor:"pointer"}} />
+                <span style={{fontSize:12,color: statusFilter.includes(opt.key)?c("#1a3a8f","#93c5fd"):c("#374151","#cbd5e1"),fontWeight: statusFilter.includes(opt.key)?700:500}}>{opt.label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        {/* 검색식 추가 */}
+        <div style={{marginBottom:16}}>
+          <h4 style={{fontSize:12,fontWeight:700,color:c("#13274F","#e2e8f0"),marginBottom:8}}>검색식 추가</h4>
+          <textarea value={inputExtraQuery} onChange={e=>setInputExtraQuery(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();handleSubmit(1);}}}
+            placeholder='예: AP=[정화란]+AG=[김수산]'
+            rows={3}
+            style={{width:"100%",border:`1px solid ${c("#e5e9f5","#334155")}`,outline:"none",fontSize:11,color:c("#1f2937","#e2e8f0"),background:c("#f8faff","#172035"),fontFamily:"monospace",padding:"7px 10px",borderRadius:6,resize:"vertical",lineHeight:1.5}} />
+          <div style={{fontSize:10,color:c("#9ca3af","#64748b"),marginTop:6,lineHeight:1.5}}>
+            <strong>검색식 문법:</strong><br />
+            • <code style={{background:c("#f1f5f9","#334155"),padding:"0 3px",borderRadius:3}}>AP=[이름]</code> 출원인<br />
+            • <code style={{background:c("#f1f5f9","#334155"),padding:"0 3px",borderRadius:3}}>AG=[이름]</code> 대리인<br />
+            • <code style={{background:c("#f1f5f9","#334155"),padding:"0 3px",borderRadius:3}}>RH=[이름]</code> 권리자<br />
+            • <code style={{background:c("#f1f5f9","#334155"),padding:"0 3px",borderRadius:3}}>*</code> AND · <code style={{background:c("#f1f5f9","#334155"),padding:"0 3px",borderRadius:3}}>+</code> OR<br />
+            • 검색창 조건과 자동 결합 (AND)
+          </div>
+        </div>
+      </div>
+
+      {/* 하단 버튼 */}
+      <div style={{padding:"12px 16px",borderTop:`1px solid ${c("#f1f5f9","#334155")}`,flexShrink:0,display:"flex",gap:8,background:c("#f8faff","#162032")}}>
+        <button onClick={handleResetFilter}
+          style={{flex:1,background:c("#fff","#334155"),border:`1px solid ${c("#cbd5e1","#475569")}`,borderRadius:20,padding:"8px 0",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",color:c("#374151","#cbd5e1")}}>초기화</button>
+        <button onClick={() => handleSubmit(1)}
+          style={{flex:1,background:"#13274F",border:"none",borderRadius:20,padding:"8px 0",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",color:"#fff"}}>적용</button>
+      </div>
+    </div>
+  );
+
+  return (
+    <>
+      <Head>
+        <title>KIPRIS 출원 조회 — G&A IP</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=EB+Garamond:wght@600;700&display=swap" rel="stylesheet" />
+      </Head>
+
+      <div style={{minHeight:"100vh",background:c("linear-gradient(180deg,#fff 0%,#f4f6fc 100%)","linear-gradient(160deg,#0f172a 0%,#1e293b 100%)"),color:c("#1f2937","#e2e8f0"),fontFamily:"'Noto Sans KR',sans-serif",transition:"background .3s,color .3s",overflow:"hidden"}}>
+
+        {/* 상단 버튼 */}
+        <div style={{position:"fixed",top:14,right:14,display:"flex",gap:8,zIndex:200}}>
+          {searchMode === "trademark" && !detailMode && !showFilter && (
+            <button onClick={() => setShowFilter(true)} title="검색필터 열기"
+              style={{background:"none",color:c("#374151","#cbd5e1"),border:`2px solid ${c("#d0d9f0","#475569")}`,borderRadius:20,padding:"0 12px",height:40,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              🎚️ 필터
+            </button>
+          )}
+          {searchMode === "appnum" && !detailMode && (
+            <button onClick={() => setShowRecent(!showRecent)} title={showRecent?"최근 출원 닫기":"최근 출원 열기"}
+              style={{background:showRecent?c("#13274F","#1e3a6e"):"none",color:showRecent?"#fff":c("#374151","#cbd5e1"),border:`2px solid ${c("#d0d9f0","#475569")}`,borderRadius:20,padding:"0 12px",height:40,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              🕐 최근
+            </button>
+          )}
+          <button onClick={() => router.push("/")} title="홈" style={{background:"none",border:`2px solid ${c("#d0d9f0","#475569")}`,borderRadius:"50%",width:40,height:40,fontSize:18,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>🏠</button>
+          <button onClick={() => setDark(!dark)} title={dark?"라이트":"다크"} style={{background:"none",border:`2px solid ${c("#d0d9f0","#475569")}`,borderRadius:"50%",width:40,height:40,fontSize:18,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{dark?"☀️":"🌙"}</button>
+        </div>
+
+        {/* 헤더 */}
+        <div style={{textAlign:"center",paddingTop:"4vh",marginBottom:20,transition:"all .6s ease"}}>
+          <div style={{fontFamily:"'EB Garamond',serif",fontSize: layoutReady?26:40,fontWeight:700,color:c("#13274F","#e2e8f0"),letterSpacing:"-0.5px",transition:"font-size .6s ease"}}>Guardian &amp; Angel</div>
+          <div style={{fontSize: layoutReady?10:12,letterSpacing:5,color:c("#13274F","#94a3b8"),margin:"5px 0 8px",textTransform:"uppercase",transition:"font-size .6s ease"}}>Intellectual Property</div>
+          <div style={{width: layoutReady?180:260,height:1,background:c("#13274F","#475569"),margin:"0 auto 8px",transition:"width .6s ease"}} />
+          <div style={{fontSize: layoutReady?13:17,fontWeight:700,color:c("#13274F","#e2e8f0"),letterSpacing:1}}>📡 KIPRIS 출원 조회</div>
+        </div>
+
+        {/* 3단 분할 레이아웃 */}
+        <div style={{display:"flex",gap:0,height:"calc(100vh - 155px)",maxWidth:1500,margin:"0 auto",padding:"0 16px",alignItems:"flex-start"}}>
+
+          {/* ── 좌측: 검색필터 ── */}
+          <div style={{width:leftFilterW,opacity: hasLeftFilter?1:0,overflow:"hidden",transition:"width .6s cubic-bezier(.4,0,.2,1), opacity .4s ease",height:"100%",paddingRight: hasLeftFilter?14:0}}>
+            {hasLeftFilter && renderFilterPanel()}
+          </div>
+
+          {/* ── 메인: 검색창 + 결과 ── */}
+          <div className="left-scroll" style={{width:mainW,transition:"width .6s cubic-bezier(.4,0,.2,1)",paddingRight: hasRight?20:0,height:"100%",overflowY:"auto"}}>
+
+            <div style={{position:"sticky",top:0,background:c("linear-gradient(180deg,#fff 85%,transparent)","linear-gradient(180deg,#0f172a 85%,transparent)"),paddingBottom:12,zIndex:10}}>
+
+              {/* 탭: 상표 검색 ⟵ 출원번호 조회 (위치 변경) */}
+              <div style={{display:"flex",gap:0,background:c("#f1f5f9","#1e293b"),borderRadius:10,padding:4,marginBottom:10,border:`1px solid ${c("#e5e9f5","#334155")}`}}>
+                {[{key:"trademark",label:"🔍 상표 검색"},{key:"appnum",label:"📋 출원번호 조회"}].map(tab => (
+                  <button key={tab.key} onClick={() => handleTabChange(tab.key)}
+                    style={{flex:1,padding:"8px 0",fontSize:13,fontWeight:700,border:"none",borderRadius:8,cursor:"pointer",fontFamily:"inherit",transition:"all .2s",background: searchMode===tab.key?c("#13274F","#1e3a6e"):"transparent",color: searchMode===tab.key?"#fff":c("#6b7280","#94a3b8")}}>{tab.label}</button>
+                ))}
+              </div>
+
+              {searchMode === "appnum" && (
+                <div style={{display:"flex",gap:8,background:c("#f8faff","#1e293b"),border:`1.5px solid ${c("#cbd5e1","#334155")}`,borderRadius:12,padding:"7px 7px 7px 16px",boxShadow:"0 2px 12px rgba(19,39,79,0.10)"}}>
+                  <input ref={appInputRef} value={inputAppNum} onChange={e=>setInputAppNum(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleSubmit(1)}
+                    placeholder="40-2020-0000000"
+                    style={{flex:1,border:"none",outline:"none",fontSize:15,color:c("#1f2937","#e2e8f0"),background:"transparent",fontFamily:"monospace"}} />
+                  {inputAppNum && <button onClick={handleClear} style={{background:"none",border:"none",cursor:"pointer",color:"#9ca3af",fontSize:16}}>✕</button>}
+                  <button onClick={()=>handleSubmit(1)} style={{background:"#13274F",color:"#fff",border:"none",borderRadius:8,padding:"9px 18px",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>조회</button>
+                </div>
+              )}
+
+              {searchMode === "trademark" && (
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  <div style={{display:"flex",gap:8,background:c("#f8faff","#1e293b"),border:`1.5px solid ${c("#cbd5e1","#334155")}`,borderRadius:12,padding:"7px 7px 7px 16px",boxShadow:"0 2px 12px rgba(19,39,79,0.10)"}}>
+                    <span style={{fontSize:16}}>™</span>
+                    <input ref={tmInputRef} value={inputTmName} onChange={e=>setInputTmName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleSubmit(1)}
+                      placeholder='상표명 (예: 스타벅스 / 스벅+스타벅스)'
+                      style={{flex:1,border:"none",outline:"none",fontSize:14,color:c("#1f2937","#e2e8f0"),background:"transparent",fontFamily:"inherit"}} />
+                    {(inputTmName||inputAppli||inputAgent) && <button onClick={handleClear} style={{background:"none",border:"none",cursor:"pointer",color:"#9ca3af",fontSize:15}}>✕</button>}
+                    <button onClick={()=>handleSubmit(1)} style={{background:"#13274F",color:"#fff",border:"none",borderRadius:8,padding:"9px 18px",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>검색</button>
+                  </div>
+
+                  {/* 4개 검색 조건: 상품류 / 유사군 / 출원인 / 대리인 */}
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                    <div style={{display:"flex",gap:6,background:c("#f8faff","#1e293b"),border:`1.5px solid ${c("#e5e9f5","#334155")}`,borderRadius:10,padding:"6px 12px",alignItems:"center"}}>
+                      <span style={{fontSize:12,color:c("#9ca3af","#64748b"),flexShrink:0,fontWeight:600}}>상품류</span>
+                      <input value={inputClass} onChange={e=>setInputClass(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleSubmit(1)}
+                        placeholder="예: 35"
+                        style={{flex:1,border:"none",outline:"none",fontSize:13,color:c("#1f2937","#e2e8f0"),background:"transparent",fontFamily:"monospace",width:0,minWidth:0}} />
+                    </div>
+                    <div style={{display:"flex",gap:6,background:c("#f8faff","#1e293b"),border:`1.5px solid ${c("#e5e9f5","#334155")}`,borderRadius:10,padding:"6px 12px",alignItems:"center"}}>
+                      <span style={{fontSize:12,color:c("#9ca3af","#64748b"),flexShrink:0,fontWeight:600}}>유사군</span>
+                      <input value={inputSim} onChange={e=>setInputSim(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleSubmit(1)}
+                        placeholder="예: G0301"
+                        style={{flex:1,border:"none",outline:"none",fontSize:13,color:c("#1f2937","#e2e8f0"),background:"transparent",fontFamily:"monospace",width:0,minWidth:0}} />
+                    </div>
+                    <div style={{display:"flex",gap:6,background:c("#f8faff","#1e293b"),border:`1.5px solid ${c("#e5e9f5","#334155")}`,borderRadius:10,padding:"6px 12px",alignItems:"center"}}>
+                      <span style={{fontSize:12,color:c("#9ca3af","#64748b"),flexShrink:0,fontWeight:600}}>출원인</span>
+                      <input value={inputAppli} onChange={e=>setInputAppli(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleSubmit(1)}
+                        placeholder="예: 정화란"
+                        style={{flex:1,border:"none",outline:"none",fontSize:13,color:c("#1f2937","#e2e8f0"),background:"transparent",fontFamily:"inherit",width:0,minWidth:0}} />
+                    </div>
+                    <div style={{display:"flex",gap:6,background:c("#f8faff","#1e293b"),border:`1.5px solid ${c("#e5e9f5","#334155")}`,borderRadius:10,padding:"6px 12px",alignItems:"center"}}>
+                      <span style={{fontSize:12,color:c("#9ca3af","#64748b"),flexShrink:0,fontWeight:600}}>대리인</span>
+                      <input value={inputAgent} onChange={e=>setInputAgent(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleSubmit(1)}
+                        placeholder="예: 김수산"
+                        style={{flex:1,border:"none",outline:"none",fontSize:13,color:c("#1f2937","#e2e8f0"),background:"transparent",fontFamily:"inherit",width:0,minWidth:0}} />
+                    </div>
+                  </div>
+                  <div style={{fontSize:11,color:c("#9ca3af","#64748b"),paddingLeft:4,lineHeight:1.6}}>
+                    검색식 자동 변환: 출원인→<code style={{background:c("#f1f5f9","#334155"),padding:"0 4px",borderRadius:3,fontSize:10}}>AP=[]</code> · 대리인→<code style={{background:c("#f1f5f9","#334155"),padding:"0 4px",borderRadius:3,fontSize:10}}>AG=[]</code> · 상품류→<code style={{background:c("#f1f5f9","#334155"),padding:"0 4px",borderRadius:3,fontSize:10}}>CL=[]</code> · 유사군→<code style={{background:c("#f1f5f9","#334155"),padding:"0 4px",borderRadius:3,fontSize:10}}>SC=[]</code> · 모든 조건은 AND
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {loading && <div style={{textAlign:"center",paddingTop:50}}>
+              <div style={{width:32,height:32,border:"3px solid #d0d9f0",borderTop:"3px solid #1a3a8f",borderRadius:"50%",animation:"spin .8s linear infinite",margin:"0 auto 14px"}} />
+              <div style={{color:c("#6b7280","#94a3b8"),fontSize:14}}>KIPRIS 조회 중...</div>
+            </div>}
+
+            {!loading && resultMode === "history" && Object.entries(historyResults).map(([num, data]) => <div key={num}>{renderHistory(num, data)}</div>)}
+            {!loading && resultMode === "search" && !detailMode && renderSearchResults()}
+            {!loading && detailMode && historyResults[detailMode.appNum] && renderHistory(detailMode.appNum, historyResults[detailMode.appNum])}
+          </div>
+
+          {/* ── 우측 ── */}
+          <div style={{width:rightW,opacity: hasRight?1:0,overflow:"hidden",transition:"width .6s cubic-bezier(.4,0,.2,1), opacity .4s ease",height:"100%"}}>
+            {rightPanel === "recent" && renderRecentPanel()}
+            {rightPanel === "detail" && renderDetailPanel()}
+          </div>
+        </div>
+      </div>
+
+      <style jsx global>{`
+        * { box-sizing:border-box; margin:0; padding:0; }
+        body { font-family:'Noto Sans KR',sans-serif; }
+        @keyframes spin { to { transform:rotate(360deg); } }
+        input::placeholder { color:#9ca3af; }
+        ::-webkit-scrollbar { width:5px; height:5px; }
+        ::-webkit-scrollbar-track { background:transparent; }
+        ::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:4px; }
+      `}</style>
+    </>
+  );
 }
