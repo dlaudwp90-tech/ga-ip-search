@@ -1,13 +1,10 @@
-// pages/api/kipris.js  v9
-// v9 변경: 유사군코드 endpoint 후보를 4개로 확장 (path × param 조합)
-//          ① /kipo-api/kipi/trademarkInfoSearchService/ + applicationNumber
-//          ② /openapi/rest/TradeMarkInfoSearchService/ + applicationNumber
-//          ③ /openapi/rest/TradeMarkInfoSearchService/ + identificationNumber
-//          ④ /openapi/rest/TradeMarkClassificationInfoService/ + identificationNumber
-//          → 어느 한 곳에서라도 wrapper tag/필드를 찾으면 그걸 사용 (winner 표시)
-// v8 변경: 유사군 후보 endpoint 2개 + wrapper/필드명 폭넓게 시도 + _debug 추가
-// v7 변경: detail 모드에 trademarkSimilarityCodeInfo 호출 추가
-// v6 변경: detail 모드에 TradeMarkClassificationInfoService 별도 호출 추가하여 지정상품 정상 표시
+// pages/api/kipris.js  v10
+// v10 변경: ✅ 정확한 endpoint 확정 — /openapi/rest/trademarkInfoSearchService/trademarkSimilarityCodeInfo
+//           wrapper: <trademarkSimilarityCodeInfo>, 필드: <SimilargroupCode>
+//           ⚠️ 응답은 출원 단위 평면 리스트 (상품별 매핑 정보 없음)
+//           → 류별(classification code)로 G/S 코드를 자동 분류하여 매칭
+//           debug 정보는 단순화
+// v9~v7: endpoint 후보 탐색 + 디버그 모드 (히스토리)
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
@@ -165,12 +162,15 @@ export default async function handler(req, res) {
     } catch (err) { return res.status(500).json({ error: err.message }); }
   }
 
+
   // ════════════════════════════════════════════
   // MODE: detail
-  // 서지정보: getBibliographyDetailInfoSearch
-  // 지정상품: TradeMarkClassificationInfoService/tradeMarkClassificationInfo
-  // 유사군코드: 4개 후보 endpoint를 병렬 시도 (path × param 조합)
-  //   각 후보의 wrapper tag/필드명을 sniff 해서 가장 응답이 잘 나오는 걸 사용
+  // ─ 서지정보:    /openapi/rest/trademarkInfoSearchService/getBibliographyDetailInfoSearch
+  // ─ 지정상품:    /openapi/rest/TradeMarkClassificationInfoService/tradeMarkClassificationInfo
+  // ─ 유사군코드:  /openapi/rest/trademarkInfoSearchService/trademarkSimilarityCodeInfo
+  //               응답: <trademarkSimilarityCodeInfo><SimilargroupCode>G1004</SimilargroupCode>...
+  //               ⚠️ 출원 단위 평면 리스트 — 상품 단위 매핑 정보 없음
+  //               → 류별로 G(1~34류)/S(35~45류) 코드를 자동 분배하여 매칭
   // ════════════════════════════════════════════
   if (mode === "detail") {
     if (!applicationNumber) return res.status(400).json({ error: "applicationNumber required" });
@@ -178,30 +178,17 @@ export default async function handler(req, res) {
     const debug = !!req.body.debug;
 
     const ak = encodeURIComponent(ACCESS_KEY);
-    const base = "http://plus.kipris.or.kr/kipo-api/kipi/trademarkInfoSearchService";
+    const baseInfo  = "http://plus.kipris.or.kr/openapi/rest/trademarkInfoSearchService";
     const baseClass = "http://plus.kipris.or.kr/openapi/rest/TradeMarkClassificationInfoService";
-    const baseInfo  = "http://plus.kipris.or.kr/openapi/rest/TradeMarkInfoSearchService";
-    const bibliographyUrl = `${base}/getBibliographyDetailInfoSearch?applicationNumber=${numClean}&accessKey=${ak}`;
+    const bibliographyUrl = `${baseInfo}/getBibliographyDetailInfoSearch?applicationNumber=${numClean}&accessKey=${ak}`;
     const goodsUrl  = `${baseClass}/tradeMarkClassificationInfo?identificationNumber=${numClean}&docsStart=1&docsCount=500&accessKey=${ak}`;
-
-    // 유사군코드 후보 endpoint 4개 (path × param 조합 모두 시도)
-    const simCandidates = [
-      { name: "kipo-api/TMSearch/trademarkSimilarityCodeInfo?applicationNumber",
-        url:  `${base}/trademarkSimilarityCodeInfo?applicationNumber=${numClean}&accessKey=${ak}` },
-      { name: "openapi/TMSearch/trademarkSimilarityCodeInfo?applicationNumber",
-        url:  `${baseInfo}/trademarkSimilarityCodeInfo?applicationNumber=${numClean}&docsStart=1&docsCount=500&accessKey=${ak}` },
-      { name: "openapi/TMSearch/trademarkSimilarityCodeInfo?identificationNumber",
-        url:  `${baseInfo}/trademarkSimilarityCodeInfo?identificationNumber=${numClean}&docsStart=1&docsCount=500&accessKey=${ak}` },
-      { name: "openapi/TMClass/trademarkSimilarityCodeInfo?identificationNumber",
-        url:  `${baseClass}/trademarkSimilarityCodeInfo?identificationNumber=${numClean}&docsStart=1&docsCount=500&accessKey=${ak}` },
-    ];
+    const simUrl    = `${baseInfo}/trademarkSimilarityCodeInfo?applicationNumber=${numClean}&accessKey=${ak}`;
 
     try {
-      // 모든 API 병렬 호출
-      const [bibXml, goodsXml, ...simXmls] = await Promise.all([
+      const [bibXml, goodsXml, simXml] = await Promise.all([
         fetch(bibliographyUrl).then(r => r.text()).catch(() => ""),
         fetch(goodsUrl).then(r => r.text()).catch(() => ""),
-        ...simCandidates.map(c => fetch(c.url).then(r => r.text()).catch(() => "")),
+        fetch(simUrl).then(r => r.text()).catch(() => ""),
       ]);
 
       // ── 서지정보 파싱 ──
@@ -218,98 +205,51 @@ export default async function handler(req, res) {
             bibliography = {
               applicationNumber:        fmtAppNum(g("applicationNumber")),
               applicationDate:          fmtDate(g("applicationDate")),
-              registrationNumber:       g("registrationNumber"),
-              registrationDate:         fmtDate(g("registrationDate")),
-              publicationNumber:        g("publicationNumber") || g("publicNumber"),
-              publicationDate:          fmtDate(g("publicationDate") || g("publicDate")),
+              registerNumber:           g("registerNumber"),
+              registerDate:             fmtDate(g("registerDate")),
+              publicationNumber:        g("publicationNumber"),
+              publicationDate:          fmtDate(g("publicationDate")),
               registrationPublicNumber: g("registrationPublicNumber"),
               registrationPublicDate:   fmtDate(g("registrationPublicDate")),
-              title:                    g("title"),
-              drawing:                  g("drawing"),
-              bigDrawing:               g("bigDrawing"),
-              applicationStatus:        g("applicationStatus"),
-              classificationCode:       g("classificationCode"),
-              viennaCode:               g("viennaCode"),
               priorityNumber:           g("priorityNumber"),
               priorityDate:             fmtDate(g("priorityDate")),
               internationalRegisterNumber: g("internationalRegisterNumber"),
               internationalRegisterDate:   fmtDate(g("internationalRegisterDate")),
+              tradeMarkName:           g("title") || g("trademarkName") || g("tradeMarkName"),
+              applicationStatus:       g("applicationStatus"),
+              regPrivilegeName:        g("regPrivilegeName"),
+              classificationCode:      g("classificationCode"),
+              viennaCode:              g("viennaCode"),
+              drawingPath:             g("drawing") || g("bigDrawing"),
             };
             break;
           }
         }
       }
 
-      // 출원인/대리인 등
-      const grabPersons = (xml, arrayTag, itemTag, role) => {
-        const arrays = getAll(xml, arrayTag);
-        const blocks = arrays.length > 0
-          ? arrays.flatMap(a => getAll(a, itemTag))
-          : getAll(xml, itemTag);
-        return blocks.map(b => {
-          const g = (t) => get1(b, t);
-          return {
-            name:    g("name") || g("applicantName") || g("agentName"),
-            code:    g("code") || g("applicantCode") || g("agentCode") || g("customerNumber"),
-            address: g("address") || g("applicantAddress") || g("agentAddress"),
-            role,
-          };
-        }).filter(x => x.name);
-      };
-      applicants = [
-        ...grabPersons(bibXml, "applicantInfoArray", "applicantInfo", "출원인"),
-        ...grabPersons(bibXml, "agentInfoArray", "agentInfo", "대리인"),
-        ...grabPersons(bibXml, "rightHolderInfoArray", "rightHolderInfo", "권리자"),
-        ...grabPersons(bibXml, "RegistrationLastHolderInfoArray", "RegistrationLastHolderInfo", "최종권리자"),
+      // 인명정보 (출원인/대리인/등록권자)
+      const personRoles = [
+        { tag: "applicantInfo",       role: "출원인" },
+        { tag: "agentInfo",           role: "대리인" },
+        { tag: "regPrivilegeNameInfo",role: "등록권자" },
+        { tag: "lastApplicantInfo",   role: "최종권리자" },
       ];
-
-      // ── 유사군코드 파싱 ──
-      // 4개 후보 endpoint 응답을 모두 검사. 어느 하나라도 wrapper tag가 발견되면 그걸 사용
-      const SIM_WRAPPER_TAGS = [
-        "trademarkSimilarityCodeInfo",
-        "similarityCodeInfo",
-        "biblioSummaryInfo",
-        "item",
-      ];
-      const SIM_FIELD_NAMES = ["similarityCode", "similarGroupCode", "similarCode", "similarityCodes"];
-      const collectSimBlocks = (xml) => {
-        const out = [];
-        for (const tag of SIM_WRAPPER_TAGS) {
-          const blks = getAll(xml, tag);
-          if (blks.length > 0) out.push(...blks);
-        }
-        return out;
-      };
-      const normalizeSimBlock = (b) => {
-        const g = (t) => get1(b, t);
-        let sim = "";
-        for (const f of SIM_FIELD_NAMES) {
-          const v = g(f);
-          if (v) { sim = v; break; }
-        }
-        return {
-          status:                  g("status"),
-          serialNumber:            parseInt(g("serialNumber")) || 0,
-          classOfGoodSerialNumber: parseInt(g("classOfGoodSerialNumber")) || 0,
-          classificationVersion:   g("classificationVersion"),
-          goodsClassificationCode: (g("goodsClassificationCode") || g("classificationCode") || "").trim(),
-          codes: (sim || "").split(/[,\s]+/).map(s => s.trim()).filter(Boolean),
-        };
-      };
-
-      // 각 후보별로 sim 블록 수집 + winner 식별
-      let simWinnerIdx = -1;
-      const allSimsRaw = [];
-      for (let i = 0; i < simXmls.length; i++) {
-        const blks = collectSimBlocks(simXmls[i]);
-        if (blks.length > 0) {
-          if (simWinnerIdx < 0) simWinnerIdx = i;
-          const normalized = blks.map(normalizeSimBlock).filter(x => x.codes.length > 0);
-          allSimsRaw.push(...normalized);
+      for (const { tag, role } of personRoles) {
+        for (const block of getAll(bibXml, tag)) {
+          const g = (t) => get1(block, t);
+          const name = g("name") || g("applicantName") || g("agentName") || g("regPrivilegeName");
+          if (name) {
+            applicants.push({
+              role,
+              name,
+              code:    g("code") || g("applicantCode") || g("agentCode") || g("regPrivilegeCode"),
+              address: g("address") || g("applicantAddress"),
+            });
+          }
         }
       }
 
-      // ── 지정상품 파싱 (TradeMarkClassificationInfoService) ──
+      // ── 지정상품 파싱 ──
       let designatedGoods = [];
       const goodsBlocks = getAll(goodsXml, "tradeMarkClassificationInfo");
 
@@ -323,18 +263,20 @@ export default async function handler(req, res) {
             classificationVersion:   g("classificationVersion"),
             goodsClassificationCode: g("goodsClassificationCode"),
             goodName: g("classofgoodServiceName") || g("classOfGoodServiceName") || g("classofgoodSerivceName"),
-            additionDeletionCode:    g("additionDeletionCode"),
           };
         }).filter(x => x.goodName);
 
         if (allGoods.length > 0) {
+          // (1) 등록 > 출원 우선
           const hasReg = allGoods.some(x => x.status === "등록");
           let pool = allGoods.filter(x => x.status === (hasReg ? "등록" : "출원"));
           if (pool.length === 0) pool = allGoods;
 
+          // (2) 같은 status 안에서 가장 큰 serialNumber만
           const maxSerial = pool.reduce((m, x) => Math.max(m, x.serialNumber), 0);
           pool = pool.filter(x => x.serialNumber === maxSerial);
 
+          // (3) NICE 분류 우선 (한국분류 'E' 제외)
           const numericVers = pool
             .map(x => parseInt(x.classificationVersion))
             .filter(v => Number.isFinite(v));
@@ -346,91 +288,68 @@ export default async function handler(req, res) {
 
           pool.sort((a, b) => a.classOfGoodSerialNumber - b.classOfGoodSerialNumber);
 
-          // 4단계 폴백 매칭
-          const matchSims = (good) => {
-            const found = new Set();
-            const collect = (filterFn) => {
-              allSimsRaw.filter(filterFn).forEach(s => s.codes.forEach(c => found.add(c)));
-            };
-            const ver = good.classificationVersion;
-            const cls = (good.goodsClassificationCode || "").trim();
-            const ser = good.classOfGoodSerialNumber;
-            collect(s =>
-              s.status === good.status &&
-              s.classificationVersion === ver &&
-              s.goodsClassificationCode === cls &&
-              s.classOfGoodSerialNumber === ser
-            );
-            if (found.size === 0) collect(s =>
-              s.classificationVersion === ver &&
-              s.goodsClassificationCode === cls &&
-              s.classOfGoodSerialNumber === ser
-            );
-            if (found.size === 0) collect(s =>
-              s.goodsClassificationCode === cls &&
-              s.classOfGoodSerialNumber === ser
-            );
-            if (found.size === 0 && ser > 0) collect(s =>
-              s.classOfGoodSerialNumber === ser
-            );
-            return [...found];
-          };
-
           designatedGoods = pool.map(x => ({
             classificationCode:      x.goodsClassificationCode || "",
             goodName:                x.goodName,
             classOfGoodSerialNumber: x.classOfGoodSerialNumber,
-            similarityCodes:         matchSims(x),
           }));
         }
       }
 
-      // ── 디버그 정보 ──
+      // ── 유사군코드 파싱 (출원 단위 평면 리스트) ──
+      // wrapper: <trademarkSimilarityCodeInfo>, 필드: <SimilargroupCode>
+      // 응답이 출원 단위라 상품별 매핑 정보 없음 → 류별로 분배
+      const simBlocks = getAll(simXml, "trademarkSimilarityCodeInfo");
+      const allSimCodes = simBlocks
+        .map(b => (get1(b, "SimilargroupCode") || get1(b, "similargroupCode") || get1(b, "similarGroupCode") || "").trim())
+        .filter(Boolean);
+
+      // 류별 그룹핑: 35류 이상은 S(서비스) 코드만, 1~34류는 G(상품) 코드만 매칭
+      // 한 출원에 상품류와 서비스류가 섞여 있어도 자동 구분됨
+      const classToSims = {};   // { "35": ["S2001", "S2002"], "9": ["G3902"], ... }
+      designatedGoods.forEach(g => {
+        const cls = parseInt(g.classificationCode);
+        if (!Number.isFinite(cls) || classToSims[g.classificationCode]) return;
+        const isService = cls >= 35;
+        const codes = allSimCodes.filter(c => isService ? c.startsWith("S") : c.startsWith("G"));
+        classToSims[g.classificationCode] = codes;
+      });
+
+      // 각 상품에 그 류에 해당하는 유사군코드 부여
+      designatedGoods = designatedGoods.map(g => ({
+        ...g,
+        similarityCodes: classToSims[g.classificationCode] || [],
+      }));
+
+      // ── 디버그 정보 (간소화) ──
       let _debug = null;
       if (debug) {
-        const sniffAny = (xml) => {
-          for (const tag of SIM_WRAPPER_TAGS) {
-            const blks = getAll(xml, tag);
-            if (blks.length > 0) {
-              const tags = [...new Set([...(blks[0].matchAll(/<([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>/g))].map(m => m[1]))];
-              return { wrapperTag: tag, count: blks.length, fields: tags, firstBlockSample: blks[0].slice(0, 500) };
-            }
-          }
-          return { wrapperTag: null, count: 0, fields: [], firstBlockSample: (xml || "").slice(0, 500) };
-        };
-        const goodsBlockSample = goodsBlocks[0] || "";
-        const goodsTags = goodsBlockSample
-          ? [...new Set([...(goodsBlockSample.matchAll(/<([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>/g))].map(m => m[1]))]
-          : [];
-
         _debug = {
-          bibliographyUrl, goodsUrl,
-          simCandidates: simCandidates.map((c, i) => ({
-            name: c.name,
-            url: c.url,
-            length: simXmls[i].length,
-            resultCode: get1(simXmls[i], "resultCode") || get1(simXmls[i], "successYN"),
-            errorMsg: get1(simXmls[i], "resultMsg") || get1(simXmls[i], "errMessage") || get1(simXmls[i], "msg"),
-            sniff: sniffAny(simXmls[i]),
-          })),
-          simWinnerIdx,
-          simWinnerName: simWinnerIdx >= 0 ? simCandidates[simWinnerIdx].name : null,
-          bibLength: bibXml.length,
-          bibResultCode: get1(bibXml, "resultCode") || get1(bibXml, "successYN"),
-          bibErrorMsg: get1(bibXml, "resultMsg") || get1(bibXml, "errMessage"),
-          goodsLength: goodsXml.length,
+          bibliographyUrl, goodsUrl, simUrl,
+          lengths: { bib: bibXml.length, goods: goodsXml.length, sim: simXml.length },
+          resultCodes: {
+            bib:   get1(bibXml, "resultCode") || get1(bibXml, "successYN"),
+            goods: get1(goodsXml, "resultCode") || get1(goodsXml, "successYN"),
+            sim:   get1(simXml, "resultCode") || get1(simXml, "successYN"),
+          },
+          errorMsgs: {
+            bib:   get1(bibXml, "resultMsg") || get1(bibXml, "errMessage"),
+            goods: get1(goodsXml, "resultMsg") || get1(goodsXml, "errMessage"),
+            sim:   get1(simXml, "resultMsg") || get1(simXml, "errMessage"),
+          },
           goodsBlockCount: goodsBlocks.length,
-          goodsFieldsFound: goodsTags,
-          goodsFirstBlockSample: goodsBlockSample.slice(0, 500),
-          allSimsCount: allSimsRaw.length,
           designatedGoodsCount: designatedGoods.length,
-          goodsWithSimCount: designatedGoods.filter(g => g.similarityCodes.length > 0).length,
+          simBlockCount: simBlocks.length,
+          allSimCodes,
+          classToSims,
+          simRawSample: simXml.slice(0, 1000),
         };
       }
 
       return res.status(200).json({ bibliography, designatedGoods, applicants, _debug });
     } catch (err) { return res.status(500).json({ error: err.message }); }
   }
+
 
   // ════════════════════════════════════════════
   // MODE: rejection
