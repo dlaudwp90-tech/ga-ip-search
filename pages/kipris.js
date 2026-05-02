@@ -1,8 +1,13 @@
-// pages/kipris.js  v9
-// v9 변경: 디버그 패널을 v10 API의 간소화된 _debug 구조에 맞게 단순화
-//          (단일 trademarkSimilarityCodeInfo endpoint + classToSims 표시)
-// v8 변경: 디버그 패널이 4개 sim 후보 endpoint 응답을 모두 표시
-// v7 변경: 상세 패널에 유사군코드 디버그 토글 추가
+// pages/kipris.js  v10
+// v10 변경: ⭐ v11 API의 풍부한 데이터 활용
+//   - 지정상품에 1:1 매칭된 유사군코드 뱃지 (asignProduct.subCode)
+//   - 행정처분 이력 섹션 (administrativeMeasure)
+//   - 비엔나 도형코드 섹션 (viennaCode)
+//   - NICE 분류 버전 섹션 (vfersion)
+//   - 부분거절 상품 섹션 (partialReject)
+//   - 견본이미지 + 공고 PDF 다운로드 링크
+// v9: 디버그 패널 단순화
+// v8: 4개 sim 후보 endpoint 디버그 표시
 
 import { useState, useEffect, useRef } from "react";
 import Head from "next/head";
@@ -412,6 +417,12 @@ export default function KiprisPage() {
     const bib = detailData?.bibliography;
     const goods = detailData?.designatedGoods || [];
     const applicants = detailData?.applicants || [];
+    const partialRejectGoods = detailData?.partialRejectGoods || [];
+    const adminMeasures      = detailData?.adminMeasures      || [];
+    const viennaCodes        = detailData?.viennaCodes        || [];
+    const niceVersions       = detailData?.niceVersions       || [];
+    const sampleImages       = detailData?.sampleImages       || [];
+    const publications       = detailData?.publications       || [];
 
     const goodsByClass = {};
     goods.forEach(g => {
@@ -430,8 +441,16 @@ export default function KiprisPage() {
       allSimsByClass[cls] = [...set].sort();
     });
 
-    const drawingUrl = bib?.bigDrawing || bib?.drawing || searchItem?.bigDrawing || searchItem?.drawing || null;
-    const tmName = bib?.title || searchItem?.tradeMarkName || "(상표명 없음)";
+    // 부분거절 류별 그룹
+    const rejectByClass = {};
+    partialRejectGoods.forEach(g => {
+      const k = g.classificationCode || "기타";
+      if (!rejectByClass[k]) rejectByClass[k] = [];
+      rejectByClass[k].push({ name: g.goodName, sims: g.similarityCodes || [] });
+    });
+
+    const drawingUrl = (sampleImages[0]?.path) || (sampleImages[0]?.smallPath) || bib?.bigDrawing || bib?.drawing || searchItem?.bigDrawing || searchItem?.drawing || null;
+    const tmName = bib?.tradeMarkName || bib?.title || searchItem?.tradeMarkName || "(상표명 없음)";
 
     return (
       <div style={{height:"100%",display:"flex",flexDirection:"column",background:c("#fff","#1e293b"),border:`1px solid ${c("#e5e9f5","#334155")}`,borderRadius:16,overflow:"hidden",boxShadow:"0 2px 20px rgba(19,39,79,0.09)"}}>
@@ -466,16 +485,20 @@ export default function KiprisPage() {
                       ["출원번호", appNum],
                       ["출원일자", bib?.applicationDate || searchItem?.applicationDate],
                       ["상표명", tmName],
+                      ["상표 구분", bib?.tmDivisionCode || bib?.trademarkDivisionCode],
                       ["출원상태", bib?.applicationStatus || searchItem?.applicationStatus],
                       ["상품류", bib?.classificationCode || searchItem?.classificationCode],
-                      ["등록번호", bib?.registrationNumber || searchItem?.registrationNumber],
-                      ["등록일자", bib?.registrationDate || searchItem?.registrationDate],
+                      ["등록번호", bib?.registerNumber || searchItem?.registrationNumber],
+                      ["등록일자", bib?.registerDate || searchItem?.registrationDate],
                       ["출원공고번호", bib?.publicationNumber],
                       ["출원공고일자", bib?.publicationDate],
                       ["등록공고번호", bib?.registrationPublicNumber],
                       ["등록공고일자", bib?.registrationPublicDate],
-                      ["우선권주장", bib?.priorityNumber],
-                      ["비엔나코드", bib?.viennaCode],
+                      ["우선권주장번호", bib?.priorityNumber],
+                      ["우선권주장일자", bib?.priorityDate],
+                      ["국제등록번호", bib?.internationalRegisterNumber],
+                      ["국제등록일자", bib?.internationalRegisterDate],
+                      ["최종처분", bib?.lastDisposalCode && bib?.lastDisposalDate ? `${bib.lastDisposalCode} (${bib.lastDisposalDate})` : (bib?.lastDisposalCode || bib?.lastDisposalDate)],
                     ].filter(([,v]) => v).map(([k,v],i) => (
                       <tr key={i} style={{borderBottom:`1px solid ${c("#f1f5f9","#334155")}`}}>
                         <td style={{padding:"6px 0",color:c("#6b7280","#94a3b8"),fontWeight:600,width:100,verticalAlign:"top"}}>{k}</td>
@@ -532,20 +555,18 @@ export default function KiprisPage() {
                     {(() => {
                       const d = detailData._debug;
                       const lines = [];
-                      lines.push(`【응답 길이】 bib=${d.lengths.bib} goods=${d.lengths.goods} sim=${d.lengths.sim}`);
-                      lines.push(`【resultCode】 bib=${d.resultCodes.bib||'-'} goods=${d.resultCodes.goods||'-'} sim=${d.resultCodes.sim||'-'}`);
-                      const errs = Object.entries(d.errorMsgs).filter(([,v])=>v);
+                      lines.push(`【사용 endpoint】 ${d.bibSource}`);
+                      lines.push(`【응답 길이】 kipo=${d.lengths.kipo} rest=${d.lengths.rest} 사용=${d.lengths.used}`);
+                      lines.push(`【resultCode】 kipo=${d.resultCodes.kipo||'-'} rest=${d.resultCodes.rest||'-'}`);
+                      const errs = Object.entries(d.errorMsgs||{}).filter(([,v])=>v);
                       if (errs.length>0) lines.push(`【에러】 ${errs.map(([k,v])=>k+':'+v).join(' | ')}`);
-                      lines.push(`【지정상품 블록】 ${d.goodsBlockCount}개 → 정제 후 ${d.designatedGoodsCount}개`);
-                      lines.push(`【유사군 블록】 ${d.simBlockCount}개`);
-                      lines.push(`【전체 유사군코드】 [${(d.allSimCodes||[]).join(', ')}]`);
-                      lines.push(`【류별 매핑】`);
-                      Object.entries(d.classToSims || {}).forEach(([cls, codes]) => {
-                        lines.push(`  제${cls}류 → [${codes.join(', ')}]`);
+                      lines.push(`【추출 카운트】`);
+                      Object.entries(d.counts||{}).forEach(([k,v]) => {
+                        lines.push(`  ${k}: ${v}`);
                       });
                       lines.push("");
-                      lines.push("▼ sim API 원시 응답 (처음 1000자)");
-                      lines.push(d.simRawSample || "(없음)");
+                      lines.push("▼ bibXml 처음 1500자");
+                      lines.push(d.bibSnippet || "(없음)");
                       return lines.join("\n");
                     })()}
                   </div>
@@ -558,15 +579,13 @@ export default function KiprisPage() {
                         <div key={cls} style={{padding:"10px 12px",background:c("#f8faff","#172035"),borderRadius:8,border:`1px solid ${c("#e5e9f5","#2a3a55")}`,marginBottom:6}}>
                           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:6,flexWrap:"wrap"}}>
                             <div style={{fontSize:11,fontWeight:700,color:c("#1a3a8f","#93c5fd")}}>제{cls}류 ({items.length}개)</div>
-                            {allSimsByClass[cls] && allSimsByClass[cls].length > 0 ? (
+                            {allSimsByClass[cls] && allSimsByClass[cls].length > 0 && (
                               <div style={{display:"flex",alignItems:"center",gap:4,flexWrap:"wrap"}}>
-                                <span style={{fontSize:10,color:c("#9ca3af","#64748b"),fontWeight:600}}>유사군:</span>
+                                <span style={{fontSize:9,color:c("#9ca3af","#64748b"),fontWeight:600}}>이 류의 유사군:</span>
                                 {allSimsByClass[cls].map(s => (
-                                  <span key={s} style={{fontSize:10,fontWeight:700,fontFamily:"monospace",background:c("#dbeafe","#1e3a6e"),color:c("#1e40af","#93c5fd"),padding:"2px 6px",borderRadius:4,whiteSpace:"nowrap"}}>{s}</span>
+                                  <span key={s} style={{fontSize:9,fontWeight:700,fontFamily:"monospace",background:c("#e0f2fe","#0c4a6e"),color:c("#075985","#7dd3fc"),padding:"1px 5px",borderRadius:3,whiteSpace:"nowrap"}}>{s}</span>
                                 ))}
                               </div>
-                            ) : (
-                              <span style={{fontSize:9,color:c("#cbd5e1","#475569"),fontStyle:"italic"}}>유사군코드 없음</span>
                             )}
                           </div>
                           <div style={{display:"flex",flexDirection:"column",gap:0}}>
@@ -576,6 +595,15 @@ export default function KiprisPage() {
                                   <span style={{fontSize:10,color:c("#9ca3af","#64748b"),marginRight:4,fontFamily:"monospace"}}>{gi+1}.</span>
                                   {g.name}
                                 </div>
+                                {g.sims && g.sims.length > 0 ? (
+                                  <div style={{display:"flex",flexWrap:"wrap",gap:3,flexShrink:0,maxWidth:"40%",justifyContent:"flex-end"}}>
+                                    {g.sims.map(s => (
+                                      <span key={s} style={{fontSize:10,fontWeight:700,fontFamily:"monospace",background:c("#dbeafe","#1e3a6e"),color:c("#1e40af","#93c5fd"),padding:"2px 6px",borderRadius:4,whiteSpace:"nowrap"}}>{s}</span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span style={{fontSize:10,color:c("#cbd5e1","#475569"),fontFamily:"monospace",flexShrink:0}}>—</span>
+                                )}
                               </div>
                             ))}
                           </div>
@@ -620,6 +648,109 @@ export default function KiprisPage() {
                   </div>
                 )}
               </section>
+
+              {/* ── 부분거절 상품 ── */}
+              {partialRejectGoods.length > 0 && (
+                <section style={{marginBottom:18}}>
+                  <h3 style={{fontSize:12,fontWeight:700,color:c("#13274F","#e2e8f0"),marginBottom:8,paddingBottom:4,borderBottom:`2px solid ${c("#dc2626","#ef4444")}`,display:"flex",alignItems:"center",gap:6}}>⚠️ 부분거절 상품 ({partialRejectGoods.length}개)</h3>
+                  {Object.entries(rejectByClass).map(([cls,items]) => (
+                    <div key={cls} style={{padding:"10px 12px",background:c("#fef2f2","#1f0a0a"),borderRadius:8,border:`1px solid ${c("#fecaca","#7f1d1d")}`,marginBottom:6}}>
+                      <div style={{fontSize:11,fontWeight:700,color:c("#991b1b","#fca5a5"),marginBottom:6}}>제{cls}류 ({items.length}개)</div>
+                      {items.map((g,gi) => (
+                        <div key={gi} style={{display:"flex",alignItems:"flex-start",gap:8,padding:"4px 0",borderTop: gi === 0 ? "none" : `1px dashed ${c("#fecaca","#7f1d1d")}`}}>
+                          <div style={{flex:1,fontSize:12,color:c("#7f1d1d","#fecaca"),lineHeight:1.5,wordBreak:"keep-all",overflowWrap:"break-word"}}>
+                            <span style={{fontSize:10,color:c("#9ca3af","#64748b"),marginRight:4,fontFamily:"monospace"}}>{gi+1}.</span>
+                            {g.name}
+                          </div>
+                          {g.sims && g.sims.length > 0 && (
+                            <div style={{display:"flex",flexWrap:"wrap",gap:3,flexShrink:0}}>
+                              {g.sims.map(s => (
+                                <span key={s} style={{fontSize:10,fontWeight:700,fontFamily:"monospace",background:c("#fee2e2","#7f1d1d"),color:c("#991b1b","#fecaca"),padding:"2px 6px",borderRadius:4,whiteSpace:"nowrap"}}>{s}</span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </section>
+              )}
+
+              {/* ── 행정처분 이력 ── */}
+              {adminMeasures.length > 0 && (
+                <section style={{marginBottom:18}}>
+                  <h3 style={{fontSize:12,fontWeight:700,color:c("#13274F","#e2e8f0"),marginBottom:8,paddingBottom:4,borderBottom:`2px solid ${c("#1a3a8f","#3b82f6")}`,display:"flex",alignItems:"center",gap:6}}>📋 행정처분 이력 ({adminMeasures.length}건)</h3>
+                  <div style={{padding:"4px 0"}}>
+                    {adminMeasures.map((m, i) => {
+                      const isReceive = m.state === "수리";
+                      return (
+                        <div key={i} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"8px 10px",borderRadius:6,background: i%2===0 ? c("#f8faff","#172035") : "transparent",marginBottom:2}}>
+                          <span style={{fontSize:9,fontWeight:700,color:c("#9ca3af","#64748b"),minWidth:20,textAlign:"right",flexShrink:0,marginTop:2,fontFamily:"monospace"}}>{m.seq}</span>
+                          <span style={{fontSize:10,fontFamily:"monospace",color:c("#6b7280","#94a3b8"),minWidth:78,flexShrink:0,marginTop:2}}>{m.date || "—"}</span>
+                          <span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:4,flexShrink:0,whiteSpace:"nowrap",
+                            background: isReceive ? c("#dcfce7","#14532d") : c("#fef3c7","#78350f"),
+                            color:      isReceive ? c("#166534","#86efac") : c("#92400e","#fbbf24"),
+                          }}>{m.state || "—"}</span>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:12,fontWeight:600,color:c("#1f2937","#e2e8f0"),lineHeight:1.4,wordBreak:"keep-all",overflowWrap:"break-word"}}>{m.docName || "—"}</div>
+                            {m.docNumber && <div style={{fontSize:10,color:c("#9ca3af","#64748b"),fontFamily:"monospace",marginTop:1}}>{m.docNumber}</div>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
+
+              {/* ── 비엔나 도형코드 ── */}
+              {viennaCodes.length > 0 && (
+                <section style={{marginBottom:18}}>
+                  <h3 style={{fontSize:12,fontWeight:700,color:c("#13274F","#e2e8f0"),marginBottom:8,paddingBottom:4,borderBottom:`2px solid ${c("#1a3a8f","#3b82f6")}`,display:"flex",alignItems:"center",gap:6}}>🎨 비엔나 도형코드 ({viennaCodes.length}개)</h3>
+                  <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                    {viennaCodes.map((v, i) => (
+                      <div key={i} style={{display:"flex",alignItems:"flex-start",gap:8,padding:"6px 10px",background:c("#f8faff","#172035"),borderRadius:6,border:`1px solid ${c("#e5e9f5","#2a3a55")}`}}>
+                        <span style={{fontSize:11,fontWeight:700,fontFamily:"monospace",background:c("#e0e7ff","#312e81"),color:c("#3730a3","#a5b4fc"),padding:"2px 6px",borderRadius:4,flexShrink:0,whiteSpace:"nowrap"}}>{v.code}</span>
+                        <span style={{flex:1,fontSize:11,color:c("#374151","#cbd5e1"),lineHeight:1.5,wordBreak:"keep-all",overflowWrap:"break-word"}}>{v.description}</span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {/* ── NICE 분류 정보 ── */}
+              {niceVersions.length > 0 && (
+                <section style={{marginBottom:18}}>
+                  <h3 style={{fontSize:12,fontWeight:700,color:c("#13274F","#e2e8f0"),marginBottom:8,paddingBottom:4,borderBottom:`2px solid ${c("#1a3a8f","#3b82f6")}`,display:"flex",alignItems:"center",gap:6}}>🏷️ NICE 분류 ({niceVersions.length}개 류)</h3>
+                  <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                    {niceVersions.map((n, i) => (
+                      <div key={i} style={{padding:"6px 10px",background:c("#f8faff","#172035"),borderRadius:6,border:`1px solid ${c("#e5e9f5","#2a3a55")}`}}>
+                        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom: n.koName ? 3 : 0}}>
+                          <span style={{fontSize:11,fontWeight:700,fontFamily:"monospace",background:c("#dbeafe","#1e3a6e"),color:c("#1e40af","#93c5fd"),padding:"2px 6px",borderRadius:4,whiteSpace:"nowrap"}}>{n.code || `${n.version}판`}</span>
+                        </div>
+                        {n.koName && <div style={{fontSize:11,color:c("#374151","#cbd5e1"),lineHeight:1.5,wordBreak:"keep-all"}}>{n.koName}</div>}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {/* ── 공고 PDF 다운로드 ── */}
+              {publications.length > 0 && (
+                <section style={{marginBottom:18}}>
+                  <h3 style={{fontSize:12,fontWeight:700,color:c("#13274F","#e2e8f0"),marginBottom:8,paddingBottom:4,borderBottom:`2px solid ${c("#1a3a8f","#3b82f6")}`,display:"flex",alignItems:"center",gap:6}}>📄 공고 PDF</h3>
+                  <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                    {publications.map((p, i) => (
+                      <a key={i} href={p.path} target="_blank" rel="noreferrer"
+                        style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:c("#fef9c3","#422006"),border:`1px solid ${c("#fde68a","#854d0e")}`,borderRadius:6,fontSize:12,color:c("#854d0e","#fde68a"),textDecoration:"none",fontWeight:600}}>
+                        <span style={{fontSize:14}}>📑</span>
+                        <span style={{flex:1,fontFamily:"monospace"}}>{p.pdfName}</span>
+                        <span style={{fontSize:10}}>↗ 열기</span>
+                      </a>
+                    ))}
+                  </div>
+                </section>
+              )}
+
               {detailData?.error && <div style={{color:"#dc2626",fontSize:11,padding:"8px 12px",background:c("#fff1f2","#450a0a"),borderRadius:6}}>⚠️ {detailData.error}</div>}
             </>
           )}
