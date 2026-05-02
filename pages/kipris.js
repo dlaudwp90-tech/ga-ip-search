@@ -1,6 +1,8 @@
-// pages/kipris.js  v8
-// v8 변경: 디버그 패널이 4개 sim 후보 endpoint 응답을 모두 표시하도록 변경 (winner 표시)
-// v7 변경: 상세 패널에 유사군코드 디버그 토글 추가 (raw API 응답 진단용)
+// pages/kipris.js  v9
+// v9 변경: 디버그 패널을 v10 API의 간소화된 _debug 구조에 맞게 단순화
+//          (단일 trademarkSimilarityCodeInfo endpoint + classToSims 표시)
+// v8 변경: 디버그 패널이 4개 sim 후보 endpoint 응답을 모두 표시
+// v7 변경: 상세 패널에 유사군코드 디버그 토글 추가
 
 import { useState, useEffect, useRef } from "react";
 import Head from "next/head";
@@ -530,23 +532,20 @@ export default function KiprisPage() {
                     {(() => {
                       const d = detailData._debug;
                       const lines = [];
-                      lines.push(`【bib】 길이=${d.bibLength} resultCode=${d.bibResultCode||'-'} ${d.bibErrorMsg ? 'err='+d.bibErrorMsg : ''}`);
-                      lines.push(`【goods】 길이=${d.goodsLength} 블록=${d.goodsBlockCount}개 매칭=${d.goodsWithSimCount}/${d.designatedGoodsCount}`);
-                      lines.push(`【수집된 sim 블록】 ${d.allSimsCount}개  Winner: ${d.simWinnerName || '없음'}`);
-                      lines.push("");
-                      lines.push(`▼ goodsXml 첫 블록 (필드: ${d.goodsFieldsFound.join(', ')})`);
-                      lines.push(d.goodsFirstBlockSample || "(없음)");
-                      lines.push("");
-                      (d.simCandidates || []).forEach((c, i) => {
-                        const win = i === d.simWinnerIdx ? "  ★ WINNER" : "";
-                        lines.push(`━━━ 후보 ${i+1}/${d.simCandidates.length}${win} ━━━`);
-                        lines.push(`  name: ${c.name}`);
-                        lines.push(`  url:  ${c.url}`);
-                        lines.push(`  길이=${c.length} resultCode=${c.resultCode||'-'} ${c.errorMsg ? 'err='+c.errorMsg : ''}`);
-                        lines.push(`  wrapper=${c.sniff.wrapperTag||'못찾음'} count=${c.sniff.count} fields=[${c.sniff.fields.join(', ')}]`);
-                        lines.push(c.sniff.firstBlockSample || "(빈 응답)");
-                        lines.push("");
+                      lines.push(`【응답 길이】 bib=${d.lengths.bib} goods=${d.lengths.goods} sim=${d.lengths.sim}`);
+                      lines.push(`【resultCode】 bib=${d.resultCodes.bib||'-'} goods=${d.resultCodes.goods||'-'} sim=${d.resultCodes.sim||'-'}`);
+                      const errs = Object.entries(d.errorMsgs).filter(([,v])=>v);
+                      if (errs.length>0) lines.push(`【에러】 ${errs.map(([k,v])=>k+':'+v).join(' | ')}`);
+                      lines.push(`【지정상품 블록】 ${d.goodsBlockCount}개 → 정제 후 ${d.designatedGoodsCount}개`);
+                      lines.push(`【유사군 블록】 ${d.simBlockCount}개`);
+                      lines.push(`【전체 유사군코드】 [${(d.allSimCodes||[]).join(', ')}]`);
+                      lines.push(`【류별 매핑】`);
+                      Object.entries(d.classToSims || {}).forEach(([cls, codes]) => {
+                        lines.push(`  제${cls}류 → [${codes.join(', ')}]`);
                       });
+                      lines.push("");
+                      lines.push("▼ sim API 원시 응답 (처음 1000자)");
+                      lines.push(d.simRawSample || "(없음)");
                       return lines.join("\n");
                     })()}
                   </div>
@@ -554,18 +553,20 @@ export default function KiprisPage() {
                 {goods.length > 0 ? (
                   <>
                     <div style={{marginBottom:12}}>
-                      <div style={{fontSize:10,fontWeight:600,color:c("#9ca3af","#64748b"),marginBottom:4}}>▼ 류별 분류 (각 상품 옆 파란 뱃지 = 유사군코드)</div>
+                      <div style={{fontSize:10,fontWeight:600,color:c("#9ca3af","#64748b"),marginBottom:4}}>▼ 류별 분류 (헤더 우측 = 그 류의 유사군코드)</div>
                       {Object.entries(goodsByClass).map(([cls,items]) => (
                         <div key={cls} style={{padding:"10px 12px",background:c("#f8faff","#172035"),borderRadius:8,border:`1px solid ${c("#e5e9f5","#2a3a55")}`,marginBottom:6}}>
                           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:6,flexWrap:"wrap"}}>
                             <div style={{fontSize:11,fontWeight:700,color:c("#1a3a8f","#93c5fd")}}>제{cls}류 ({items.length}개)</div>
-                            {allSimsByClass[cls] && allSimsByClass[cls].length > 0 && (
+                            {allSimsByClass[cls] && allSimsByClass[cls].length > 0 ? (
                               <div style={{display:"flex",alignItems:"center",gap:4,flexWrap:"wrap"}}>
-                                <span style={{fontSize:9,color:c("#9ca3af","#64748b"),fontWeight:600}}>이 류의 유사군코드:</span>
+                                <span style={{fontSize:10,color:c("#9ca3af","#64748b"),fontWeight:600}}>유사군:</span>
                                 {allSimsByClass[cls].map(s => (
-                                  <span key={s} style={{fontSize:9,fontWeight:700,fontFamily:"monospace",background:c("#e0f2fe","#0c4a6e"),color:c("#075985","#7dd3fc"),padding:"1px 5px",borderRadius:3,whiteSpace:"nowrap"}}>{s}</span>
+                                  <span key={s} style={{fontSize:10,fontWeight:700,fontFamily:"monospace",background:c("#dbeafe","#1e3a6e"),color:c("#1e40af","#93c5fd"),padding:"2px 6px",borderRadius:4,whiteSpace:"nowrap"}}>{s}</span>
                                 ))}
                               </div>
+                            ) : (
+                              <span style={{fontSize:9,color:c("#cbd5e1","#475569"),fontStyle:"italic"}}>유사군코드 없음</span>
                             )}
                           </div>
                           <div style={{display:"flex",flexDirection:"column",gap:0}}>
@@ -575,15 +576,6 @@ export default function KiprisPage() {
                                   <span style={{fontSize:10,color:c("#9ca3af","#64748b"),marginRight:4,fontFamily:"monospace"}}>{gi+1}.</span>
                                   {g.name}
                                 </div>
-                                {g.sims && g.sims.length > 0 ? (
-                                  <div style={{display:"flex",flexWrap:"wrap",gap:3,flexShrink:0,maxWidth:"45%",justifyContent:"flex-end"}}>
-                                    {g.sims.map(s => (
-                                      <span key={s} style={{fontSize:10,fontWeight:700,fontFamily:"monospace",background:c("#dbeafe","#1e3a6e"),color:c("#1e40af","#93c5fd"),padding:"2px 6px",borderRadius:4,whiteSpace:"nowrap"}}>{s}</span>
-                                    ))}
-                                  </div>
-                                ) : (
-                                  <span style={{fontSize:10,color:c("#cbd5e1","#475569"),fontFamily:"monospace",flexShrink:0}}>—</span>
-                                )}
                               </div>
                             ))}
                           </div>
