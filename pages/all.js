@@ -6,11 +6,11 @@
 //   · 대표검토 토글, 댓글, 알림, 파일 다운로드, 더보기(무한스크롤) 등을 포함합니다.
 //
 // [화면(뷰) 규칙]  ⚠ 중요 — index.js와 동일하게 맞춤
-//   · 모바일(가로폭 768px 이하)  → '표(그리드)' 뷰 하나만 사용 (카드 뷰 없음)
-//   · PC·태블릿(769px 이상)      → '카드' 뷰 하나만 사용 (표 뷰 없음)
-//   · 기기마다 단일 뷰. 표/카드 전환 버튼은 없앴습니다.
-//   · 어떤 뷰가 보일지는 인라인 style 이 아니라 맨 아래 CSS 미디어쿼리
-//     (.table-outer / .pc-cards) 가 결정합니다. ← 이 부분 함부로 바꾸지 말 것.
+//   · 모바일(768px 이하)    → 세로로 쌓이는 '카드형 목록'(.mobile-cards) 하나만
+//   · PC·태블릿(769px 이상) → 여러 열 '카드 그리드'(.pc-cards) 하나만
+//   · 실제 <table> 표(.table-outer)는 더 이상 사용하지 않음(항상 숨김).
+//   · 기기마다 단일 뷰. 전환 버튼 없음. 표시는 맨 아래 CSS 미디어쿼리가 결정.
+//     ← 이 CSS 부분 함부로 바꾸지 말 것.
 //
 // [수정 시 주의]
 //   · PC와 모바일 뷰는 서로 독립입니다. 한쪽을 고칠 때 다른 쪽 영향 없는지 확인.
@@ -329,8 +329,8 @@ export default function AllPage() {
   const scrollToIdx = (idx) => {
     const isMobile = window.innerWidth <= 768;
     let id;
-    // 모바일(<=768px)=표 뷰 -> 표의 행(pc-row), PC=카드 뷰 -> 카드(pc-card)
-    if (isMobile) id = `pc-row-${idx}`;
+    // 모바일(<=768px)=카드형 목록(m-card), PC=카드 그리드(pc-card)
+    if (isMobile) id = `m-card-${idx}`;
     else          id = `pc-card-${idx}`;
     const el = document.getElementById(id);
     if (el) {
@@ -1644,11 +1644,9 @@ export default function AllPage() {
                 <p className="count">📄 {results.length}건 표시 중{hasMore ? ` (전체 ${totalCount??'…'}건)` : ` / 전체 ${results.length}건`}</p>
                 <p className="lock-guide">🔓 잠금 표시를 해제하고 버튼을 눌러주세요</p>
               </div>
-              {/* ── [사용 안 함] 옛 모바일 카드 뷰 ──
-                  모바일은 이제 '표 뷰'를 쓰므로 이 카드 블록은 항상 숨김(display:"none").
-                  ⚠ 추후 정리 단계에서 블록 전체 삭제 예정. 지금은 그대로 둘 것. */}
+              {/* ── 모바일(768px 이하) 기본 뷰 = 카드형 목록 ──
+                  세로로 쌓이는 카드(.m-card). 보일지 말지는 아래 CSS(.mobile-cards)가 결정. PC에서는 숨김. */}
               <div className="mobile-cards" style={{
-              display: "none",
               opacity: fadeVisible ? 1 : 0, transition: "opacity 0.28s ease" }}>
                 {results.map((row, i) => (
                   <React.Fragment key={i}>
@@ -2259,9 +2257,11 @@ export default function AllPage() {
                 </div>
               )}
 
-              {/* ── 모바일(768px 이하) 기본 뷰 = 표(그리드) ──
-                  보일지 말지는 아래 CSS(.table-outer 미디어쿼리)가 결정. PC에서는 숨김. */}
+              {/* ── [사용 안 함] 표(table) 뷰 ──
+                  모바일=카드형 목록(.mobile-cards), PC=카드 그리드(.pc-cards)로 통일했으므로
+                  이 표 블록은 항상 숨김(display:"none"). ⚠ 추후 정리 단계에서 삭제 예정. */}
               <div className="table-outer" ref={tableOuterRef} style={{
+              display: "none",
               opacity: fadeVisible ? 1 : 0, transition: "opacity 0.28s ease" }}>
                 <table>
                   <thead>
@@ -2688,19 +2688,19 @@ export default function AllPage() {
           padding:3px 8px; text-decoration:none; display:inline-block; }
         .dark .m-file-link { background:#1e3a6e; color:#93c5fd; }
         /* ── [중요] 기기별 단일 뷰 규칙 ──
-           모바일(<=768px) = 표(.table-outer)만,  PC·태블릿(>=769px) = 카드(.pc-cards)만.
+           모바일(<=768px) = 카드형 목록(.mobile-cards)만,  PC·태블릿(>=769px) = 카드 그리드(.pc-cards)만.
+           실제 표(.table-outer)는 더 이상 사용하지 않음(항상 숨김).
            이 미디어쿼리가 "어떤 뷰가 보이는가"의 단일 기준입니다. 함부로 바꾸지 말 것. */
-        /* PC·태블릿(769px 이상): 카드만 표시, 표는 숨김 */
+        .table-outer { display:none !important; }
+        /* PC·태블릿(769px 이상): 카드 그리드만 표시 */
         @media (min-width: 769px) {
           .pc-cards     { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
-          .table-outer  { display:none; }
           .mobile-cards { display:none; }
         }
-        /* 모바일(768px 이하): 표만 표시, 카드는 숨김 */
+        /* 모바일(768px 이하): 카드형 목록만 표시 */
         @media (max-width: 768px) {
           .pc-cards     { display:none; }
-          .table-outer  { display:block; }
-          .mobile-cards { display:none; }
+          .mobile-cards { display:flex; }
         }
         @keyframes slideUpFade { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
         @keyframes pollToastIn { from{opacity:0;transform:translateX(-50%) translateY(12px)} to{opacity:1;transform:translateX(-50%) translateY(0)} }
