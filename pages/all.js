@@ -927,8 +927,8 @@ export default function AllPage() {
     const sDone = !!(row.statusItem && _completeStatus.has(row.statusItem.name));
     const dDone = !!(row.docWorkStatusItem && _completeDoc.has(row.docWorkStatusItem.name));
     const t = (sDone && dDone)
-      ? { bg: "#e8f8ee", bd: "#86efac", dbg: "#16301e", dbd: "#2f6b3f" }   // 연두 (둘 다 완료)
-      : { bg: "#fff4e6", bd: "#fdba74", dbg: "#382815", dbd: "#7c531a" };  // 옅은 주황 (미완료)
+      ? { bg: "#e8f8ee", bd: "#86efac", dbg: "#173a23", dbd: "#46a06a" }   // 연두 (둘 다 완료) — 다크: 추천 B
+      : { bg: "#fff4e6", bd: "#fdba74", dbg: "#3f3015", dbd: "#cf942f" };  // 옅은 주황 (미완료) — 다크: 추천 B
     return { background: dark ? t.dbg : t.bg, border: `1px solid ${dark ? t.dbd : t.bd}` };
   };
 
