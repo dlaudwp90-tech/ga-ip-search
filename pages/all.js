@@ -607,6 +607,28 @@ export default function AllPage() {
     resultsRef.current = results;
   }, [results]);
 
+  // ── 각 카드의 댓글 수 미리 조회 (댓글 뱃지 표시용) ──
+  //   결과가 로드/갱신될 때마다 카드별 댓글 개수를 Redis에서 미리 가져와,
+  //   댓글이 있는 카드의 💬 아이콘에 빨간 개수 뱃지를 '클릭 전에' 표시한다.
+  //   ⚠ 카드 식별은 'pageId'(고유 ID) 기준 — 재정렬돼도 뱃지가 옛 자리에 안 남는다.
+  //   ⚠ 댓글 0개여도 comments:[] 로 항상 갱신 → 옮겨온 옛 뱃지를 깨끗이 지운다.
+  useEffect(() => {
+    if (!results?.length) return;
+    results.forEach((row) => {
+      if (!row.pageId) return;
+      fetch("/api/comments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "get", pageId: row.pageId }),
+      }).then(r => r.json()).then(d => {
+        setCommentPanels(prev => ({
+          ...prev,
+          [row.pageId]: { ...(prev[row.pageId] || {}), comments: d.comments || [] }
+        }));
+      }).catch(() => {});
+    });
+  }, [results]);
+
   // ── 노션 데이터 실시간 폴링 (30초) ──
   useEffect(() => {
     if (loading) return; // 초기 로드 중엔 폴링 불필요
