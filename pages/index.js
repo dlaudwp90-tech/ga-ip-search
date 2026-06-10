@@ -91,6 +91,33 @@ const shouldCopyLine = (line) => {
 };
 // 예외 마커 공백 제거 후 표시용 텍스트 반환
 const displayLine = (line) => line.startsWith("  ") ? line.trimStart() : line;
+
+// ── 노션 글자색/볼드 표시용 도우미 ──
+//   search.js(API)가 내려준 줄별 색·볼드 정보({c,b})를 실제 CSS 스타일로 변환합니다.
+//   ⚠ 색 이름 → 색상값. 다크모드에서는 더 밝은 색을 사용(가이드 페이지 색상과 동일 계열).
+//   이 부분은 표시 전용이라 데이터/검색 로직에는 영향 없음.
+const NOTION_TEXT_COLORS = {
+  gray:{light:"#6b7280",dark:"#9ca3af"}, brown:{light:"#8b5e34",dark:"#b08968"},
+  orange:{light:"#c2410c",dark:"#fb923c"}, yellow:{light:"#a16207",dark:"#facc15"},
+  green:{light:"#166534",dark:"#4ade80"}, blue:{light:"#1d4ed8",dark:"#60a5fa"},
+  purple:{light:"#7e22ce",dark:"#c084fc"}, pink:{light:"#be185d",dark:"#f472b6"},
+  red:{light:"#b91c1c",dark:"#f87171"},
+};
+// info = { c: 색이름|null, b: 볼드여부 } → CSS style 객체로 변환
+const notionTextStyle = (info, dark) => {
+  if (!info) return {};
+  const s = {};
+  if (info.b) s.fontWeight = 700;                          // 볼드
+  if (info.c) {
+    const name = String(info.c).replace("_background", ""); // 배경색이면 같은 계열 글자색으로 처리
+    const c = NOTION_TEXT_COLORS[name];
+    if (c) s.color = dark ? c.dark : c.light;
+  }
+  return s;
+};
+// row 의 특정 필드(ck 로 판별)·특정 줄(li)의 색/볼드 style 반환
+const lineStyle = (row, ck, li, dark) =>
+  notionTextStyle(row[(fieldFromCk(ck) || "") + "Styles"]?.[li], dark);
 function renderSingleLine(text) {
   if (!text) return "—";
   return text.split("\n")[0];
@@ -1334,7 +1361,7 @@ export default function Home() {
                         {/* 제목 행 */}
                         <div className="m-card-top">
                           <span className="m-card-icon">📄</span>
-                          <span className="m-card-title" onClick={e=>handleTitleClick(e,row.url)}>{renderSingleLine(row.title)}</span>
+                          <span className="m-card-title" onClick={e=>handleTitleClick(e,row.url)} style={notionTextStyle(row.titleStyle,dark)}>{renderSingleLine(row.title)}</span>
                           <span onClick={e=>{e.stopPropagation();toggleCommentPanel(i,row.pageId)}}
                             style={{cursor:"pointer",flexShrink:0,position:"relative",display:"inline-flex",
                               alignItems:"center",marginLeft:4,
@@ -1398,7 +1425,7 @@ export default function Home() {
                                     const ck=`${i}-mn-${li}`;
                                     return (
                                     <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
-                                      <span className="m-info-item">{displayLine(line)}</span>
+                                      <span className="m-info-item" style={lineStyle(row,ck,li,dark)}>{displayLine(line)}</span>
                                       {shouldCopyLine(line) && <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
                                       {(() => { const ex = extractCopyExtras(line, fieldFromCk(ck));
                                         const nk = `${ck}-nm`, yk = `${ck}-y`, pk = `${ck}-p`;
@@ -1422,7 +1449,7 @@ export default function Home() {
                                     const ck=`${i}-mo-${li}`;
                                     return (
                                     <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
-                                      <span className="m-info-item">{displayLine(line)}</span>
+                                      <span className="m-info-item" style={lineStyle(row,ck,li,dark)}>{displayLine(line)}</span>
                                       {shouldCopyLine(line) && <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
                                       {(() => { const ex = extractCopyExtras(line, fieldFromCk(ck));
                                         const nk = `${ck}-nm`, yk = `${ck}-y`, pk = `${ck}-p`;
@@ -1446,7 +1473,7 @@ export default function Home() {
                                     const ck=`${i}-mc-${li}`;
                                     return (
                                     <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
-                                      <span className="m-info-item">{displayLine(line)}</span>
+                                      <span className="m-info-item" style={lineStyle(row,ck,li,dark)}>{displayLine(line)}</span>
                                       {shouldCopyLine(line) && <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
                                       {(() => { const ex = extractCopyExtras(line, fieldFromCk(ck));
                                         const nk = `${ck}-nm`, yk = `${ck}-y`, pk = `${ck}-p`;
@@ -1672,7 +1699,8 @@ export default function Home() {
                         <span style={{fontSize:14,flexShrink:0}}>📄</span>
                         <span onClick={e=>handleTitleClick(e,row.url)}
                           style={{ fontSize:13, fontWeight:700, color:dark?"#93c5fd":"#1a3a8f",
-                            cursor:"pointer", textDecoration:"underline", lineHeight:1.3 }}>
+                            cursor:"pointer", textDecoration:"underline", lineHeight:1.3,
+                            ...notionTextStyle(row.titleStyle,dark) }}>
                           {renderSingleLine(row.title)}
                         </span>
                       </div>
@@ -1719,7 +1747,7 @@ export default function Home() {
                                 const ck=`${i}-pn-${li}`;
                                 return (
                                 <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
-                                  <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280"}}>{displayLine(line)}</span>
+                                  <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280",...lineStyle(row,ck,li,dark)}}>{displayLine(line)}</span>
                                   {shouldCopyLine(line) && <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
                                   {(() => { const ex = extractCopyExtras(line, fieldFromCk(ck));
                                     const nk = `${ck}-nm`, yk = `${ck}-y`, pk = `${ck}-p`;
@@ -1743,7 +1771,7 @@ export default function Home() {
                                 const ck=`${i}-po-${li}`;
                                 return (
                                 <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
-                                  <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280"}}>{displayLine(line)}</span>
+                                  <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280",...lineStyle(row,ck,li,dark)}}>{displayLine(line)}</span>
                                   {shouldCopyLine(line) && <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
                                   {(() => { const ex = extractCopyExtras(line, fieldFromCk(ck));
                                     const nk = `${ck}-nm`, yk = `${ck}-y`, pk = `${ck}-p`;
@@ -1767,7 +1795,7 @@ export default function Home() {
                                 const ck=`${i}-pc-${li}`;
                                 return (
                                 <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
-                                  <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280"}}>{displayLine(line)}</span>
+                                  <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280",...lineStyle(row,ck,li,dark)}}>{displayLine(line)}</span>
                                   {shouldCopyLine(line) && <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
                                   {(() => { const ex = extractCopyExtras(line, fieldFromCk(ck));
                                     const nk = `${ck}-nm`, yk = `${ck}-y`, pk = `${ck}-p`;
