@@ -165,27 +165,44 @@ function rowBg(i, dark, hover = false) {
 }
 
 // ── 카드 내 파일 업로드 패널 ──
-//   각 카드의 📎 버튼을 누르면 펼쳐짐. 드래그앤드롭 또는 클릭으로 R2에 업로드, 기존 파일은 🗑로 삭제.
+//   각 카드의 📎 버튼을 누르면 펼쳐짐.
+//   ① 드래그앤드롭 또는 클릭으로 파일을 '대기 목록'에 추가(여러 번 가능)
+//   ② '업로드' 버튼을 눌러야 실제 업로드 → ③ 성공 표시 후 잠시 뒤 패널이 자동으로 닫힘.
 //   ⚠ 저장 폴더는 카드 고유 'pageId' 기준 → 노션 제목을 바꿔도 파일이 안 깨짐.
 //   업로드/삭제 시 노션 '파일다운링크'도 /api/upload가 함께 갱신함. (비개발자: 이 컴포넌트는 한 덩어리로 유지)
 function CardUploadPanel({ pageId, fileLinks, dark, onChange, onClose }) {
   const [dragging, setDragging] = useState(false);
+  const [staged, setStaged] = useState([]); // 업로드 대기 파일 (아직 안 올림)
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState("");
+  const [msg, setMsg] = useState("");        // 진행/오류 메시지
+  const [done, setDone] = useState("");      // 성공 표시 메시지
   const fileRef = useRef(null);
 
   // 한글 등 파일명 경로를 노션 저장 형식과 동일하게 인코딩 (appendFileLink와 일치)
   const encUrl = (u) => u.split("/").map((p, i) => (i < 3 ? p : encodeURIComponent(decodeURIComponent(p)))).join("/");
 
-  // 선택/드롭된 파일들을 차례로 업로드: presign → R2 PUT → 노션 링크 갱신(notify)
-  const doUpload = async (filesIn) => {
+  // 드롭/선택한 파일을 '대기 목록'에 추가만 함 (바로 업로드 X). 같은 파일(이름+크기)은 중복 추가 안 함.
+  const addFiles = (filesIn) => {
     const list = Array.from(filesIn || []);
-    if (!list.length || busy) return;
-    setBusy(true);
+    if (!list.length) return;
+    setDone(""); setMsg("");
+    setStaged((prev) => {
+      const seen = new Set(prev.map((f) => f.name + ":" + f.size));
+      return [...prev, ...list.filter((f) => !seen.has(f.name + ":" + f.size))];
+    });
+  };
+
+  const removeStaged = (idx) => setStaged((prev) => prev.filter((_, k) => k !== idx));
+
+  // '업로드' 버튼: 대기 목록 전체를 차례로 업로드 (presign → R2 PUT → 노션 링크 갱신)
+  const doUpload = async () => {
+    if (busy || !staged.length) return;
+    setBusy(true); setDone(""); setMsg("");
     let cur = [...fileLinks];
-    for (let n = 0; n < list.length; n++) {
-      const f = list[n];
-      setMsg(`업로드 중… (${n + 1}/${list.length}) ${f.name}`);
+    let okCount = 0;
+    for (let n = 0; n < staged.length; n++) {
+      const f = staged[n];
+      setMsg(`업로드 중… (${n + 1}/${staged.length}) ${f.name}`);
       try {
         const pr = await fetch("/api/upload", { method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: "presign", folder: pageId, fileName: f.name, contentType: f.type || "application/octet-stream" }) });
@@ -198,18 +215,25 @@ function CardUploadPanel({ pageId, fileLinks, dark, onChange, onClose }) {
             body: JSON.stringify({ action: "notify", pageId, folder: pageId, publicUrl: pd.publicUrl }) });
           cur = [...cur, enc];
         }
-      } catch (e) { setMsg("업로드 실패: " + (e.message || "")); setBusy(false); return; }
+        okCount++;
+      } catch (e) {
+        onChange(cur);
+        setMsg("⚠ 업로드 실패: " + f.name + " (" + (e.message || "") + ")");
+        setBusy(false);
+        return;
+      }
     }
     onChange(cur);
-    setBusy(false); setMsg("");
-    onClose(); // 업로드가 끝나면 패널 닫기
+    setStaged([]); setMsg(""); setBusy(false);
+    setDone(`✅ ${okCount}개 업로드 완료`);
+    setTimeout(() => onClose(), 1800); // 성공 표시를 잠깐 보여준 뒤 패널 자동 닫기
   };
 
-  // 파일 삭제: R2에서 영구 삭제 + 노션 링크 제거
+  // 업로드된 파일 삭제: R2 영구 삭제 + 노션 링크 제거
   const doDelete = async (url) => {
     if (busy) return;
     if (!window.confirm("이 파일을 삭제하시겠습니까? (저장소에서 영구 삭제)")) return;
-    const key = url.split("/").slice(3).join("/"); // URL에서 R2 키(폴더/파일명) 추출
+    const key = url.split("/").slice(3).join("/");
     setBusy(true);
     try {
       await fetch("/api/upload", { method: "POST", headers: { "Content-Type": "application/json" },
@@ -223,22 +247,52 @@ function CardUploadPanel({ pageId, fileLinks, dark, onChange, onClose }) {
     <div onClick={(e) => e.stopPropagation()}
       style={{ margin: "4px 0 8px", padding: 10, borderRadius: 10,
         background: dark ? "#0f172a" : "#f8faff", border: `1px solid ${dark ? "#334155" : "#dbe3f5"}` }}>
-      {/* 드롭존 (드래그앤드롭 또는 클릭) */}
+      {/* 드롭존: 끌어다 놓거나 클릭해서 '대기 목록'에 추가 (아직 업로드 X) */}
       <div onClick={() => !busy && fileRef.current && fileRef.current.click()}
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
-        onDrop={(e) => { e.preventDefault(); setDragging(false); doUpload(e.dataTransfer.files); }}
+        onDrop={(e) => { e.preventDefault(); setDragging(false); addFiles(e.dataTransfer.files); }}
         style={{ cursor: busy ? "default" : "pointer", textAlign: "center", padding: "14px 8px", borderRadius: 8,
           border: `2px dashed ${dragging ? "#6366f1" : (dark ? "#475569" : "#c3cce6")}`,
           background: dragging ? (dark ? "#1e293b" : "#eef1fb") : "transparent",
           color: dark ? "#94a3b8" : "#6b7280", fontSize: 12, lineHeight: 1.4 }}>
-        {busy ? (msg || "처리 중…") : "📎 파일을 끌어다 놓거나 클릭해서 선택"}
+        📎 파일을 끌어다 놓거나 클릭해서 추가
       </div>
       <input ref={fileRef} type="file" multiple style={{ display: "none" }}
-        onChange={(e) => { doUpload(e.target.files); e.target.value = ""; }} />
-      {/* 현재 파일 목록 (각 파일 🗑로 삭제) */}
-      {fileLinks.length > 0 && (
+        onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
+
+      {/* 대기 목록 + 업로드 버튼 */}
+      {staged.length > 0 && (
         <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+          {staged.map((f, k) => (
+            <div key={k} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: dark ? "#cbd5e1" : "#374151" }}>
+              <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>⬆ {f.name}</span>
+              {!busy && (
+                <button onClick={() => removeStaged(k)} title="목록에서 제거"
+                  style={{ flexShrink: 0, border: "none", background: "transparent", cursor: "pointer", fontSize: 13, color: dark ? "#94a3b8" : "#9ca3af" }}>✕</button>
+              )}
+            </div>
+          ))}
+          <button onClick={doUpload} disabled={busy}
+            style={{ marginTop: 4, alignSelf: "flex-start", border: "none", borderRadius: 7, padding: "6px 14px",
+              fontSize: 12, fontWeight: 700, fontFamily: "inherit", cursor: busy ? "default" : "pointer",
+              background: busy ? (dark ? "#334155" : "#cbd5e1") : "#4f46e5", color: "#fff" }}>
+            {busy ? "업로드 중…" : `⬆ ${staged.length}개 업로드`}
+          </button>
+        </div>
+      )}
+
+      {/* 진행 / 성공 / 오류 표시 */}
+      {(msg || done) && (
+        <div style={{ marginTop: 8, fontSize: 12, fontWeight: 600,
+          color: done ? (dark ? "#4ade80" : "#16a34a") : (dark ? "#fca5a5" : "#dc2626") }}>
+          {done || msg}
+        </div>
+      )}
+
+      {/* 현재(업로드된) 파일 목록 — 🗑로 삭제 */}
+      {fileLinks.length > 0 && (
+        <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${dark ? "#334155" : "#e5e9f5"}`, display: "flex", flexDirection: "column", gap: 4 }}>
           {fileLinks.map((u, k) => (
             <div key={k} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: dark ? "#cbd5e1" : "#374151" }}>
               <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>📄 {decodeURIComponent(u.split("/").pop())}</span>
