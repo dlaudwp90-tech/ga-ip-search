@@ -20,15 +20,6 @@ import { useRouter } from "next/router";
 // framer-motion: 카드 재정렬(위치 이동) 애니메이션 라이브러리. ⚠ package.json 의존성 필요
 import { motion } from "framer-motion";
 
-// ─── index.js와 동일한 상수 ───────────────────────────────────────────────
-const STATUS_OPTIONS = [
-  { key: "confirmed", label: "대표확인", short: "확인다운", color: "#16a34a", bg: "#f0fdf4", darkColor: "#4ade80", darkBg: "#14532d" },
-  { key: "rejected",  label: "대표반려", short: "반려",    color: "#dc2626", bg: "#fff1f2", darkColor: "#f87171", darkBg: "#450a0a" },
-  { key: "reviewing", label: "대표검토", short: "검토",    color: "#d97706", bg: "#fffbeb", darkColor: "#fbbf24", darkBg: "#451a03" },
-];
-const LOCK_SECONDS  = 600;
-const COL_CHECK_W   = 160;
-const COL_TITLE_L   = COL_CHECK_W;
 
 // ─── 그룹 이름 번역 (영어 → 한글) ───
 const GROUP_NAME_KR = {
@@ -46,9 +37,6 @@ const SORT_OPTIONS = [
   { key: "deadline_asc", label: "마감일 (가까운순)" },
 ];
 
-function fmtCountdown(s) {
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-}
 
 // ─── 부분복사 + 연도복사: 필드별 핵심 숫자 추출 ───────────────────────────
 // appNum(출원번호)   "40-2026-0075516 (26.04.16)" → 연도 "2026" / 부분 "0075516"
@@ -309,7 +297,6 @@ export default function AllPage() {
     return window.matchMedia("(prefers-color-scheme: dark)").matches;
   });
   const [tabView, setTabView] = useState("auto");
-  const [viewType, setViewType] = useState("table");
   const [fadeVisible, setFadeVisible] = useState(true);
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -347,18 +334,7 @@ export default function AllPage() {
   const [hoveredRow, setHoveredRow] = useState(null);
 
   // ── 대표 검토 상태 ──
-  const [reviewStates, setReviewStates] = useState({});
-  const [savingUrl,    setSavingUrl]    = useState(null);
-  const [kvAvailable,  setKvAvailable]  = useState(true);
-  const [saveResult,   setSaveResult]   = useState(null); // null | "ok" | "fail"
 
-  // ── 잠금 상태 ──
-  const [checkLocked,   setCheckLocked]   = useState(true);
-  const [lockCountdown, setLockCountdown] = useState(0);
-  const lockIntervalRef = useRef(null);
-  const lockTimeoutRef  = useRef(null);
-
-  const tableOuterRef = useRef(null);
   const filePopupRef  = useRef(null);
   const bottomRef     = useRef(null);
 
@@ -388,7 +364,6 @@ export default function AllPage() {
   const [notifPos,     setNotifPos]     = useState({ x: 0, y: 0 });
   const [nowTs,        setNowTs]        = useState(Date.now());
   const notifBtnRef    = useRef(null);
-  const rowRefs        = useRef({});
   const mobileCardRefs = useRef({});
 
   // ── 실시간 폴링 ──
@@ -400,11 +375,6 @@ export default function AllPage() {
   const pcCardRefs     = useRef({});         // PC 카드뷰 요소 ref
 
   // 시스템 다크모드 변경 자동 감지
-  const switchViewType = (next) => {
-    if (next === viewType) return;
-    setFadeVisible(false);
-    setTimeout(() => { setViewType(next); setFadeVisible(true); }, 280);
-  };
 
   useEffect(() => {
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
@@ -427,7 +397,7 @@ export default function AllPage() {
     }).then(r => r.json()).then(d => { setNickname(d.nickname || null); setNickInput(d.nickname || ""); });
   }, [user]);
 
-  // ── 개인 설정 (viewType / dark / tabView) 로드·저장 ──
+  // ── 개인 설정 (dark / tabView) 로드·저장 ──
   const [prefsLoaded, setPrefsLoaded] = useState(false);
   useEffect(() => {
     if (!user?.primaryEmailAddress?.emailAddress) return;
@@ -439,7 +409,6 @@ export default function AllPage() {
       .then(r => r.json())
       .then(d => {
         if (d?.prefs) {
-          if (typeof d.prefs.viewType === "string") setViewType(d.prefs.viewType);
           if (typeof d.prefs.dark === "boolean")    setDark(d.prefs.dark);
           if (typeof d.prefs.tabView === "string")  setTabView(d.prefs.tabView);
         }
@@ -456,10 +425,10 @@ export default function AllPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         email: user.primaryEmailAddress.emailAddress,
-        prefs: { viewType, dark, tabView },
+        prefs: { dark, tabView },
       }),
     }).catch(() => {});
-  }, [viewType, dark, tabView, prefsLoaded, user]);
+  }, [dark, tabView, prefsLoaded, user]);
 
   const loadNotifications = async () => {
     if (!user?.primaryEmailAddress?.emailAddress) return;
@@ -499,8 +468,7 @@ export default function AllPage() {
     const isMobile = window.innerWidth <= 768;
     let id;
     if (isMobile) id = `m-card-${idx}`;
-    else if (viewType === "card") id = `pc-card-${idx}`;
-    else id = `pc-row-${idx}`;
+    else id = `pc-card-${idx}`;
     const el = document.getElementById(id);
     if (el) {
       el.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -634,93 +602,6 @@ export default function AllPage() {
   const toggleRow = (idx) => setExpandedRows(prev => ({ ...prev, [idx]: !prev[idx] }));
 
   // ── 잠금 타이머 ──
-  const startLockTimer = useCallback(() => {
-    if (lockIntervalRef.current) clearInterval(lockIntervalRef.current);
-    if (lockTimeoutRef.current)  clearTimeout(lockTimeoutRef.current);
-    setLockCountdown(LOCK_SECONDS);
-    lockIntervalRef.current = setInterval(() => {
-      setLockCountdown(p => Math.max(0, p - 1));
-    }, 1000);
-    lockTimeoutRef.current = setTimeout(() => {
-      setCheckLocked(true);
-      clearInterval(lockIntervalRef.current);
-      setLockCountdown(0);
-    }, LOCK_SECONDS * 1000);
-  }, []);
-
-  const stopLockTimer = useCallback(() => {
-    if (lockIntervalRef.current) clearInterval(lockIntervalRef.current);
-    if (lockTimeoutRef.current)  clearTimeout(lockTimeoutRef.current);
-    setLockCountdown(0);
-  }, []);
-
-  useEffect(() => () => stopLockTimer(), [stopLockTimer]);
-
-  const handleLockToggle = () => {
-    if (checkLocked) { setCheckLocked(false); startLockTimer(); }
-    else             { setCheckLocked(true);  stopLockTimer();  }
-  };
-
-  // ── Redis API 조회 — Redis가 단일 진실 원천 ──
-  const fetchReviewStates = useCallback(async (urls) => {
-    if (!urls?.length) return;
-    try {
-      const res  = await fetch("/api/review", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "get", urls }),
-      });
-      const data = await res.json();
-      setKvAvailable(data.kvAvailable !== false);
-      if (data.states) {
-        // Redis 값으로 머지: Redis에 값이 있으면 업데이트, null이면 기존 유지
-        setReviewStates(prev => {
-          const next = { ...prev };
-          Object.entries(data.states).forEach(([k, v]) => {
-            if (v !== null && v !== undefined && v !== "") {
-              next[k] = v;
-            }
-            // Redis가 null 반환해도 기존 값 유지 (SET 실패 방어)
-          });
-          return next;
-        });
-      }
-    } catch { setKvAvailable(false); }
-  }, []);
-
-  // ── 결과 변경 시 Redis에서 상태 로드 ──
-  useEffect(() => {
-    if (results?.length) fetchReviewStates(results.map(r => r.url));
-  }, [results, fetchReviewStates]);
-
-  // ── 각 카드의 댓글 수 미리 조회 (댓글 뱃지 표시용)
-  //   ⚠ 카드 식별을 'pageId'(고유 ID)로 한다 — index(몇 번째)로 하면 카드 재정렬 시
-  //      뱃지가 옛 자리에 남아 '댓글 없는 카드에 뱃지가 뜨는' 문제가 생긴다.
-  //   ⚠ 댓글이 0개여도 comments:[] 로 항상 갱신 → 옮겨온 옛 뱃지를 깨끗이 지운다.
-  useEffect(() => {
-    if (!results?.length) return;
-    results.forEach((row) => {
-      if (!row.pageId) return;
-      fetch("/api/comments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "get", pageId: row.pageId }),
-      }).then(r => r.json()).then(d => {
-        setCommentPanels(prev => ({
-          ...prev,
-          [row.pageId]: { ...(prev[row.pageId] || {}), comments: d.comments || [] }
-        }));
-      }).catch(() => {});
-    });
-  }, [results]);
-
-  // ── 30초 폴링: 다른 기기 변경사항 실시간 반영 ──
-  useEffect(() => {
-    if (!results?.length) return;
-    const urls = results.map(r => r.url);
-    const id = setInterval(() => fetchReviewStates(urls), 30000);
-    return () => clearInterval(id);
-  }, [results, fetchReviewStates]);
-
   // ── resultsRef: 폴링 클로저에서 최신 results 참조 ──
   useEffect(() => {
     resultsRef.current = results;
@@ -821,34 +702,6 @@ export default function AllPage() {
   //  목록 변경 시 옛 위치 → 새 위치로 부드럽게 이동시킨다.)
 
   // ── 버튼 클릭 처리 ──
-  const handleStatusSelect = useCallback(async (url, newStatus) => {
-    if (checkLocked) return;
-    const prevStatus = reviewStates[url] ?? null;
-    setReviewStates(p => ({ ...p, [url]: newStatus }));
-    setSavingUrl(url);
-    try {
-      const res  = await fetch("/api/review", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "set", url, status: newStatus }),
-      });
-      const data = await res.json();
-      setKvAvailable(data.kvAvailable !== false);
-      if (data.ok) {
-        setSaveResult("ok");
-      } else {
-        setSaveResult("fail");
-        setReviewStates(p => ({ ...p, [url]: prevStatus })); // 롤백
-      }
-    } catch {
-      setSaveResult("fail");
-      setReviewStates(p => ({ ...p, [url]: prevStatus })); // 롤백
-    }
-    finally {
-      setSavingUrl(null);
-      setTimeout(() => setSaveResult(null), 3000);
-    }
-    startLockTimer();
-  }, [checkLocked, startLockTimer, reviewStates]);
 
   // ── DB 옵션 로드 (최초 1회 + 재시도 가능) ──
   const loadDbOptions = useCallback(() => {
@@ -1031,100 +884,7 @@ export default function AllPage() {
     finally { setDownloading(p => ({ ...p, [key]: false })); setFilePopup(null); }
   };
 
-  // ─── 대표 검토 헤더 (인라인 스타일) ────────────────────────────────────
-  const thBg = dark ? "#1e3a6e" : "#1a3a8f";
-  const reviewTh = (
-    <th style={{
-      position:"sticky", left:0, top:0, zIndex:10,
-      width:COL_CHECK_W, minWidth:COL_CHECK_W,
-      padding:"8px 10px",
-      background:thBg, color:"#fff",
-      borderRight:"2px solid rgba(255,255,255,0.4)",
-      verticalAlign:"middle", textAlign:"center",
-      whiteSpace:"nowrap", fontWeight:700,
-    }}>
-      <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:5 }}>
-          <button
-            style={{
-              background:"none",
-              border:`1.5px solid ${checkLocked ? "rgba(255,255,255,0.6)" : "#fbbf24"}`,
-              borderRadius:7, padding:"4px 7px", fontSize:16, cursor:"pointer",
-              lineHeight:1, color:"#fff",
-              backgroundColor: checkLocked ? "transparent" : "rgba(255,255,255,0.15)",
-            }}
-            onClick={handleLockToggle}
-            title={checkLocked ? "클릭하여 잠금 해제 (10분 후 자동 잠금)" : `잠금 해제 중 — ${fmtCountdown(lockCountdown)} 후 자동 잠금`}
-          >
-            {checkLocked ? "🔒" : "🔓"}
-          </button>
-          {!checkLocked && lockCountdown > 0 && (
-            <span style={{ fontSize:10, color:"#fbbf24", fontWeight:700 }}>{fmtCountdown(lockCountdown)}</span>
-          )}
-        </div>
-        <span style={{ fontSize:10, color:"#fff", fontWeight:700, letterSpacing:"0.3px" }}>대표 검토</span>
-        {saveResult === "ok"   && <span style={{fontSize:10,color:"#4ade80",fontWeight:700}}>✓저장</span>}
-        {saveResult === "fail" && <span style={{fontSize:10,color:"#f87171",fontWeight:700}}>✗저장실패</span>}
-      </div>
-    </th>
-  );
 
-  // ─── 대표 검토 셀 (인라인 스타일, 가로 1행 배치) ─────────────────────
-  const reviewTd = (row, i) => {
-    const status  = reviewStates[row.url] ?? null;
-    const saving  = savingUrl === row.url;
-    const bg      = rowBg(i, dark, hoveredRow === i);
-    return (
-      <td style={{
-        position:"sticky", left:0, zIndex:2,
-        width:COL_CHECK_W, minWidth:COL_CHECK_W,
-        padding:"6px 8px",
-        borderBottom:`1.5px solid ${dark ? "#2a3a55" : "#dde3f5"}`,
-        borderRight:`2px solid ${dark ? "#2a3a55" : "#dde3f5"}`,
-        verticalAlign:"middle", background:bg,
-        transition:"background 0.12s",
-      }}>
-        <div style={{ display:"flex", flexDirection:"row", gap:3, opacity: saving ? 0.6 : 1 }}>
-          {STATUS_OPTIONS.map(opt => {
-            const isActive = status === opt.key;
-            const c   = dark ? opt.darkColor : opt.color;
-            const obg = dark ? opt.darkBg    : opt.bg;
-            return (
-              <button key={opt.key}
-                onClick={() => handleStatusSelect(row.url, isActive ? null : opt.key)}
-                disabled={checkLocked || saving}
-                title={checkLocked ? "🔒 잠금을 해제하고 클릭하세요" : opt.label}
-                style={{
-                  display:"flex", alignItems:"center", justifyContent:"center", gap:3,
-                  background: isActive ? obg : "transparent",
-                  border:`1.5px solid ${isActive ? c : (dark ? "#334155" : "#e5e7eb")}`,
-                  borderRadius:5, padding:"3px 4px",
-                  cursor:(checkLocked||saving) ? "not-allowed" : "pointer",
-                  fontFamily:"inherit", flex:1, minWidth:0,
-                  opacity: checkLocked ? 0.6 : 1,
-                  transition:"all 0.15s",
-                }}
-              >
-                <span style={{
-                  width:7, height:7, borderRadius:"50%",
-                  border:`1.5px solid ${c}`, flexShrink:0,
-                  background: isActive ? c : "transparent",
-                  display:"inline-block", transition:"background 0.15s",
-                }} />
-                <span style={{
-                  fontSize:9, fontWeight:700,
-                  color: isActive ? c : (dark ? "#94a3b8" : "#6b7280"),
-                  whiteSpace:"nowrap", lineHeight:1.3,
-                }}>
-                  {opt.short}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </td>
-    );
-  };
 
   const remainingCount = totalCount !== null ? Math.max(0, totalCount - results.length) : null;
 
@@ -1323,32 +1083,6 @@ export default function AllPage() {
             {tabView==="mobile"?"🖥️":tabView==="pc"?"📱":"⇄"}
           </button>
 
-          {/* 카드/표 전환 버튼 - 가장 오른쪽 */}
-          <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:3 }}>
-          <button
-            title={viewType==="table"?"카드 뷰로 전환":"표 뷰로 전환"}
-            onClick={() => switchViewType(viewType==="table"?"card":"table")}
-            style={{ background:"none", border:"2px solid #d0d9f0", borderRadius:8,
-              width:40, height:40, cursor:"pointer",
-              display:"flex", alignItems:"center", justifyContent:"center",
-              color:dark?"#94a3b8":"#6b7280", transition:"all .2s", flexShrink:0 }}>
-            {viewType==="table" ? (
-              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-              <rect x="1" y="1" width="7" height="7" rx="1.5" fill="currentColor"/>
-              <rect x="10" y="1" width="7" height="7" rx="1.5" fill="currentColor"/>
-              <rect x="1" y="10" width="7" height="7" rx="1.5" fill="currentColor"/>
-              <rect x="10" y="10" width="7" height="7" rx="1.5" fill="currentColor"/>
-            </svg>
-            ) : (
-              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-              <rect x="1" y="2" width="16" height="2.5" rx="1" fill="currentColor"/>
-              <rect x="1" y="7" width="16" height="2.5" rx="1" fill="currentColor"/>
-              <rect x="1" y="12" width="16" height="2.5" rx="1" fill="currentColor"/>
-            </svg>
-            )}
-          </button>
-          <span style={{ fontSize:9, color:dark?"#94a3b8":"#9ca3af", fontWeight:500, whiteSpace:"nowrap", letterSpacing:"0.02em" }}>{viewType==="table"?"카드 뷰":"테이블 뷰"}</span>
-          </div>
 
         </div>{/* ── 우측 버튼 묶음 끝 ── */}
 
@@ -1434,26 +1168,6 @@ export default function AllPage() {
                 기본 설정 (자동 저장)
               </div>
 
-              {/* 기본 뷰 */}
-              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
-                padding:"4px 10px", fontSize:11, color:dark?"#e2e8f0":"#13274F" }}>
-                <span>기본 뷰</span>
-                <div style={{ display:"flex", gap:2, border:dark?"1px solid #334155":"1px solid #cbd5e1",
-                  borderRadius:6, padding:1, background:dark?"#0f172a":"#f8faff" }}>
-                  {[
-                    { v:"table", label:"표" },
-                    { v:"card",  label:"카드" },
-                  ].map(o => (
-                    <button key={o.v} onClick={() => setViewType(o.v)}
-                      style={{ fontSize:10, fontWeight:600, padding:"3px 8px", borderRadius:4,
-                        border:"none", cursor:"pointer", fontFamily:"inherit",
-                        background: viewType===o.v ? (dark?"#334155":"#13274F") : "transparent",
-                        color: viewType===o.v ? "#fff" : (dark?"#94a3b8":"#6b7280") }}>
-                      {o.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
 
               {/* 테마 */}
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
@@ -1778,11 +1492,9 @@ export default function AllPage() {
             <div className={`fade-wrap${tableVisible?" visible":""}`}>
               <div className="count-row">
                 <p className="count">📄 {results.length}건 표시 중{hasMore ? ` (전체 ${totalCount??'…'}건)` : ` / 전체 ${results.length}건`}</p>
-                <p className="lock-guide">🔓 잠금 표시를 해제하고 버튼을 눌러주세요</p>
               </div>
               {/* ── 모바일 카드 뷰 ── */}
               <div className="mobile-cards" style={{
-              display: viewType==="card" ? "none" : tabView==="pc" ? "none" : tabView==="mobile" ? "flex" : undefined,
               opacity: fadeVisible ? 1 : 0, transition: "opacity 0.28s ease" }}>
                 {/* framer-motion 카드(모바일): 위치만 애니메이션, 목록 바뀔 때만 동작, key=고유 pageId로 재정렬 추적 */}
                 {results.map((row, i) => (
@@ -1800,12 +1512,12 @@ export default function AllPage() {
                         <span onClick={e=>{e.stopPropagation();toggleUploadPanel(row.pageId)}}
                           title="파일 업로드"
                           style={{cursor:"pointer",flexShrink:0,display:"inline-flex",alignItems:"center",marginLeft:4,opacity:uploadPanels[row.pageId]?.open?1:0.45}}>
-                          <span style={{fontSize:20}}>📎</span>
+                          <span style={{display:"inline-flex",flexDirection:"column",alignItems:"center",lineHeight:1.05}}><span style={{fontSize:20}}>📎</span><span style={{fontSize:8,marginTop:1,fontWeight:600,color:dark?"#94a3b8":"#6b7280"}}>업로드</span></span>
                         </span>
                         <span onClick={e=>{e.stopPropagation();toggleCommentPanel(i,row.pageId)}}
                           style={{cursor:"pointer",flexShrink:0,position:"relative",display:"inline-flex",
                             alignItems:"center",marginLeft:4,opacity:commentPanels[row.pageId]?.comments?.length>0?1:0.2}}>
-                          <span style={{fontSize:20}}>💬</span>
+                          <span style={{display:"inline-flex",flexDirection:"column",alignItems:"center",lineHeight:1.05}}><span style={{fontSize:20}}>💬</span><span style={{fontSize:8,marginTop:1,fontWeight:600,color:dark?"#94a3b8":"#6b7280"}}>댓글</span></span>
                           {commentPanels[row.pageId]?.comments?.length>0&&(
                             <span style={{position:"absolute",top:-4,right:-8,background:"#ef4444",color:"#fff",
                               fontSize:9,fontWeight:800,minWidth:15,height:15,borderRadius:9999,
@@ -2063,10 +1775,9 @@ export default function AllPage() {
                 ))}
               </div>
 
-              {/* ── PC 테이블 뷰 ── */}
               {/* ── PC 카드 그리드 ── */}
-              {viewType==="card" && (
-                <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14,
+              {(
+                <div className="pc-cards" style={{
                   opacity: fadeVisible ? 1 : 0, transition: "opacity 0.28s ease" }}>
                   {/* framer-motion 카드(PC): 위치만 애니메이션 + 목록(검색/필터/폴링) 바뀔 때만 동작 */}
                   {results.map((row, i) => (
@@ -2086,7 +1797,7 @@ export default function AllPage() {
                         <span onClick={e=>{e.stopPropagation();toggleUploadPanel(row.pageId)}}
                           title="파일 업로드"
                           style={{cursor:"pointer",flexShrink:0,display:"inline-flex",alignItems:"center",marginLeft:6,opacity:uploadPanels[row.pageId]?.open?1:0.45}}>
-                          <span style={{fontSize:26}}>📎</span>
+                          <span style={{display:"inline-flex",flexDirection:"column",alignItems:"center",lineHeight:1.05}}><span style={{fontSize:26}}>📎</span><span style={{fontSize:9,marginTop:1,fontWeight:600,color:dark?"#94a3b8":"#6b7280"}}>업로드</span></span>
                         </span>
                         <span onClick={e=>{e.stopPropagation();toggleCommentPanel(i,row.pageId)}}
                           style={{ cursor:"pointer", flexShrink:0, position:"relative",
@@ -2096,7 +1807,7 @@ export default function AllPage() {
                           title={commentPanels[row.pageId]?.comments?.length>0?"댓글 보기":"댓글 달기"}
                           onMouseEnter={e=>e.currentTarget.style.opacity="0.75"}
                           onMouseLeave={e=>e.currentTarget.style.opacity=commentPanels[row.pageId]?.comments?.length>0?"1":"0.2"}>
-                          <span style={{ fontSize:26, lineHeight:1 }}>💬</span>
+                          <span style={{display:"inline-flex",flexDirection:"column",alignItems:"center",lineHeight:1.05}}><span style={{fontSize:26}}>💬</span><span style={{fontSize:9,marginTop:1,fontWeight:600,color:dark?"#94a3b8":"#6b7280"}}>댓글</span></span>
                           {commentPanels[row.pageId]?.comments?.length>0&&(
                             <span style={{ position:"absolute", top:-6, right:-10,
                               background:"#ef4444", color:"#fff", fontSize:10, fontWeight:800,
@@ -2357,325 +2068,6 @@ export default function AllPage() {
                 </div>
               )}
 
-              <div className="table-outer" ref={tableOuterRef} style={{
-              display: viewType==="card" ? "none" : tabView==="mobile" ? "none" : tabView==="pc" ? "block" : undefined,
-              opacity: fadeVisible ? 1 : 0, transition: "opacity 0.28s ease" }}>
-                <table>
-                  <thead>
-                    <tr>
-                      {reviewTh}
-                      <th className="th-title">문서 제목</th>
-                      <th>유형</th>
-                      <th>상태</th>
-                      <th>서류작업상태</th>
-                      <th>파일</th>
-                      <th>출원번호</th>
-                      <th>출원인(특허고객번호)</th>
-                      <th>대리인 코드</th>
-                      <th>마감일</th>
-                      <th>카테고리</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {results.map((row, i) => (
-                      <React.Fragment key={i}>
-                      <tr
-                        id={`pc-row-${i}`}
-                        ref={el => rowRefs.current[i] = el}
-                        className={`result-row ${i%2===0?"row-even":"row-odd"}`}
-                        onMouseEnter={()=>setHoveredRow(i)}
-                        onMouseLeave={()=>setHoveredRow(null)}
-                      >
-                        {reviewTd(row, i)}
-
-                        <td className="td-title-col td-nowrap">
-                          <div className="cell-inner">
-                            <span className="doc-icon">📄</span>
-                            <span className="doc-title" onClick={e=>handleTitleClick(e,row.url)}>
-                              {renderSingleLine(row.title)}
-                            </span>
-                            {commentPanels[row.pageId]?.open ? (
-                              <span onClick={e => { e.stopPropagation(); toggleCommentPanel(i, row.pageId); }}
-                                title="댓글 접기"
-                                style={{ cursor:"pointer", flexShrink:0, fontSize:14, color:dark?"#818cf8":"#4f46e5",
-                                  fontWeight:800, marginLeft:6, userSelect:"none" }}>▲</span>
-                            ) : (
-                              <span onClick={e => { e.stopPropagation(); toggleCommentPanel(i, row.pageId); }}
-                                style={{ cursor:"pointer", flexShrink:0, position:"relative", display:"inline-flex",
-                                  alignItems:"center", marginLeft:6,
-                                  opacity: commentPanels[row.pageId]?.comments?.length > 0 ? 1 : 0.2, transition:"opacity 0.15s" }}
-                                title={commentPanels[row.pageId]?.comments?.length > 0 ? "댓글 보기" : "댓글 달기"}
-                                onMouseEnter={e => e.currentTarget.style.opacity="0.75"}
-                                onMouseLeave={e => e.currentTarget.style.opacity = commentPanels[row.pageId]?.comments?.length > 0 ? "1" : "0.2"}>
-                                <span style={{ fontSize:26, lineHeight:1 }}>💬</span>
-                                {commentPanels[row.pageId]?.comments?.length > 0 && (
-                                  <span style={{ position:"absolute", top:-6, right:-10, background:"#ef4444", color:"#fff",
-                                    fontSize:10, fontWeight:800, minWidth:17, height:17, borderRadius:9999,
-                                    display:"flex", alignItems:"center", justifyContent:"center", padding:"0 4px",
-                                    boxShadow:"0 1px 4px rgba(0,0,0,0.25)", lineHeight:1, border:"1.5px solid #fff" }}>
-                                    {commentPanels[row.pageId].comments.length}
-                                  </span>
-                                )}
-                              </span>
-                            )}
-                          </div>
-                        </td>
-
-                        <td className="td-nowrap">
-                          {row.typeItems?.length>0 ? (
-                            <div style={{display:"flex",flexWrap:"wrap",gap:3,justifyContent:"center"}}>
-                              {row.typeItems.map((t,k)=>(
-                                <span key={k} className="badge" style={notionBadgeStyle(t.color,dark)}>{t.name}</span>
-                              ))}
-                            </div>
-                          ) : <span className="dash">—</span>}
-                        </td>
-
-                        <td className="td-nowrap">
-                          {row.statusItem
-                            ? <span className="badge" style={notionBadgeStyle(row.statusItem.color,dark)}>{row.statusItem.name}</span>
-                            : <span className="dash">—</span>}
-                        </td>
-
-                        <td className="td-nowrap">
-                          {row.docWorkStatusItem
-                            ? <span className="badge" style={notionBadgeStyle(row.docWorkStatusItem.color,dark)}>{row.docWorkStatusItem.name}</span>
-                            : <span className="dash">—</span>}
-                        </td>
-
-                        <td className="td-files">
-                          {row.fileLinks ? (() => {
-                            const files = row.fileLinks.split("\n").filter(Boolean);
-                            const isExpanded = !!expandedRows[i];
-                            const LIMIT = 1;
-                            const show = isExpanded ? files : files.slice(0,LIMIT);
-                            return (
-                              <div className="file-expand-wrap">
-                                <div className="file-links">
-                                  {show.map((link,j)=>{
-                                    const fileName = decodeURIComponent(link.split("/").pop());
-                                    const pk = `${i}-${j}`;
-                                    const isOpen = filePopup===pk;
-                                    return (
-                                      <div key={j} className="file-link-wrap">
-                                        <span className={`file-link${isOpen?" active":""}`}
-                                          onMouseDown={e=>{
-                                            e.stopPropagation();
-                                            if(isOpen) setFilePopup(null);
-                                            else { setPopupPos({x:e.clientX,y:e.clientY}); setFilePopup(pk); }
-                                          }}>
-                                          📄 {fileName} ▾
-                                        </span>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                                {files.length>LIMIT && (
-                                  <button className={`expand-btn${isExpanded?" expanded":""}`}
-                                    onClick={e=>{e.stopPropagation();toggleRow(i);}}>
-                                    {isExpanded?"↑ 접기":`+${files.length-LIMIT} 더보기`}
-                                  </button>
-                                )}
-                              </div>
-                            );
-                          })() : <span className="dash">—</span>}
-                        </td>
-
-                        <td className={isMultiLine(row.appNum)?"td-top":"td-nowrap"}>
-                          {row.appNum ? (
-                            <div style={{display:"flex",flexDirection:"column",gap:3}}>
-                              {row.appNum.split("\n").map((line,li)=>{
-                                const ck=`${i}-a-${li}`;
-                                return (
-                                  <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
-                                    <span className="first-line">{displayLine(line)||"\u3000"}</span>
-                                    {shouldCopyLine(line) && <button className={`copy-btn${copied[ck]?" copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
-                                    {(() => { const ex = extractCopyExtras(line, fieldFromCk(ck));
-                                      const yk = `${ck}-y`, pk = `${ck}-p`;
-                                      return (<>
-                                        {ex.year && <button className={`copy-btn year${copied[yk]?" copied":""}`} onClick={e=>handleCopy(e,ex.year,yk)}>{copied[yk]?"✓":"연도"}</button>}
-                                        {ex.partial && <button className={`copy-btn partial${copied[pk]?" copied":""}`} onClick={e=>handleCopy(e,ex.partial,pk)}>{copied[pk]?"✓":"부분"}</button>}
-                                      </>);
-                                    })()}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          ) : <span className="dash">—</span>}
-                        </td>
-
-                        <td className={isMultiLine(row.appOwner)?"td-top":"td-nowrap"}>
-                          {row.appOwner ? (
-                            <div style={{display:"flex",flexDirection:"column",gap:3}}>
-                              {row.appOwner.split("\n").map((line,li)=>{
-                                const ck=`${i}-o-${li}`;
-                                return (
-                                  <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
-                                    <span className="first-line">{displayLine(line)||"\u3000"}</span>
-                                    {shouldCopyLine(line) && <button className={`copy-btn${copied[ck]?" copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
-                                    {(() => { const ex = extractCopyExtras(line, fieldFromCk(ck));
-                                      const yk = `${ck}-y`, pk = `${ck}-p`;
-                                      return (<>
-                                        {ex.year && <button className={`copy-btn year${copied[yk]?" copied":""}`} onClick={e=>handleCopy(e,ex.year,yk)}>{copied[yk]?"✓":"연도"}</button>}
-                                        {ex.partial && <button className={`copy-btn partial${copied[pk]?" copied":""}`} onClick={e=>handleCopy(e,ex.partial,pk)}>{copied[pk]?"✓":"부분"}</button>}
-                                      </>);
-                                    })()}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          ) : <span className="dash">—</span>}
-                        </td>
-
-                        <td className={isMultiLine(row.agentCode)?"td-top":"td-nowrap"}>
-                          {row.agentCode ? (
-                            <div style={{display:"flex",flexDirection:"column",gap:3}}>
-                              {row.agentCode.split("\n").map((line,li)=>{
-                                const ck=`${i}-c-${li}`;
-                                return (
-                                  <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
-                                    <span className="first-line">{displayLine(line)||"\u3000"}</span>
-                                    {shouldCopyLine(line) && <button className={`copy-btn${copied[ck]?" copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
-                                    {(() => { const ex = extractCopyExtras(line, fieldFromCk(ck));
-                                      const yk = `${ck}-y`, pk = `${ck}-p`;
-                                      return (<>
-                                        {ex.year && <button className={`copy-btn year${copied[yk]?" copied":""}`} onClick={e=>handleCopy(e,ex.year,yk)}>{copied[yk]?"✓":"연도"}</button>}
-                                        {ex.partial && <button className={`copy-btn partial${copied[pk]?" copied":""}`} onClick={e=>handleCopy(e,ex.partial,pk)}>{copied[pk]?"✓":"부분"}</button>}
-                                      </>);
-                                    })()}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          ) : <span className="dash">—</span>}
-                        </td>
-
-                        <td className="td-nowrap">
-                          <span className="cell-text">{row.deadline||"—"}</span>
-                        </td>
-
-                        <td className="td-nowrap">
-                          {row.categoryItems?.length>0 ? (
-                            <div style={{display:"flex",flexWrap:"wrap",gap:3,justifyContent:"center"}}>
-                              {row.categoryItems.map((c,k)=>(
-                                <span key={k} className="badge" style={notionBadgeStyle(c.color,dark)}>{c.name}</span>
-                              ))}
-                            </div>
-                          ) : <span className="dash">—</span>}
-                        </td>
-
-                      </tr>
-
-                          {(() => {
-                            const panel = commentPanels[row.pageId] || {};
-                            const isOpen = panel.open && !panel.closing;
-                            const isClosing = panel.closing;
-                            return (
-                              <tr>
-                                <td colSpan={11} style={{ padding:0, background:"transparent",
-                                  borderBottom: (panel.open || isClosing) ? (dark?"2px solid #1e3a6e":"2px solid #c7d2fe") : "none",
-                                  transition:"border-bottom 0.1s ease" }}>
-                                  <div style={{ position:"sticky", left:0, width: COL_CHECK_W + 250,
-                                    background:dark?"#0f172a":"#eef2ff", borderRadius:"0 0 10px 10px",
-                                    overflow:"hidden",
-                                    maxHeight: (isOpen || isClosing) ? (isClosing ? "0px" : "900px") : "0px",
-                                    opacity: isOpen ? 1 : 0,
-                                    transition: "max-height 0.42s cubic-bezier(0.4,0,0.2,1), opacity 0.3s ease, padding 0.42s ease",
-                                    padding: isOpen ? "12px 16px" : "0 16px",
-                                    display:"flex", flexDirection:"column",
-                                    boxShadow: isOpen ? "0 4px 12px rgba(19,39,79,0.08)" : "none" }}>
-                                    {panel.loading ? (
-                                      <div style={{ fontSize:12, color:"#94a3b8" }}>불러오는 중...</div>
-                                    ) : panel.comments?.length > 0 ? (
-                                      <div className="comment-scroll" style={{ display:"flex", flexDirection:"column", gap:8,
-                                        flex:1, minHeight:0, overflowY:"auto",
-                                        marginBottom:8,
-                                        scrollbarWidth:"thin",
-                                        scrollbarColor:dark?"#475569 #1e293b":"#94a3b8 #eef2ff",
-                                        opacity: panel.commentsVisible ? 1 : 0,
-                                        transform: panel.commentsVisible ? "translateY(0)" : "translateY(-6px)",
-                                        transition: "opacity 0.3s ease, transform 0.3s ease" }}>
-                                        {panel.comments.map((c, ci) => {
-                                          const body = c.content;
-                                          return (
-                                            <div key={ci} style={{ background:dark?"#1e293b":"#fff", borderRadius:8,
-                                              padding:"8px 12px", border:dark?"1px solid #334155":"1px solid #e0e7ff", textAlign:"left" }}>
-                                              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
-                                                <div style={{ display:"flex", flexDirection:"column", gap:1 }}>
-                                                  <span style={{ fontSize:11, color:dark?"#94a3b8":"#6b7280", fontWeight:600 }}>[{c.nickname}] {c.createdAt}</span>
-                                                  {c.edited && <span style={{ fontSize:10, color:dark?"#6b7280":"#9ca3af" }}>[수정됨] {c.editedAt}</span>}
-                                                </div>
-                                                {(c.nickname === nickname || user?.primaryEmailAddress?.emailAddress === "dlaudwp90@gmail.com") && (
-                                                  <div style={{ display:"flex", gap:4 }}>
-                                                    <button onClick={() => setCommentPanels(prev => ({ ...prev, [row.pageId]: { ...prev[row.pageId], editingId: c.id, editInput: c.content } }))}
-                                                      style={{ fontSize:10, fontWeight:700, background:dark?"#14532d":"#f0fdf4", color:dark?"#86efac":"#166534",
-                                                        border:dark?"1px solid #166534":"1px solid #bbf7d0", borderRadius:4, padding:"2px 7px", cursor:"pointer", fontFamily:"inherit" }}>수정</button>
-                                                    <button onClick={async () => { if (!confirm("삭제하시겠습니까?")) return;
-                                                        await fetch("/api/comments", { method:"POST", headers:{"Content-Type":"application/json"},
-                                                          body: JSON.stringify({ action:"delete", pageId:row.pageId, commentId:c.id }) });
-                                                        const r2 = await fetch("/api/comments", { method:"POST", headers:{"Content-Type":"application/json"},
-                                                          body: JSON.stringify({ action:"get", pageId:row.pageId }) });
-                                                        const d2 = await r2.json();
-                                                        setCommentPanels(prev => ({ ...prev, [row.pageId]: { ...prev[row.pageId], comments: d2.comments || [] } })); }}
-                                                      style={{ fontSize:10, fontWeight:700, background:dark?"#450a0a":"#fff1f2", color:dark?"#f87171":"#dc2626",
-                                                        border:dark?"1px solid #dc2626":"1px solid #fecaca", borderRadius:4, padding:"2px 7px", cursor:"pointer", fontFamily:"inherit" }}>삭제</button>
-                                                  </div>
-                                                )}
-                                              </div>
-                                              <div style={{ fontSize:13, color:dark?"#e2e8f0":"#1f2937", whiteSpace:"pre-wrap", textAlign:"left",
-                                                borderTop:dark?"1px solid #334155":"1px solid #e0e7ff", paddingTop:6, marginTop:2 }}>{body}</div>
-                                              {commentPanels[row.pageId]?.editingId === c.id && (
-                                                <div style={{ marginTop:8, display:"flex", flexDirection:"column", gap:6 }}>
-                                                  <textarea value={commentPanels[row.pageId]?.editInput || ""}
-                                                    onChange={e => setCommentPanels(prev => ({ ...prev, [row.pageId]: { ...prev[row.pageId], editInput: e.target.value } }))}
-                                                    
-                                                    rows={2} style={{ width:"100%", fontSize:13, border:dark?"1.5px solid #334155":"1.5px solid #c7d2fe",
-                                                      borderRadius:8, padding:"6px 10px", outline:"none", fontFamily:"inherit",
-                                                      background:dark?"#0f172a":"#fff", color:dark?"#e2e8f0":"#1f2937", boxSizing:"border-box" }} />
-                                                  <div style={{ display:"flex", gap:6 }}>
-                                                    <button onClick={() => handleEditComment(i, row.pageId, c.id)}
-                                                      style={{ fontSize:11, fontWeight:700, padding:"4px 12px", background:"#13274F", color:"#fff", border:"none", borderRadius:6, cursor:"pointer", fontFamily:"inherit" }}>수정 완료</button>
-                                                    <button onClick={() => setCommentPanels(prev => ({ ...prev, [row.pageId]: { ...prev[row.pageId], editingId: null } }))}
-                                                      style={{ fontSize:11, fontWeight:700, padding:"4px 12px", background:"none", border:dark?"1px solid #334155":"1px solid #e5e7eb", borderRadius:6, cursor:"pointer", color:dark?"#94a3b8":"#6b7280", fontFamily:"inherit" }}>취소</button>
-                                                  </div>
-                                                </div>
-                                              )}
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
-                                    ) : (
-                                      <div style={{ fontSize:12, color:"#94a3b8", marginBottom:8 }}>댓글이 없습니다.</div>
-                                    )}
-                                    <div style={{ display:"flex", flexDirection:"column", gap:6, flexShrink:0 }}>
-                                      <textarea value={panel.input || ""}
-                                        onChange={e => setCommentPanels(prev => ({ ...prev, [row.pageId]: { ...prev[row.pageId], input: e.target.value } }))}
-                                        
-                                        placeholder="댓글 입력"
-                                  enterKeyHint="enter"
-                                  onKeyDown={e => { if(e.key==="Enter") e.stopPropagation(); }} rows={2}
-                                        style={{ width:"100%", fontSize:13, border:dark?"1.5px solid #334155":"1.5px solid #c7d2fe",
-                                          borderRadius:8, padding:"8px 10px", outline:"none", resize:"vertical",
-                                          fontFamily:"inherit", background:dark?"#1e293b":"#fff", color:dark?"#e2e8f0":"#1f2937", boxSizing:"border-box" }} />
-                                      <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                                        <button onClick={() => handlePostComment(i, row.pageId)} disabled={panel.saving}
-                                          style={{ padding:"6px 18px", background:"#13274F", color:"#fff", border:"none", borderRadius:8, fontSize:13, fontWeight:700,
-                                            cursor:panel.saving?"not-allowed":"pointer", fontFamily:"inherit" }}>
-                                          {panel.saving ? "저장 중..." : "등록"}
-                                        </button>
-                                        {panel.saved && <span style={{ fontSize:11, color:"#16a34a", fontWeight:700 }}>✓ 저장됐습니다</span>}
-                                      </div>
-                                    </div>
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })()}
-                      </React.Fragment>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
 
               {/* 더보기 버튼 */}
               {hasMore && (
@@ -2717,6 +2109,7 @@ export default function AllPage() {
         body { font-family:'Noto Sans KR','Malgun Gothic',sans-serif; min-height:100vh; }
         @keyframes spin { to { transform:rotate(360deg); } }
         .mobile-cards { display:none; flex-direction:column; gap:8px; width:100%; }
+        .pc-cards { display:none; grid-template-columns:repeat(4,1fr); gap:14px; }
         .m-card { border-radius:12px; padding:12px 14px; border:1px solid #e5e9f5;
           box-shadow:0 1px 6px rgba(19,39,79,0.07); display:flex; flex-direction:column; gap:6px; }
         .dark .m-card { border-color:#334155; }
@@ -2725,7 +2118,6 @@ export default function AllPage() {
         .m-card-title { color:#1a3a8f; font-weight:700; font-size:14px; cursor:pointer;
           text-decoration:underline; flex:1; line-height:1.3; }
         .dark .m-card-title { color:#93c5fd; }
-        .m-review-row { display:flex; gap:4px; align-items:center; }
         .m-card-badges { display:flex; flex-wrap:wrap; gap:4px; }
         .m-card-info { display:flex; flex-direction:column; gap:2px; }
         .m-info-item { font-size:12px; color:#6b7280; }
@@ -2792,7 +2184,9 @@ export default function AllPage() {
         }
         @media (max-width: 768px) {
           .mobile-cards { display:flex; }
-          .table-outer { display:none; }
+        }
+        @media (min-width: 769px) {
+          .pc-cards { display:grid; }
         }
         @keyframes slideUpFade { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
         @keyframes pollToastIn { from{opacity:0;transform:translateX(-50%) translateY(12px)} to{opacity:1;transform:translateX(-50%) translateY(0)} }
@@ -3019,59 +2413,7 @@ export default function AllPage() {
 
         .count-row { display:flex; align-items:center; justify-content:space-between; width:100%; margin-bottom:12px; gap:10px; flex-wrap:wrap; }
         .count { color:#6b7280; font-size:13px; margin-bottom:0; }
-        .lock-guide { font-size:12px; font-weight:700; color:#d97706; }
-        .dark .lock-guide { color:#fbbf24; }
 
-        /* ── 테이블: 양방향 스크롤 + sticky 고정 ── */
-        .table-outer { background:#fff; border-radius:16px; box-shadow:0 2px 16px rgba(26,58,143,0.08);
-          overflow:auto; height:65vh; min-height:280px; border:1px solid #e5e9f5; }
-        .dark .table-outer { background:#1e293b; border-color:#334155; }
-        table { border-collapse:separate; border-spacing:0; font-size:13px; width:max-content; min-width:100%; }
-
-        th { background:#1a3a8f; color:#fff; padding:11px 16px; text-align:center; font-weight:700;
-          font-size:12px; white-space:nowrap; border-right:1px solid rgba(255,255,255,0.15);
-          position:sticky; top:0; z-index:3; }
-        th:last-child { border-right:none; }
-        .dark th { background:#1e3a6e; }
-
-        /* 문서 제목 th — left:COL_CHECK_W sticky */
-        .th-title { position:sticky; left:${COL_CHECK_W}px; top:0; z-index:5;
-          background:#1a3a8f; border-right:2px solid rgba(255,255,255,0.3) !important; }
-        .dark .th-title { background:#1e3a6e; }
-
-        .result-row { transition:background .12s; }
-        .result-row:hover td { background:#f0f4ff; }
-        .dark .result-row:hover td { background:#1e3a5f; }
-
-        td { padding:10px 16px; border-bottom:1.5px solid #dde3f5; border-right:1px solid #edf0fb;
-          white-space:nowrap; text-align:center; vertical-align:middle; background:inherit; }
-        td:last-child { border-right:none; }
-        .dark td { border-bottom-color:#2a3a55; border-right-color:#222e42; }
-
-        /* 문서 제목 td — left:COL_CHECK_W sticky */
-        .td-title-col { position:sticky; left:${COL_CHECK_W}px; z-index:2;
-          border-right:2px solid #dde3f5 !important; }
-        .dark .td-title-col { border-right-color:#2a3a55 !important; }
-        .row-even .td-title-col { background:#fff; }
-        .row-odd  .td-title-col { background:#f7f8ff; }
-        .dark .row-even .td-title-col { background:#1e293b; }
-        .dark .row-odd  .td-title-col { background:#172035; }
-        .result-row:hover .td-title-col { background:#f0f4ff !important; }
-        .dark .result-row:hover .td-title-col { background:#1e3a5f !important; }
-
-        .row-odd  { background:#f7f8ff; }
-        .row-even { background:#fff; }
-        .dark .row-odd  { background:#172035; }
-        .dark .row-even { background:#1e293b; }
-
-        .td-nowrap { vertical-align:middle; text-align:center; }
-        .td-top { vertical-align:top; padding-top:10px; text-align:left; }
-        .td-files { vertical-align:middle; text-align:left; min-width:200px; }
-        .cell-inner { display:flex; align-items:center; justify-content:center; gap:6px; }
-        .doc-icon { font-size:14px; flex-shrink:0; }
-        .doc-title { color:#1a3a8f; font-weight:600; font-size:13px; cursor:pointer; text-decoration:underline; }
-        .dark .doc-title { color:#93c5fd; }
-        .doc-title:hover { opacity:0.75; }
         .badge { border-radius:5px; padding:2px 7px; font-size:11px; font-weight:700; display:inline-block; }
         .dash { color:#d1d5db; }
 
