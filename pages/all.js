@@ -1,23 +1,3 @@
-// ============================================================================
-// pages/all.js  —  G&A IP 전체 보기(목록) 화면
-// ----------------------------------------------------------------------------
-// [이 파일이 하는 일]
-//   · 노션 DB 전체 목록을 정렬·필터·그룹으로 보여주는 화면입니다.
-//   · 대표검토 토글, 댓글, 알림, 파일 다운로드, 더보기(무한스크롤) 등을 포함합니다.
-//
-// [화면(뷰) 규칙]  ⚠ 중요 — index.js와 동일하게 맞춤
-//   · 모바일(768px 이하)    → 세로로 쌓이는 '카드형 목록'(.mobile-cards) 하나만
-//   · PC·태블릿(769px 이상) → 여러 열 '카드 그리드'(.pc-cards) 하나만
-//   · 실제 <table> 표(.table-outer)는 더 이상 사용하지 않음(항상 숨김).
-//   · 기기마다 단일 뷰. 전환 버튼 없음. 표시는 맨 아래 CSS 미디어쿼리가 결정.
-//     ← 이 CSS 부분 함부로 바꾸지 말 것.
-//
-// [수정 시 주의]
-//   · PC와 모바일 뷰는 서로 독립입니다. 한쪽을 고칠 때 다른 쪽 영향 없는지 확인.
-//   · 정렬/필터/그룹 기능은 뷰 종류와 무관하게 동작합니다(건드리지 않음).
-//   · viewType / tabView 상태값은 더 이상 화면 표시에 영향을 주지 않습니다(추후 정리 예정).
-//   · 코드가 길어 부분 교체보다 '전체 파일 교체'가 안전합니다.
-// ============================================================================
 import React from "react";
 import { useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
 import { useClerk, useUser } from "@clerk/nextjs";
@@ -97,6 +77,33 @@ const shouldCopyLine = (line) => {
 };
 // 예외 마커 공백 제거 후 표시용 텍스트 반환
 const displayLine = (line) => line.startsWith("  ") ? line.trimStart() : line;
+
+// ── 노션 글자색/볼드 표시용 도우미 ──
+//   search.js(API)가 내려준 줄별 색·볼드 정보({c,b})를 실제 CSS 스타일로 변환합니다.
+//   ⚠ 색 이름 → 색상값. 다크모드에서는 더 밝은 색을 사용(가이드 페이지 색상과 동일 계열).
+//   이 부분은 표시 전용이라 데이터/검색 로직에는 영향 없음.
+const NOTION_TEXT_COLORS = {
+  gray:{light:"#6b7280",dark:"#9ca3af"}, brown:{light:"#8b5e34",dark:"#b08968"},
+  orange:{light:"#c2410c",dark:"#fb923c"}, yellow:{light:"#a16207",dark:"#facc15"},
+  green:{light:"#166534",dark:"#4ade80"}, blue:{light:"#1d4ed8",dark:"#60a5fa"},
+  purple:{light:"#7e22ce",dark:"#c084fc"}, pink:{light:"#be185d",dark:"#f472b6"},
+  red:{light:"#b91c1c",dark:"#f87171"},
+};
+// info = { c: 색이름|null, b: 볼드여부 } → CSS style 객체로 변환
+const notionTextStyle = (info, dark) => {
+  if (!info) return {};
+  const s = {};
+  if (info.b) s.fontWeight = 700;                          // 볼드
+  if (info.c) {
+    const name = String(info.c).replace("_background", ""); // 배경색이면 같은 계열 글자색으로 처리
+    const c = NOTION_TEXT_COLORS[name];
+    if (c) s.color = dark ? c.dark : c.light;
+  }
+  return s;
+};
+// row 의 특정 필드(ck 로 판별)·특정 줄(li)의 색/볼드 style 반환
+const lineStyle = (row, ck, li, dark) =>
+  notionTextStyle(row[(fieldFromCk(ck) || "") + "Styles"]?.[li], dark);
 function renderSingleLine(text) {
   if (!text) return "—";
   return text.split("\n")[0];
@@ -329,9 +336,9 @@ export default function AllPage() {
   const scrollToIdx = (idx) => {
     const isMobile = window.innerWidth <= 768;
     let id;
-    // 모바일(<=768px)=카드형 목록(m-card), PC=카드 그리드(pc-card)
     if (isMobile) id = `m-card-${idx}`;
-    else          id = `pc-card-${idx}`;
+    else if (viewType === "card") id = `pc-card-${idx}`;
+    else id = `pc-row-${idx}`;
     const el = document.getElementById(id);
     if (el) {
       el.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -1256,6 +1263,45 @@ export default function AllPage() {
           <span style={{ fontSize:9, color:dark?"#94a3b8":"#9ca3af", fontWeight:500, whiteSpace:"nowrap", letterSpacing:"0.02em" }}>{dark?"라이트모드":"다크모드"}</span>
           </div>
 
+          {/* 태블릿 뷰 토글 */}
+          <button
+            className="view-toggle-btn"
+            title={tabView==="mobile"?"PC 뷰로 전환":tabView==="pc"?"자동 전환":"모바일 뷰로 전환"}
+            onClick={() => setTabView(v => v==="auto"?"mobile":v==="mobile"?"pc":"auto")}
+            style={{ background:"none", border:"2px solid #d0d9f0", borderRadius:"50%",
+              width:40, height:40, fontSize:18, cursor:"pointer",
+              display:"flex", alignItems:"center", justifyContent:"center",
+              transition:"border-color .2s", flexShrink:0 }}>
+            {tabView==="mobile"?"🖥️":tabView==="pc"?"📱":"⇄"}
+          </button>
+
+          {/* 카드/표 전환 버튼 - 가장 오른쪽 */}
+          <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:3 }}>
+          <button
+            title={viewType==="table"?"카드 뷰로 전환":"표 뷰로 전환"}
+            onClick={() => switchViewType(viewType==="table"?"card":"table")}
+            style={{ background:"none", border:"2px solid #d0d9f0", borderRadius:8,
+              width:40, height:40, cursor:"pointer",
+              display:"flex", alignItems:"center", justifyContent:"center",
+              color:dark?"#94a3b8":"#6b7280", transition:"all .2s", flexShrink:0 }}>
+            {viewType==="table" ? (
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <rect x="1" y="1" width="7" height="7" rx="1.5" fill="currentColor"/>
+              <rect x="10" y="1" width="7" height="7" rx="1.5" fill="currentColor"/>
+              <rect x="1" y="10" width="7" height="7" rx="1.5" fill="currentColor"/>
+              <rect x="10" y="10" width="7" height="7" rx="1.5" fill="currentColor"/>
+            </svg>
+            ) : (
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <rect x="1" y="2" width="16" height="2.5" rx="1" fill="currentColor"/>
+              <rect x="1" y="7" width="16" height="2.5" rx="1" fill="currentColor"/>
+              <rect x="1" y="12" width="16" height="2.5" rx="1" fill="currentColor"/>
+            </svg>
+            )}
+          </button>
+          <span style={{ fontSize:9, color:dark?"#94a3b8":"#9ca3af", fontWeight:500, whiteSpace:"nowrap", letterSpacing:"0.02em" }}>{viewType==="table"?"카드 뷰":"테이블 뷰"}</span>
+          </div>
+
         </div>{/* ── 우측 버튼 묶음 끝 ── */}
 
         {notifOpen && (
@@ -1340,6 +1386,27 @@ export default function AllPage() {
                 기본 설정 (자동 저장)
               </div>
 
+              {/* 기본 뷰 */}
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
+                padding:"4px 10px", fontSize:11, color:dark?"#e2e8f0":"#13274F" }}>
+                <span>기본 뷰</span>
+                <div style={{ display:"flex", gap:2, border:dark?"1px solid #334155":"1px solid #cbd5e1",
+                  borderRadius:6, padding:1, background:dark?"#0f172a":"#f8faff" }}>
+                  {[
+                    { v:"table", label:"표" },
+                    { v:"card",  label:"카드" },
+                  ].map(o => (
+                    <button key={o.v} onClick={() => setViewType(o.v)}
+                      style={{ fontSize:10, fontWeight:600, padding:"3px 8px", borderRadius:4,
+                        border:"none", cursor:"pointer", fontFamily:"inherit",
+                        background: viewType===o.v ? (dark?"#334155":"#13274F") : "transparent",
+                        color: viewType===o.v ? "#fff" : (dark?"#94a3b8":"#6b7280") }}>
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* 테마 */}
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
                 padding:"4px 10px", fontSize:11, color:dark?"#e2e8f0":"#13274F" }}>
@@ -1361,6 +1428,27 @@ export default function AllPage() {
                 </div>
               </div>
 
+              {/* 기기 뷰 */}
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
+                padding:"4px 10px 8px", fontSize:11, color:dark?"#e2e8f0":"#13274F" }}>
+                <span>기기 뷰</span>
+                <div style={{ display:"flex", gap:2, border:dark?"1px solid #334155":"1px solid #cbd5e1",
+                  borderRadius:6, padding:1, background:dark?"#0f172a":"#f8faff" }}>
+                  {[
+                    { v:"auto",   label:"자동" },
+                    { v:"mobile", label:"모바일" },
+                    { v:"pc",     label:"PC" },
+                  ].map(o => (
+                    <button key={o.v} onClick={() => setTabView(o.v)}
+                      style={{ fontSize:10, fontWeight:600, padding:"3px 7px", borderRadius:4,
+                        border:"none", cursor:"pointer", fontFamily:"inherit",
+                        background: tabView===o.v ? (dark?"#334155":"#13274F") : "transparent",
+                        color: tabView===o.v ? "#fff" : (dark?"#94a3b8":"#6b7280") }}>
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
             <button onClick={() => { setUserPopup(false); signOut({ redirectUrl: "/login" }); }}
@@ -1644,9 +1732,9 @@ export default function AllPage() {
                 <p className="count">📄 {results.length}건 표시 중{hasMore ? ` (전체 ${totalCount??'…'}건)` : ` / 전체 ${results.length}건`}</p>
                 <p className="lock-guide">🔓 잠금 표시를 해제하고 버튼을 눌러주세요</p>
               </div>
-              {/* ── 모바일(768px 이하) 기본 뷰 = 카드형 목록 ──
-                  세로로 쌓이는 카드(.m-card). 보일지 말지는 아래 CSS(.mobile-cards)가 결정. PC에서는 숨김. */}
+              {/* ── 모바일 카드 뷰 ── */}
               <div className="mobile-cards" style={{
+              display: viewType==="card" ? "none" : tabView==="pc" ? "none" : tabView==="mobile" ? "flex" : undefined,
               opacity: fadeVisible ? 1 : 0, transition: "opacity 0.28s ease" }}>
                 {results.map((row, i) => (
                   <React.Fragment key={i}>
@@ -1657,7 +1745,7 @@ export default function AllPage() {
                       {/* 제목 행 */}
                       <div className="m-card-top">
                         <span className="m-card-icon">📄</span>
-                        <span className="m-card-title" onClick={e=>handleTitleClick(e,row.url)}>{renderSingleLine(row.title)}</span>
+                        <span className="m-card-title" onClick={e=>handleTitleClick(e,row.url)} style={notionTextStyle(row.titleStyle,dark)}>{renderSingleLine(row.title)}</span>
                         <span onClick={e=>{e.stopPropagation();toggleCommentPanel(i,row.pageId)}}
                           style={{cursor:"pointer",flexShrink:0,position:"relative",display:"inline-flex",
                             alignItems:"center",marginLeft:4,opacity:commentPanels[i]?.comments?.length>0?1:0.2}}>
@@ -1719,7 +1807,7 @@ export default function AllPage() {
                                   const ck=`${i}-mn-${li}`;
                                   return (
                                   <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
-                                    <span className="m-info-item">{displayLine(line)}</span>
+                                    <span className="m-info-item" style={lineStyle(row,ck,li,dark)}>{displayLine(line)}</span>
                                     {shouldCopyLine(line) && <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
                                     {(() => { const ex = extractCopyExtras(line, fieldFromCk(ck));
                                       const yk = `${ck}-y`, pk = `${ck}-p`;
@@ -1742,7 +1830,7 @@ export default function AllPage() {
                                   const ck=`${i}-mo-${li}`;
                                   return (
                                   <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
-                                    <span className="m-info-item">{displayLine(line)}</span>
+                                    <span className="m-info-item" style={lineStyle(row,ck,li,dark)}>{displayLine(line)}</span>
                                     {shouldCopyLine(line) && <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
                                     {(() => { const ex = extractCopyExtras(line, fieldFromCk(ck));
                                       const yk = `${ck}-y`, pk = `${ck}-p`;
@@ -1765,7 +1853,7 @@ export default function AllPage() {
                                   const ck=`${i}-mc-${li}`;
                                   return (
                                   <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
-                                    <span className="m-info-item">{displayLine(line)}</span>
+                                    <span className="m-info-item" style={lineStyle(row,ck,li,dark)}>{displayLine(line)}</span>
                                     {shouldCopyLine(line) && <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
                                     {(() => { const ex = extractCopyExtras(line, fieldFromCk(ck));
                                       const yk = `${ck}-y`, pk = `${ck}-p`;
@@ -1946,11 +2034,10 @@ export default function AllPage() {
                 ))}
               </div>
 
-              {/* ── PC·태블릿(769px 이상) 기본 뷰 = 카드 그리드 ──
-                  항상 렌더링하고, 보일지 말지는 아래 CSS(.pc-cards)가 화면 폭으로 결정함.
-                  모바일에서는 .pc-cards 가 display:none 으로 숨겨짐. */}
-              {(
-                <div className="pc-cards" style={{
+              {/* ── PC 테이블 뷰 ── */}
+              {/* ── PC 카드 그리드 ── */}
+              {viewType==="card" && (
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14,
                   opacity: fadeVisible ? 1 : 0, transition: "opacity 0.28s ease" }}>
                   {results.map((row, i) => (
                     <div key={i} id={`pc-card-${i}`}
@@ -1992,7 +2079,8 @@ export default function AllPage() {
                         <span style={{fontSize:14,flexShrink:0}}>📄</span>
                         <span onClick={e=>handleTitleClick(e,row.url)}
                           style={{ fontSize:13, fontWeight:700, color:dark?"#93c5fd":"#1a3a8f",
-                            cursor:"pointer", textDecoration:"underline", lineHeight:1.3 }}>
+                            cursor:"pointer", textDecoration:"underline", lineHeight:1.3,
+                            ...notionTextStyle(row.titleStyle,dark) }}>
                           {renderSingleLine(row.title)}
                         </span>
                       </div>
@@ -2039,7 +2127,7 @@ export default function AllPage() {
                                 const ck=`${i}-pn-${li}`;
                                 return (
                                 <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
-                                  <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280"}}>{displayLine(line)}</span>
+                                  <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280",...lineStyle(row,ck,li,dark)}}>{displayLine(line)}</span>
                                   {shouldCopyLine(line) && <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
                                   {(() => { const ex = extractCopyExtras(line, fieldFromCk(ck));
                                     const yk = `${ck}-y`, pk = `${ck}-p`;
@@ -2062,7 +2150,7 @@ export default function AllPage() {
                                 const ck=`${i}-po-${li}`;
                                 return (
                                 <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
-                                  <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280"}}>{displayLine(line)}</span>
+                                  <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280",...lineStyle(row,ck,li,dark)}}>{displayLine(line)}</span>
                                   {shouldCopyLine(line) && <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
                                   {(() => { const ex = extractCopyExtras(line, fieldFromCk(ck));
                                     const yk = `${ck}-y`, pk = `${ck}-p`;
@@ -2085,7 +2173,7 @@ export default function AllPage() {
                                 const ck=`${i}-pc-${li}`;
                                 return (
                                 <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
-                                  <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280"}}>{displayLine(line)}</span>
+                                  <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280",...lineStyle(row,ck,li,dark)}}>{displayLine(line)}</span>
                                   {shouldCopyLine(line) && <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
                                   {(() => { const ex = extractCopyExtras(line, fieldFromCk(ck));
                                     const yk = `${ck}-y`, pk = `${ck}-p`;
@@ -2257,11 +2345,8 @@ export default function AllPage() {
                 </div>
               )}
 
-              {/* ── [사용 안 함] 표(table) 뷰 ──
-                  모바일=카드형 목록(.mobile-cards), PC=카드 그리드(.pc-cards)로 통일했으므로
-                  이 표 블록은 항상 숨김(display:"none"). ⚠ 추후 정리 단계에서 삭제 예정. */}
               <div className="table-outer" ref={tableOuterRef} style={{
-              display: "none",
+              display: viewType==="card" ? "none" : tabView==="mobile" ? "none" : tabView==="pc" ? "block" : undefined,
               opacity: fadeVisible ? 1 : 0, transition: "opacity 0.28s ease" }}>
                 <table>
                   <thead>
@@ -2687,20 +2772,15 @@ export default function AllPage() {
         .m-file-link { font-size:12px; color:#1a3a8f; background:#eef1fb; border-radius:5px;
           padding:3px 8px; text-decoration:none; display:inline-block; }
         .dark .m-file-link { background:#1e3a6e; color:#93c5fd; }
-        /* ── [중요] 기기별 단일 뷰 규칙 ──
-           모바일(<=768px) = 카드형 목록(.mobile-cards)만,  PC·태블릿(>=769px) = 카드 그리드(.pc-cards)만.
-           실제 표(.table-outer)는 더 이상 사용하지 않음(항상 숨김).
-           이 미디어쿼리가 "어떤 뷰가 보이는가"의 단일 기준입니다. 함부로 바꾸지 말 것. */
-        .table-outer { display:none !important; }
-        /* PC·태블릿(769px 이상): 카드 그리드만 표시 */
-        @media (min-width: 769px) {
-          .pc-cards     { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
-          .mobile-cards { display:none; }
+        @media (min-width: 769px) and (max-width: 1024px) {
+          .view-toggle-btn { display:flex !important; }
         }
-        /* 모바일(768px 이하): 카드형 목록만 표시 */
+        @media (min-width: 1025px), (max-width: 768px) {
+          .view-toggle-btn { display:none !important; }
+        }
         @media (max-width: 768px) {
-          .pc-cards     { display:none; }
           .mobile-cards { display:flex; }
+          .table-outer { display:none; }
         }
         @keyframes slideUpFade { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
         @keyframes pollToastIn { from{opacity:0;transform:translateX(-50%) translateY(12px)} to{opacity:1;transform:translateX(-50%) translateY(0)} }
