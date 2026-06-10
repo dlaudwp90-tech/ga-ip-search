@@ -8,13 +8,12 @@
 // [화면(뷰) 규칙]  ⚠ 중요
 //   · 모바일(768px 이하)    → 세로로 쌓이는 '카드형 목록'(.mobile-cards) 하나만
 //   · PC·태블릿(769px 이상) → 여러 열 '카드 그리드'(.pc-cards) 하나만
-//   · 실제 <table> 표(.table-outer)는 더 이상 사용하지 않음(항상 숨김).
 //   · 기기마다 단일 뷰. 전환 버튼 없음. 표시는 맨 아래 CSS 미디어쿼리가 결정.
 //     ← 이 CSS 부분 함부로 바꾸지 말 것.
 //
 // [수정 시 주의]
 //   · PC와 모바일 뷰는 서로 독립입니다. 한쪽을 고칠 때 다른 쪽 영향 없는지 확인.
-//   · viewType / tabView 상태값은 더 이상 화면 표시에 영향을 주지 않습니다(추후 정리 예정).
+//   · tabView 상태값은 모바일/PC 카드 레이아웃 전환에만 쓰입니다.
 //   · 코드가 길어 부분 교체보다 '전체 파일 교체'가 안전합니다.
 //   · 카드 이동(재정렬) 애니메이션은 framer-motion 라이브러리를 씁니다.
 //     ⚠ package.json 에 "framer-motion" 의존성이 반드시 있어야 하며,
@@ -28,20 +27,6 @@ import { useRouter } from "next/router";
 // framer-motion: 카드 재정렬(위치 이동) 애니메이션 라이브러리. ⚠ package.json 의존성 필요
 import { motion } from "framer-motion";
 
-// ─── 상태 옵션 ──
-const STATUS_OPTIONS = [
-  { key: "confirmed", label: "대표확인", short: "확인다운", color: "#16a34a", bg: "#f0fdf4", darkColor: "#4ade80", darkBg: "#14532d" },
-  { key: "rejected",  label: "대표반려", short: "반려", color: "#dc2626", bg: "#fff1f2", darkColor: "#f87171", darkBg: "#450a0a" },
-  { key: "reviewing", label: "대표검토", short: "검토", color: "#d97706", bg: "#fffbeb", darkColor: "#fbbf24", darkBg: "#451a03" },
-];
-
-const LOCK_SECONDS = 600;
-const COL_CHECK_W  = 160; // 대표검토 열 너비 (px)
-const COL_TITLE_L  = COL_CHECK_W; // 문서제목 sticky left 값
-
-function fmtCountdown(s) {
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-}
 
 // ─── 이름 + 연도 + 부분 복사 추출 ──────────────────────────────────────────
 // appNum(출원번호)   "40-2026-0075516 (26.04.16)"    → name(없음) / year "2026" / partial "0075516"
@@ -318,7 +303,6 @@ export default function Home() {
     return window.matchMedia("(prefers-color-scheme: dark)").matches;
   });
   const [tabView,      setTabView]      = useState("auto"); // "auto"|"mobile"|"pc"
-  const [viewType,     setViewType]     = useState("table"); // "table"|"card"
   const [fadeVisible,  setFadeVisible]  = useState(true);
   const [popup,        setPopup]        = useState(null);
   const [copied,       setCopied]       = useState({});
@@ -330,15 +314,6 @@ export default function Home() {
   const [expandedRows, setExpandedRows] = useState({});
   const [hoveredRow,   setHoveredRow]   = useState(null);
 
-  const [reviewStates, setReviewStates] = useState({});
-  const [savingUrl,    setSavingUrl]    = useState(null);
-  const [kvAvailable,  setKvAvailable]  = useState(true);
-  const [saveResult,   setSaveResult]   = useState(null); // null | "ok" | "fail"
-
-  const [checkLocked,   setCheckLocked]   = useState(true);
-  const [lockCountdown, setLockCountdown] = useState(0);
-  const lockIntervalRef = useRef(null);
-  const lockTimeoutRef  = useRef(null);
 
   // ── 닉네임 ──
   const [nickname,      setNickname]      = useState(null);
@@ -357,7 +332,6 @@ export default function Home() {
 
   const toggleRow = (idx) => setExpandedRows(p => ({ ...p, [idx]: !p[idx] }));
   const inputRef      = useRef(null);
-  const tableOuterRef = useRef(null);
   const filePopupRef  = useRef(null);
   const router        = useRouter();
   const { signOut }   = useClerk();
@@ -373,7 +347,6 @@ export default function Home() {
   const [notifPos,    setNotifPos]    = useState({ x: 0, y: 0 });
   const [nowTs,       setNowTs]       = useState(Date.now());
   const notifBtnRef   = useRef(null);
-  const rowRefs        = useRef({});
   const mobileCardRefs = useRef({});
   const pcCardRefs     = useRef({});
 
@@ -397,71 +370,6 @@ export default function Home() {
     const id = setInterval(() => setNowTs(Date.now()), 60000);
     return () => clearInterval(id);
   }, []);
-
-  const startLockTimer = useCallback(() => {
-    if (lockIntervalRef.current) clearInterval(lockIntervalRef.current);
-    if (lockTimeoutRef.current)  clearTimeout(lockTimeoutRef.current);
-    setLockCountdown(LOCK_SECONDS);
-    lockIntervalRef.current = setInterval(() => {
-      setLockCountdown(p => Math.max(0, p - 1));
-    }, 1000);
-    lockTimeoutRef.current = setTimeout(() => {
-      setCheckLocked(true);
-      clearInterval(lockIntervalRef.current);
-      setLockCountdown(0);
-    }, LOCK_SECONDS * 1000);
-  }, []);
-
-  const stopLockTimer = useCallback(() => {
-    if (lockIntervalRef.current) clearInterval(lockIntervalRef.current);
-    if (lockTimeoutRef.current)  clearTimeout(lockTimeoutRef.current);
-    setLockCountdown(0);
-  }, []);
-
-  useEffect(() => () => stopLockTimer(), [stopLockTimer]);
-
-  const handleLockToggle = () => {
-    if (checkLocked) { setCheckLocked(false); startLockTimer(); }
-    else             { setCheckLocked(true);  stopLockTimer();  }
-  };
-
-  const fetchReviewStates = useCallback(async (urls) => {
-    if (!urls?.length) return;
-    try {
-      const res  = await fetch("/api/review", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "get", urls }),
-      });
-      const data = await res.json();
-      setKvAvailable(data.kvAvailable !== false);
-      if (data.states) {
-        // Redis 값으로 머지: Redis에 값이 있으면 업데이트, null이면 기존 유지
-        setReviewStates(prev => {
-          const next = { ...prev };
-          Object.entries(data.states).forEach(([k, v]) => {
-            if (v !== null && v !== undefined && v !== "") {
-              next[k] = v;
-            }
-            // Redis가 null 반환해도 기존 값 유지 (SET 실패 방어)
-          });
-          return next;
-        });
-      }
-    } catch { setKvAvailable(false); }
-  }, []);
-
-  // ── 검색 결과가 바뀔 때마다 Redis에서 상태 로드 ──
-  useEffect(() => {
-    if (results?.length) fetchReviewStates(results.map(r => r.url));
-  }, [results, fetchReviewStates]);
-
-  // ── 30초 폴링: 다른 기기 변경사항 실시간 반영 ──
-  useEffect(() => {
-    if (!results?.length) return;
-    const urls = results.map(r => r.url);
-    const id = setInterval(() => fetchReviewStates(urls), 30000);
-    return () => clearInterval(id);
-  }, [results, fetchReviewStates]);
 
   // ── resultsRef: 폴링 클로저에서 최신 results 참조 ──
   useEffect(() => {
@@ -533,39 +441,6 @@ export default function Home() {
   // (이전의 수동 FLIP 코드 제거. 각 카드의 <motion.div layout="position"> + 고유 key가
   //  목록 변경 시 옛 위치 → 새 위치로 부드럽게 이동시킨다. 위치 계산/타이머는 라이브러리가 담당.)
 
-  const handleStatusSelect = useCallback(async (url, newStatus) => {
-    if (checkLocked) return;
-
-    // 1. UI 즉시 반영 (낙관적 업데이트)
-    const prevStatus = reviewStates[url] ?? null;
-    setReviewStates(p => ({ ...p, [url]: newStatus }));
-
-    // 2. Redis에 저장 (크로스 디바이스 동기화)
-    setSavingUrl(url);
-    try {
-      const res  = await fetch("/api/review", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "set", url, status: newStatus }),
-      });
-      const data = await res.json();
-      setKvAvailable(data.kvAvailable !== false);
-      if (data.ok) {
-        setSaveResult("ok");
-      } else {
-        setSaveResult("fail");
-        setReviewStates(p => ({ ...p, [url]: prevStatus })); // 롤백
-      }
-    } catch {
-      setSaveResult("fail");
-      setReviewStates(p => ({ ...p, [url]: prevStatus })); // 롤백
-    }
-    finally {
-      setSavingUrl(null);
-      setTimeout(() => setSaveResult(null), 3000); // 3초 후 알림 숨김
-    }
-
-    startLockTimer();
-  }, [checkLocked, startLockTimer, reviewStates]);
 
   // 닉네임 로드
   useEffect(() => {
@@ -580,7 +455,7 @@ export default function Home() {
     });
   }, [user]);
 
-  // ── 개인 설정 (viewType / dark / tabView) 로드·저장 ──
+  // ── 개인 설정 (dark / tabView) 로드·저장 ──
   const [prefsLoaded, setPrefsLoaded] = useState(false);
   useEffect(() => {
     if (!user?.primaryEmailAddress?.emailAddress) return;
@@ -592,7 +467,6 @@ export default function Home() {
       .then(r => r.json())
       .then(d => {
         if (d?.prefs) {
-          if (typeof d.prefs.viewType === "string") setViewType(d.prefs.viewType);
           if (typeof d.prefs.dark === "boolean")    setDark(d.prefs.dark);
           if (typeof d.prefs.tabView === "string")  setTabView(d.prefs.tabView);
         }
@@ -610,10 +484,10 @@ export default function Home() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         email: user.primaryEmailAddress.emailAddress,
-        prefs: { viewType, dark, tabView },
+        prefs: { dark, tabView },
       }),
     }).catch(() => {});
-  }, [viewType, dark, tabView, prefsLoaded, user]);
+  }, [dark, tabView, prefsLoaded, user]);
 
   // 알림 로드
   const loadNotifications = async () => {
@@ -673,11 +547,6 @@ export default function Home() {
     }
   };
 
-  const switchViewType = (next) => {
-    if (next === viewType) return;
-    setFadeVisible(false);
-    setTimeout(() => { setViewType(next); setFadeVisible(true); }, 280);
-  };
 
   useEffect(() => { fetchRecent(); }, []);
 
@@ -737,11 +606,6 @@ export default function Home() {
     const handle = (e) => {
       if (filePopupRef.current?.contains(e.target)) return;
       if (e.target.closest(".file-link-wrap")) return;
-      if (tableOuterRef.current) {
-        const r = tableOuterRef.current.getBoundingClientRect();
-        if (e.clientX > r.right - 20 || e.clientY > r.bottom - 20) return;
-        if (e.target === tableOuterRef.current) return;
-      }
       setFilePopup(null);
     };
     document.addEventListener("mousedown", handle);
@@ -915,130 +779,7 @@ export default function Home() {
     finally { setDownloading(p => ({ ...p, [key]: false })); setFilePopup(null); }
   };
 
-  // ─── 검토 열 헤더 — 인라인 스타일로 sticky 직접 적용 ───────────────────
-  const thBg = dark ? "#1e3a6e" : "#1a3a8f";
-  const reviewTh = (
-    <th style={{
-      position: "sticky",
-      left: 0,
-      top: 0,
-      zIndex: 10,
-      width: COL_CHECK_W,
-      minWidth: COL_CHECK_W,
-      padding: "8px 10px",
-      background: thBg,
-      color: "#fff",
-      borderRight: "2px solid rgba(255,255,255,0.4)",
-      borderBottom: "none",
-      verticalAlign: "middle",
-      textAlign: "center",
-      whiteSpace: "nowrap",
-      fontWeight: 700,
-    }}>
-      <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:5 }}>
-          <button
-            style={{
-              background: "none",
-              border: `1.5px solid ${checkLocked ? "rgba(255,255,255,0.6)" : "#fbbf24"}`,
-              borderRadius: 7,
-              padding: "4px 7px",
-              fontSize: 16,
-              cursor: "pointer",
-              lineHeight: 1,
-              color: "#fff",
-              backgroundColor: checkLocked ? "transparent" : "rgba(255,255,255,0.15)",
-            }}
-            onClick={handleLockToggle}
-            title={checkLocked ? "클릭하여 잠금 해제 (10분 후 자동 잠금)" : `잠금 해제 중 — ${fmtCountdown(lockCountdown)} 후 자동 잠금`}
-          >
-            {checkLocked ? "🔒" : "🔓"}
-          </button>
-          {!checkLocked && lockCountdown > 0 && (
-            <span style={{ fontSize:10, color:"#fbbf24", fontWeight:700 }}>{fmtCountdown(lockCountdown)}</span>
-          )}
-          {!kvAvailable && (
-            <span title="⚠ Upstash Redis 미설정 — 이 기기에서만 표시됩니다 (Vercel 환경변수 확인 필요)" style={{fontSize:11,color:"#ef4444",cursor:"help",fontWeight:700}}>⚠</span>
-          )}
-        </div>
-        <span style={{ fontSize:10, color:"#fff", fontWeight:700, letterSpacing:"0.3px" }}>대표 검토</span>
-        {saveResult === "ok"   && <span style={{fontSize:10,color:"#4ade80",fontWeight:700,marginLeft:4}}>✓저장</span>}
-        {saveResult === "fail" && <span style={{fontSize:10,color:"#f87171",fontWeight:700,marginLeft:4}}>✗저장실패</span>}
-      </div>
-    </th>
-  );
 
-  // ─── 검토 pill 셀 — 버튼 가로 1행 배치 ─────────────────────────────────
-  const reviewTd = (row, i) => {
-    const status  = reviewStates[row.url] ?? null;
-    const saving  = savingUrl === row.url;
-    const bg      = rowBg(i, dark, hoveredRow === i);
-    const borderR = dark ? "#2a3a55" : "#dde3f5";
-
-    return (
-      <td
-        style={{
-          position: "sticky", left: 0, zIndex: 2,
-          width: COL_CHECK_W, minWidth: COL_CHECK_W,
-          padding: "6px 8px",
-          borderBottom: `1.5px solid ${dark ? "#2a3a55" : "#dde3f5"}`,
-          borderRight:  `2px solid ${borderR}`,
-          verticalAlign: "middle",
-          background: bg,
-          transition: "background 0.12s",
-        }}
-      >
-        {/* 가로 1행 배치 */}
-        <div style={{ display:"flex", flexDirection:"row", gap:3, opacity: saving ? 0.6 : 1 }}>
-          {STATUS_OPTIONS.map(opt => {
-            const isActive = status === opt.key;
-            const c   = dark ? opt.darkColor : opt.color;
-            const obg = dark ? opt.darkBg    : opt.bg;
-            return (
-              <button
-                key={opt.key}
-                onClick={() => handleStatusSelect(row.url, isActive ? null : opt.key)}
-                disabled={checkLocked || saving}
-                title={checkLocked ? "🔒 헤더의 자물쇠를 클릭하여 잠금 해제 후 선택하세요" : opt.label}
-                style={{
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 3,
-                  background: isActive ? obg : "transparent",
-                  border: `1.5px solid ${isActive ? c : (dark ? "#334155" : "#e5e7eb")}`,
-                  borderRadius: 5,
-                  padding: "3px 4px",
-                  cursor: (checkLocked || saving) ? "not-allowed" : "pointer",
-                  fontFamily: "inherit",
-                  flex: 1,
-                  minWidth: 0,
-                  opacity: checkLocked ? 0.6 : 1,
-                  transition: "all 0.15s",
-                }}
-              >
-                {/* 라디오 도트 */}
-                <span style={{
-                  width: 7, height: 7, borderRadius: "50%",
-                  border: `1.5px solid ${c}`,
-                  flexShrink: 0,
-                  background: isActive ? c : "transparent",
-                  display: "inline-block",
-                  transition: "background 0.15s",
-                }} />
-                {/* 축약 라벨 (확인/반려/검토) */}
-                <span style={{
-                  fontSize: 9, fontWeight: 700,
-                  color: isActive ? c : (dark ? "#94a3b8" : "#6b7280"),
-                  whiteSpace: "nowrap",
-                  lineHeight: 1.3,
-                }}>
-                  {opt.short}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </td>
-    );
-  };
 
   return (
     <>
@@ -1390,7 +1131,6 @@ export default function Home() {
                         🕐 최근 수정된 문서 20건&nbsp;
                         <span className="recent-hint">(여기에 없는 문서는 검색창을 이용해주세요)</span>
                       </p>
-                      <p className="lock-guide">🔓 잠금 표시를 해제하고 버튼을 눌러주세요</p>
                     </div>
                   ) : (
                     <p className="count">{`검색 결과 ${results.length}건`}</p>
@@ -1427,13 +1167,13 @@ export default function Home() {
                           <span onClick={e=>{e.stopPropagation();toggleUploadPanel(row.pageId)}}
                             title="파일 업로드"
                             style={{cursor:"pointer",flexShrink:0,display:"inline-flex",alignItems:"center",marginLeft:4,opacity:uploadPanels[row.pageId]?.open?1:0.45}}>
-                            <span style={{fontSize:20}}>📎</span>
+                            <span style={{display:"inline-flex",flexDirection:"column",alignItems:"center",lineHeight:1.05}}><span style={{fontSize:20}}>📎</span><span style={{fontSize:8,marginTop:1,fontWeight:600,color:dark?"#94a3b8":"#6b7280"}}>업로드</span></span>
                           </span>
                           <span onClick={e=>{e.stopPropagation();toggleCommentPanel(i,row.pageId)}}
                             style={{cursor:"pointer",flexShrink:0,position:"relative",display:"inline-flex",
                               alignItems:"center",marginLeft:4,
                               opacity:commentPanels[row.pageId]?.comments?.length>0?1:0.2}}>
-                            <span style={{fontSize:20}}>💬</span>
+                            <span style={{display:"inline-flex",flexDirection:"column",alignItems:"center",lineHeight:1.05}}><span style={{fontSize:20}}>💬</span><span style={{fontSize:8,marginTop:1,fontWeight:600,color:dark?"#94a3b8":"#6b7280"}}>댓글</span></span>
                             {commentPanels[row.pageId]?.comments?.length>0&&(
                               <span style={{position:"absolute",top:-4,right:-8,background:"#ef4444",color:"#fff",
                                 fontSize:9,fontWeight:800,minWidth:15,height:15,borderRadius:9999,
@@ -1716,7 +1456,7 @@ export default function Home() {
                         <span onClick={e=>{e.stopPropagation();toggleUploadPanel(row.pageId)}}
                           title="파일 업로드"
                           style={{cursor:"pointer",flexShrink:0,display:"inline-flex",alignItems:"center",marginLeft:6,opacity:uploadPanels[row.pageId]?.open?1:0.45}}>
-                          <span style={{fontSize:26}}>📎</span>
+                          <span style={{display:"inline-flex",flexDirection:"column",alignItems:"center",lineHeight:1.05}}><span style={{fontSize:26}}>📎</span><span style={{fontSize:9,marginTop:1,fontWeight:600,color:dark?"#94a3b8":"#6b7280"}}>업로드</span></span>
                         </span>
                         <span onClick={e=>{e.stopPropagation();toggleCommentPanel(i,row.pageId)}}
                           style={{ cursor:"pointer", flexShrink:0, position:"relative",
@@ -1726,7 +1466,7 @@ export default function Home() {
                           title={commentPanels[row.pageId]?.comments?.length>0?"댓글 보기":"댓글 달기"}
                           onMouseEnter={e=>e.currentTarget.style.opacity="0.75"}
                           onMouseLeave={e=>e.currentTarget.style.opacity=commentPanels[row.pageId]?.comments?.length>0?"1":"0.2"}>
-                          <span style={{ fontSize:26, lineHeight:1 }}>💬</span>
+                          <span style={{display:"inline-flex",flexDirection:"column",alignItems:"center",lineHeight:1.05}}><span style={{fontSize:26}}>💬</span><span style={{fontSize:9,marginTop:1,fontWeight:600,color:dark?"#94a3b8":"#6b7280"}}>댓글</span></span>
                           {commentPanels[row.pageId]?.comments?.length>0&&(
                             <span style={{ position:"absolute", top:-6, right:-10,
                               background:"#ef4444", color:"#fff", fontSize:10, fontWeight:800,
@@ -1990,377 +1730,6 @@ export default function Home() {
                 </div>
               )}
 
-              {/* ── [사용 안 함] 표(table) 뷰 ──
-                  모바일=카드형 목록(.mobile-cards), PC=카드 그리드(.pc-cards)로 통일했으므로
-                  이 표 블록은 항상 숨김(display:"none"). ⚠ 추후 정리 단계에서 삭제 예정. */}
-              <div className="table-outer" ref={tableOuterRef} style={{
-                display: "none",
-                opacity: fadeVisible ? 1 : 0, transition: "opacity 0.28s ease" }}>
-                  <table>
-                    <thead>
-                      <tr>
-                        {reviewTh}
-                        <th className="th-title">문서 제목</th>
-                        <th>유형</th><th>상태</th><th>서류작업상태</th>
-                        <th>파일</th><th>출원번호</th><th>출원인(특허고객번호)</th>
-                        <th>대리인 코드</th><th>마감일</th><th>카테고리</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {results.map((row, i) => (
-                        <React.Fragment key={i}>
-                        <tr
-                          ref={el => rowRefs.current[i] = el}
-                          className={`result-row ${i%2===0?"row-even":"row-odd"}`}
-                          onMouseEnter={()=>setHoveredRow(i)}
-                          onMouseLeave={()=>setHoveredRow(null)}
-                        >
-                          {reviewTd(row, i)}
-
-                          <td className="td-title-col td-nowrap">
-                            <div className="cell-inner">
-                              <span className="doc-icon">📄</span>
-                              <span className="doc-title" onClick={e=>handleTitleClick(e,row.url)}>
-                                {renderSingleLine(row.title)}
-                              </span>
-                              {commentPanels[row.pageId]?.open ? (
-                                <span onClick={e => { e.stopPropagation(); toggleCommentPanel(i, row.pageId); }}
-                                  title="댓글 접기"
-                                  style={{ cursor:"pointer", flexShrink:0, fontSize:14,
-                                    color:dark?"#818cf8":"#4f46e5", fontWeight:800,
-                                    marginLeft:6, userSelect:"none", transition:"all 0.2s",
-                                    display:"inline-flex", alignItems:"center" }}>
-                                  ▲
-                                </span>
-                              ) : (
-                                <span onClick={e => { e.stopPropagation(); toggleCommentPanel(i, row.pageId); }}
-                                  style={{ cursor:"pointer", flexShrink:0, position:"relative",
-                                    display:"inline-flex", alignItems:"center", marginLeft:6,
-                                    opacity: commentPanels[row.pageId]?.comments?.length > 0 ? 1 : 0.2,
-                                    transition:"opacity 0.15s" }}
-                                  title={commentPanels[row.pageId]?.comments?.length > 0 ? "댓글 보기" : "댓글 달기"}
-                                  onMouseEnter={e => e.currentTarget.style.opacity="0.75"}
-                                  onMouseLeave={e => e.currentTarget.style.opacity = commentPanels[row.pageId]?.comments?.length > 0 ? "1" : "0.2"}>
-                                  <span style={{ fontSize:26, lineHeight:1 }}>💬</span>
-                                  {commentPanels[row.pageId]?.comments?.length > 0 && (
-                                    <span style={{
-                                      position:"absolute", top:-6, right:-10,
-                                      background:"#ef4444",
-                                      color:"#fff",
-                                      fontSize:10, fontWeight:800,
-                                      minWidth:17, height:17,
-                                      borderRadius:9999,
-                                      display:"flex", alignItems:"center", justifyContent:"center",
-                                      padding:"0 4px",
-                                      boxShadow:"0 1px 4px rgba(0,0,0,0.25)",
-                                      lineHeight:1,
-                                      border:"1.5px solid #fff"
-                                    }}>
-                                      {commentPanels[row.pageId].comments.length}
-                                    </span>
-                                  )}
-                                </span>
-                              )}
-                            </div>
-                          </td>
-
-                          <td className="td-nowrap">
-                            {row.typeItems?.length>0
-                              ? <div style={{display:"flex",flexWrap:"wrap",gap:3,justifyContent:"center"}}>
-                                  {row.typeItems.map((t,k)=><span key={k} className="badge" style={notionBadgeStyle(t.color,dark)}>{t.name}</span>)}
-                                </div>
-                              : <span className="dash">—</span>}
-                          </td>
-
-                          <td className="td-nowrap">
-                            {row.statusItem
-                              ? <span className="badge" style={notionBadgeStyle(row.statusItem.color,dark)}>{row.statusItem.name}</span>
-                              : <span className="dash">—</span>}
-                          </td>
-
-                          <td className="td-nowrap">
-                            {row.docWorkStatusItem
-                              ? <span className="badge" style={notionBadgeStyle(row.docWorkStatusItem.color,dark)}>{row.docWorkStatusItem.name}</span>
-                              : <span className="dash">—</span>}
-                          </td>
-
-                          <td className="td-files">
-                            {row.fileLinks ? (() => {
-                              const files = row.fileLinks.split("\n").filter(Boolean);
-                              const LIMIT = 1;
-                              const isExpanded = !!expandedRows[i];
-                              const show = isExpanded ? files : files.slice(0,LIMIT);
-                              return (
-                                <div className="file-expand-wrap">
-                                  <div className="file-links">
-                                    {show.map((link,j)=>{
-                                      const fileName = decodeURIComponent(link.split("/").pop());
-                                      const pk = `${i}-${j}`;
-                                      const isOpen = filePopup===pk;
-                                      return (
-                                        <div key={j} className="file-link-wrap">
-                                          <span className={`file-link${isOpen?" active":""}`}
-                                            onMouseDown={e=>{
-                                              e.stopPropagation();
-                                              if(isOpen)setFilePopup(null);
-                                              else{setPopupPos({x:e.clientX,y:e.clientY});setFilePopup(pk);}
-                                            }}>
-                                            📄 {fileName} ▾
-                                          </span>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                  {files.length>LIMIT && (
-                                    <button className={`expand-btn${isExpanded?" expanded":""}`}
-                                      onClick={e=>{e.stopPropagation();toggleRow(i);}}>
-                                      {isExpanded?"↑ 접기":`+${files.length-LIMIT} 파일더보기`}
-                                    </button>
-                                  )}
-                                </div>
-                              );
-                            })() : <span className="dash">—</span>}
-                          </td>
-
-                          <td className={isMultiLine(row.appNum)?"td-top":"td-nowrap"}>
-                            {row.appNum ? (
-                              <div style={{display:"flex",flexDirection:"column",gap:3}}>
-                                {row.appNum.split("\n").map((line,li)=>{
-                                  const ck=`${i}-n-${li}`;
-                                  return (
-                                    <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
-                                      <span className="first-line">{displayLine(line)||"\u3000"}</span>
-                                      {shouldCopyLine(line) && <button className={`copy-btn${copied[ck]?" copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
-                                      {(() => { const ex = extractCopyExtras(line, fieldFromCk(ck));
-                                        const nk = `${ck}-nm`, yk = `${ck}-y`, pk = `${ck}-p`;
-                                        return (<>
-                                          {ex.name && <button className={`copy-btn name${copied[nk]?" copied":""}`} onClick={e=>handleCopy(e,ex.name,nk)}>{copied[nk]?"✓":"이름"}</button>}
-                                          {ex.year && <button className={`copy-btn year${copied[yk]?" copied":""}`} onClick={e=>handleCopy(e,ex.year,yk)}>{copied[yk]?"✓":"연도"}</button>}
-                                          {ex.partial && <button className={`copy-btn partial${copied[pk]?" copied":""}`} onClick={e=>handleCopy(e,ex.partial,pk)}>{copied[pk]?"✓":"부분"}</button>}
-                                        </>);
-                                      })()}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            ) : <span className="dash">—</span>}
-                          </td>
-
-                          <td className={isMultiLine(row.appOwner)?"td-top":"td-nowrap"}>
-                            {row.appOwner ? (
-                              <div style={{display:"flex",flexDirection:"column",gap:3}}>
-                                {row.appOwner.split("\n").map((line,li)=>{
-                                  const ck=`${i}-o-${li}`;
-                                  return (
-                                    <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
-                                      <span className="first-line">{displayLine(line)||"\u3000"}</span>
-                                      {shouldCopyLine(line) && <button className={`copy-btn${copied[ck]?" copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
-                                      {(() => { const ex = extractCopyExtras(line, fieldFromCk(ck));
-                                        const nk = `${ck}-nm`, yk = `${ck}-y`, pk = `${ck}-p`;
-                                        return (<>
-                                          {ex.name && <button className={`copy-btn name${copied[nk]?" copied":""}`} onClick={e=>handleCopy(e,ex.name,nk)}>{copied[nk]?"✓":"이름"}</button>}
-                                          {ex.year && <button className={`copy-btn year${copied[yk]?" copied":""}`} onClick={e=>handleCopy(e,ex.year,yk)}>{copied[yk]?"✓":"연도"}</button>}
-                                          {ex.partial && <button className={`copy-btn partial${copied[pk]?" copied":""}`} onClick={e=>handleCopy(e,ex.partial,pk)}>{copied[pk]?"✓":"부분"}</button>}
-                                        </>);
-                                      })()}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            ) : <span className="dash">—</span>}
-                          </td>
-
-                          <td className={isMultiLine(row.agentCode)?"td-top":"td-nowrap"}>
-                            {row.agentCode ? (
-                              <div style={{display:"flex",flexDirection:"column",gap:3}}>
-                                {row.agentCode.split("\n").map((line,li)=>{
-                                  const ck=`${i}-c-${li}`;
-                                  return (
-                                    <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
-                                      <span className="first-line">{displayLine(line)||"\u3000"}</span>
-                                      {shouldCopyLine(line) && <button className={`copy-btn${copied[ck]?" copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
-                                      {(() => { const ex = extractCopyExtras(line, fieldFromCk(ck));
-                                        const nk = `${ck}-nm`, yk = `${ck}-y`, pk = `${ck}-p`;
-                                        return (<>
-                                          {ex.name && <button className={`copy-btn name${copied[nk]?" copied":""}`} onClick={e=>handleCopy(e,ex.name,nk)}>{copied[nk]?"✓":"이름"}</button>}
-                                          {ex.year && <button className={`copy-btn year${copied[yk]?" copied":""}`} onClick={e=>handleCopy(e,ex.year,yk)}>{copied[yk]?"✓":"연도"}</button>}
-                                          {ex.partial && <button className={`copy-btn partial${copied[pk]?" copied":""}`} onClick={e=>handleCopy(e,ex.partial,pk)}>{copied[pk]?"✓":"부분"}</button>}
-                                        </>);
-                                      })()}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            ) : <span className="dash">—</span>}
-                          </td>
-
-                          <td className="td-nowrap"><span className="cell-text">{row.deadline||"—"}</span></td>
-
-                          <td className="td-nowrap">
-                            {row.categoryItems?.length>0
-                              ? <div style={{display:"flex",flexWrap:"wrap",gap:3,justifyContent:"center"}}>
-                                  {row.categoryItems.map((c,k)=><span key={k} className="badge" style={notionBadgeStyle(c.color,dark)}>{c.name}</span>)}
-                                </div>
-                              : <span className="dash">—</span>}
-                          </td>
-                        </tr>
-
-                          {/* 댓글 패널 */}
-                          {(() => {
-                            const panel = commentPanels[row.pageId] || {};
-                            const isOpen = panel.open && !panel.closing;
-                            const isClosing = panel.closing;
-                            return (
-                              <tr>
-                                <td colSpan={11} style={{ padding:0, background:"transparent",
-                                  borderBottom: (panel.open || isClosing) ? (dark?"2px solid #1e3a6e":"2px solid #c7d2fe") : "none",
-                                  transition:"border-bottom 0.1s ease" }}>
-                                  <div style={{ position:"sticky", left:0, width: COL_CHECK_W + 250,
-                                    background:dark?"#0f172a":"#eef2ff", borderRadius:"0 0 10px 10px",
-                                    overflow:"hidden",
-                                    maxHeight: (isOpen || isClosing) ? (isClosing ? "0px" : "900px") : "0px",
-                                    opacity: isOpen ? 1 : 0,
-                                    transition: "max-height 0.42s cubic-bezier(0.4,0,0.2,1), opacity 0.3s ease, padding 0.42s ease",
-                                    padding: isOpen ? "12px 16px" : "0 16px",
-                                    display:"flex", flexDirection:"column",
-                                    boxShadow: isOpen ? "0 4px 12px rgba(19,39,79,0.08)" : "none" }}>
-                                    {/* 댓글 목록 */}
-                                    {panel.loading ? (
-                                      <div style={{ fontSize:12, color:"#94a3b8" }}>불러오는 중...</div>
-                                    ) : panel.comments?.length > 0 ? (
-                                      <div className="comment-scroll" style={{ display:"flex", flexDirection:"column", gap:8,
-                                        maxHeight:220, overflowY:"auto", flexShrink:1,
-                                        marginBottom:8,
-                                        scrollbarWidth:"thin",
-                                        scrollbarColor:dark?"#475569 #1e293b":"#94a3b8 #eef2ff",
-                                        opacity: panel.commentsVisible ? 1 : 0,
-                                        transform: panel.commentsVisible ? "translateY(0)" : "translateY(-6px)",
-                                        transition: "opacity 0.3s ease, transform 0.3s ease" }}>
-                                        {panel.comments.map((c, ci) => {
-                                          const body = c.content;
-                                          return (
-                                            <div key={ci} style={{ background:dark?"#1e293b":"#fff", borderRadius:8,
-                                              padding:"8px 12px", border:dark?"1px solid #334155":"1px solid #e0e7ff",
-                                              textAlign:"left" }}>
-                                              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:4 }}>
-                                                <div style={{ display:"flex", flexDirection:"column", gap:1 }}>
-                                                  <span style={{ fontSize:11, color:dark?"#94a3b8":"#6b7280", fontWeight:600 }}>[{c.nickname}] {c.createdAt}</span>
-                                                  {c.edited && <span style={{ fontSize:10, color:dark?"#6b7280":"#9ca3af" }}>[수정됨] {c.editedAt}</span>}
-                                                </div>
-                                                {/* 작성자 또는 관리자만 삭제 가능 */}
-                                                {(c.nickname === nickname || user?.primaryEmailAddress?.emailAddress === "dlaudwp90@gmail.com") && (
-                                                  <div style={{ display:"flex", gap:4 }}>
-                                                    <button
-                                                      onClick={() => {
-                                                        setCommentPanels(prev => ({ ...prev, [row.pageId]: { ...prev[row.pageId],
-                                                          editingId: commentPanels[row.pageId]?.editingId === c.id ? null : c.id,
-                                                          editInput: c.content,
-                                                        }}));
-                                                      }}
-                                                      style={{ fontSize:10, fontWeight:700, background:dark?"#14532d":"#f0fdf4",
-                                                        color:dark?"#86efac":"#166534", border:dark?"1px solid #166534":"1px solid #bbf7d0",
-                                                        borderRadius:4, padding:"2px 7px", cursor:"pointer", fontFamily:"inherit" }}>
-                                                      수정
-                                                    </button>
-                                                    <button
-                                                      onClick={async () => {
-                                                        if (!confirm("댓글을 삭제하시겠습니까?")) return;
-                                                        await fetch("/api/comments", {
-                                                          method: "POST",
-                                                          headers: { "Content-Type": "application/json" },
-                                                          body: JSON.stringify({ action: "delete", pageId: row.pageId, commentId: c.id }),
-                                                        });
-                                                        const r2 = await fetch("/api/comments", {
-                                                          method: "POST",
-                                                          headers: { "Content-Type": "application/json" },
-                                                          body: JSON.stringify({ action: "get", pageId: row.pageId }),
-                                                        });
-                                                        const d2 = await r2.json();
-                                                        setCommentPanels(prev => ({ ...prev, [row.pageId]: { ...prev[row.pageId], comments: d2.comments || [] } }));
-                                                      }}
-                                                      style={{ fontSize:10, fontWeight:700, background:dark?"#450a0a":"#fff1f2",
-                                                        color:dark?"#f87171":"#dc2626", border:dark?"1px solid #dc2626":"1px solid #fecaca",
-                                                        borderRadius:4, padding:"2px 7px", cursor:"pointer", fontFamily:"inherit" }}>
-                                                      삭제
-                                                    </button>
-                                                  </div>
-                                                )}
-                                              </div>
-                                              <div style={{ fontSize:13, color:dark?"#e2e8f0":"#1f2937", whiteSpace:"pre-wrap", textAlign:"left",
-                                                borderTop:dark?"1px solid #334155":"1px solid #e0e7ff",
-                                                paddingTop:6, marginTop:2 }}>{body}</div>
-                                              {commentPanels[row.pageId]?.editingId === c.id && (
-                                                <div style={{ marginTop:8, display:"flex", flexDirection:"column", gap:6 }}>
-                                                  <textarea
-                                                    value={commentPanels[row.pageId]?.editInput || ""}
-                                                    onChange={e => setCommentPanels(prev => ({ ...prev, [row.pageId]: { ...prev[row.pageId], editInput: e.target.value } }))}
-                                                    
-                                                    rows={2}
-                                                    style={{ width:"100%", fontSize:13, border:dark?"1.5px solid #334155":"1.5px solid #c7d2fe",
-                                                      borderRadius:8, padding:"6px 10px", outline:"none", fontFamily:"inherit",
-                                                      background:dark?"#0f172a":"#fff", color:dark?"#e2e8f0":"#1f2937", boxSizing:"border-box" }}
-                                                  />
-                                                  <div style={{ display:"flex", gap:6 }}>
-                                                    <button onClick={() => handleEditComment(i, row.pageId, c.id)}
-                                                      style={{ fontSize:11, fontWeight:700, padding:"4px 12px", background:"#13274F",
-                                                        color:"#fff", border:"none", borderRadius:6, cursor:"pointer", fontFamily:"inherit" }}>
-                                                      수정 완료
-                                                    </button>
-                                                    <button onClick={() => setCommentPanels(prev => ({ ...prev, [row.pageId]: { ...prev[row.pageId], editingId: null } }))}
-                                                      style={{ fontSize:11, fontWeight:700, padding:"4px 12px", background:"none",
-                                                        border:dark?"1px solid #334155":"1px solid #e5e7eb", borderRadius:6, cursor:"pointer",
-                                                        color:dark?"#94a3b8":"#6b7280", fontFamily:"inherit" }}>
-                                                      취소
-                                                    </button>
-                                                  </div>
-                                                </div>
-                                              )}
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
-                                    ) : (
-                                      <div style={{ fontSize:12, color:"#94a3b8", marginBottom:8 }}>댓글이 없습니다.</div>
-                                    )}
-                                    {/* 입력창 */}
-                                    <div style={{ display:"flex", flexDirection:"column", gap:6, flexShrink:0 }}>
-                                      <textarea
-                                        value={panel.input || ""}
-                                        onChange={e => setCommentPanels(prev => ({ ...prev, [row.pageId]: { ...prev[row.pageId], input: e.target.value } }))}
-                                        
-                                        placeholder={"댓글 입력"}
-                                        enterKeyHint="enter"
-                                        onKeyDown={e => { if(e.key==="Enter") e.stopPropagation(); }}
-                                        rows={2}
-                                        style={{ width:"100%", fontSize:13, border:dark?"1.5px solid #334155":"1.5px solid #c7d2fe",
-                                          borderRadius:8, padding:"8px 10px", outline:"none", resize:"vertical",
-                                          fontFamily:"inherit", background:dark?"#1e293b":"#fff", color:dark?"#e2e8f0":"#1f2937",
-                                          boxSizing:"border-box" }}
-                                      />
-                                      <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                                        <button
-                                          onClick={() => handlePostComment(i, row.pageId)}
-                                          disabled={panel.saving}
-                                          style={{ padding:"6px 18px", background:"#13274F", color:"#fff",
-                                            border:"none", borderRadius:8, fontSize:13, fontWeight:700,
-                                            cursor:panel.saving?"not-allowed":"pointer", fontFamily:"inherit" }}>
-                                          {panel.saving ? "저장 중..." : "등록"}
-                                        </button>
-                                        {panel.saved && (
-                                          <span style={{ fontSize:11, color:"#16a34a", fontWeight:700 }}>✓ 저장됐습니다</span>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })()}
-                        </React.Fragment>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
 
                 <div className="notion-db-wrap">
                   <button className="notion-db-btn"
@@ -2442,12 +1811,9 @@ export default function Home() {
         .m-file-link { font-size:12px; color:#1a3a8f; background:#eef1fb; border-radius:5px;
           padding:3px 8px; text-decoration:none; display:inline-block; }
         .dark .m-file-link { background:#1e3a6e; color:#93c5fd; }
-        .m-review-row { display:flex; gap:4px; align-items:center; }
         /* ── [중요] 기기별 단일 뷰 규칙 ──
            모바일(<=768px) = 카드형 목록(.mobile-cards)만,  PC·태블릿(>=769px) = 카드 그리드(.pc-cards)만.
-           실제 표(.table-outer)는 더 이상 사용하지 않음(항상 숨김).
            이 미디어쿼리가 "어떤 뷰가 보이는가"의 단일 기준입니다. 함부로 바꾸지 말 것. */
-        .table-outer { display:none !important; }
         /* PC·태블릿(769px 이상): 카드 그리드만 표시 */
         @media (min-width: 769px) {
           .pc-cards     { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
@@ -2539,8 +1905,6 @@ export default function Home() {
         /* 왼쪽 텍스트 세로 스택 */
         .count-left-stack { display:flex; flex-direction:column; gap:3px; }
         /* 잠금 해제 안내 */
-        .lock-guide { font-size:12px; font-weight:700; color:#d97706; letter-spacing:0.2px; }
-        .dark .lock-guide { color:#fbbf24; }
         .recent-hint { font-style:italic; text-decoration:underline; color:#16a34a; font-size:12px; }
         .dark .recent-hint { color:#4ade80; }
         .count-btns { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
@@ -2553,84 +1917,7 @@ export default function Home() {
         .nav-btn-guide:hover { background:#0d1e3d; }
         .dark .nav-btn-guide { background:#1e3a6e; }
 
-        /* ── 테이블 컨테이너 ── */
-        /* overflow:auto(양방향) + height → 내부에서 X/Y 모두 스크롤 → sticky 작동 보장 */
-        .table-outer {
-          background:#fff; border-radius:16px;
-          box-shadow:0 2px 16px rgba(26,58,143,0.08);
-          overflow:auto;
-          height: 65vh;
-          min-height: 280px;
-          border:1px solid #e5e9f5;
-        }
-        .dark .table-outer { background:#1e293b; border-color:#334155; }
-        table { border-collapse:separate; border-spacing:0; font-size:13px; width:max-content; min-width:100%; }
 
-        /* ── thead sticky top — table-outer 기준 ── */
-        th { background:#1a3a8f; color:#fff; padding:11px 16px; text-align:center; font-weight:700;
-          font-size:12px; white-space:nowrap; border-right:1px solid rgba(255,255,255,0.15);
-          position:sticky; top:0; z-index:3; }
-        th:last-child { border-right:none; }
-        .dark th { background:#1e3a6e; }
-
-        /* ── 대표 검토 th — 좌상단 코너 고정 (top:0 + left:0 동시) ── */
-        .th-check {
-          position:sticky !important; left:0 !important; top:0 !important; z-index:10 !important;
-          width:${COL_CHECK_W}px; min-width:${COL_CHECK_W}px;
-          padding:8px 10px;
-          background:#1a3a8f !important;
-          border-right:2px solid rgba(255,255,255,0.4) !important;
-          vertical-align:middle;
-        }
-        .dark .th-check { background:#1e3a6e !important; }
-
-        /* th 내부 flex 래퍼 */
-        .th-check-inner {
-          display:flex; flex-direction:column; align-items:center; gap:4px;
-        }
-        .th-check-top {
-          display:flex; align-items:center; gap:5px;
-        }
-
-        .lock-btn { background:none; border:1.5px solid rgba(255,255,255,0.6); border-radius:7px;
-          padding:4px 7px; font-size:16px; cursor:pointer; line-height:1; transition:all .15s; color:#fff; }
-        .lock-btn.is-locked   { border-color:rgba(255,255,255,0.6); }
-        .lock-btn.is-unlocked { background:rgba(255,255,255,0.15); border-color:#fbbf24; }
-        .lock-btn:hover       { background:rgba(255,255,255,0.2); }
-        .lock-cd       { font-size:10px; color:#fbbf24; font-weight:700; letter-spacing:0.5px; }
-        .check-col-title { font-size:10px; color:#fff; font-weight:700; letter-spacing:0.3px; }
-
-        /* ── 문서 제목 th — left:COL_CHECK_W sticky ── */
-        .th-title {
-          position:sticky; left:${COL_TITLE_L}px; top:0; z-index:5;
-          background:#1a3a8f;
-          border-right:2px solid rgba(255,255,255,0.3) !important;
-        }
-        .dark .th-title { background:#1e3a6e; }
-
-        /* ── 행 ── */
-        .result-row { transition:background .12s; }
-        .result-row:hover td { background:#f0f4ff; }
-        .dark .result-row:hover td { background:#1e3a5f; }
-        td { padding:10px 16px; border-bottom:1.5px solid #dde3f5; border-right:1px solid #edf0fb;
-          white-space:nowrap; text-align:center; vertical-align:middle; background:inherit; }
-        td:last-child { border-right:none; }
-        .dark td { border-bottom-color:#2a3a55; border-right-color:#222e42; }
-
-        /* ── 문서 제목 td — left:COL_TITLE_L sticky ── */
-        .td-title-col { position:sticky; left:${COL_TITLE_L}px; z-index:2;
-          border-right:2px solid #dde3f5 !important; }
-        .dark .td-title-col { border-right-color:#2a3a55 !important; }
-        .row-even .td-title-col { background:#fff; }
-        .row-odd  .td-title-col { background:#f7f8ff; }
-        .dark .row-even .td-title-col { background:#1e293b; }
-        .dark .row-odd  .td-title-col { background:#172035; }
-        .result-row:hover .td-title-col { background:#f0f4ff !important; }
-        .dark .result-row:hover .td-title-col { background:#1e3a5f !important; }
-
-        .td-nowrap { vertical-align:middle; text-align:center; }
-        .td-top    { vertical-align:top; padding-top:10px; text-align:left; }
-        .td-files  { vertical-align:middle; text-align:left; min-width:200px; }
         .cell-inner { display:flex; align-items:center; justify-content:center; gap:6px; }
         .doc-icon   { font-size:14px; flex-shrink:0; }
         .doc-title  { color:#1a3a8f; font-weight:600; font-size:13px; cursor:pointer; text-decoration:underline; }
