@@ -533,22 +533,23 @@ export default function Home() {
 
   useEffect(() => { fetchRecent(); }, []);
 
-  // 결과 로드 시 댓글 수 미리 조회
+  // 결과 로드 시 각 카드의 댓글 수 미리 조회 (댓글 뱃지 표시용)
+  //   ⚠ 카드 식별을 'pageId'(고유 ID)로 한다 — index(몇 번째)로 하면 카드가 재정렬될 때
+  //      뱃지가 옛 자리에 남아 '댓글 없는 카드에 뱃지가 뜨는' 문제가 생긴다.
+  //   ⚠ 댓글이 0개여도 comments:[] 로 항상 갱신 → 다른 곳에서 옮겨온 옛 뱃지를 깨끗이 지운다.
   useEffect(() => {
     if (!results?.length) return;
-    results.forEach((row, i) => {
+    results.forEach((row) => {
       if (!row.pageId) return;
       fetch("/api/comments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "get", pageId: row.pageId }),
       }).then(r => r.json()).then(d => {
-        if (d.comments?.length > 0) {
-          setCommentPanels(prev => ({
-            ...prev,
-            [i]: { ...(prev[i] || {}), comments: d.comments }
-          }));
-        }
+        setCommentPanels(prev => ({
+          ...prev,
+          [row.pageId]: { ...(prev[row.pageId] || {}), comments: d.comments || [] }
+        }));
       }).catch(() => {});
     });
   }, [results]);
@@ -656,15 +657,15 @@ export default function Home() {
 
   // ── 댓글 패널 토글 ──
   const toggleCommentPanel = async (idx, pageId) => {
-    const isOpen = commentPanels[idx]?.open;
+    const isOpen = commentPanels[pageId]?.open;
     if (isOpen) {
       // 접기: closing 애니메이션 후 닫기
-      setCommentPanels(prev => ({ ...prev, [idx]: { ...prev[idx], closing: true } }));
-      setTimeout(() => setCommentPanels(prev => ({ ...prev, [idx]: { ...prev[idx], open: false, closing: false } })), 380);
+      setCommentPanels(prev => ({ ...prev, [pageId]: { ...prev[pageId], closing: true } }));
+      setTimeout(() => setCommentPanels(prev => ({ ...prev, [pageId]: { ...prev[pageId], open: false, closing: false } })), 380);
       return;
     }
     // 열기 1단계: 빈 패널 먼저 펼치기
-    setCommentPanels(prev => ({ ...prev, [idx]: { ...(prev[idx]||{}), open: true, loading: true, commentsVisible: false } }));
+    setCommentPanels(prev => ({ ...prev, [pageId]: { ...(prev[pageId]||{}), open: true, loading: true, commentsVisible: false } }));
     try {
       const r = await fetch("/api/comments", {
         method: "POST",
@@ -674,16 +675,16 @@ export default function Home() {
       const d = await r.json();
       // 열기 2단계: 패널 펼쳐진 후 댓글 fade-in
       setTimeout(() => {
-        setCommentPanels(prev => ({ ...prev, [idx]: { ...(prev[idx]||{}), loading: false, comments: d.comments || [], commentsVisible: true } }));
+        setCommentPanels(prev => ({ ...prev, [pageId]: { ...(prev[pageId]||{}), loading: false, comments: d.comments || [], commentsVisible: true } }));
       }, 320);
     } catch {
-      setCommentPanels(prev => ({ ...prev, [idx]: { ...(prev[idx]||{}), loading: false, comments: [], commentsVisible: true } }));
+      setCommentPanels(prev => ({ ...prev, [pageId]: { ...(prev[pageId]||{}), loading: false, comments: [], commentsVisible: true } }));
     }
   };
 
   // ── 댓글 작성 ──
   const handleEditComment = async (idx, pageId, commentId) => {
-    const panel = commentPanels[idx] || {};
+    const panel = commentPanels[pageId] || {};
     if (!panel.editInput?.trim()) return;
     await fetch("/api/comments", {
       method: "POST",
@@ -696,13 +697,13 @@ export default function Home() {
       body: JSON.stringify({ action: "get", pageId }),
     });
     const d2 = await r2.json();
-    setCommentPanels(prev => ({ ...prev, [idx]: { ...prev[idx], comments: d2.comments || [], editingId: null } }));
+    setCommentPanels(prev => ({ ...prev, [pageId]: { ...prev[pageId], comments: d2.comments || [], editingId: null } }));
   };
 
   const handlePostComment = async (idx, pageId) => {
-    const panel = commentPanels[idx] || {};
+    const panel = commentPanels[pageId] || {};
     if (!panel.input?.trim()) return;
-    setCommentPanels(prev => ({ ...prev, [idx]: { ...prev[idx], saving: true } }));
+    setCommentPanels(prev => ({ ...prev, [pageId]: { ...prev[pageId], saving: true } }));
     const docTitle = results?.[idx]?.title || "";
     const r = await fetch("/api/comments", {
       method: "POST",
@@ -718,10 +719,10 @@ export default function Home() {
         body: JSON.stringify({ action: "get", pageId }),
       });
       const d2 = await r2.json();
-      setCommentPanels(prev => ({ ...prev, [idx]: { ...prev[idx], saving: false, saved: true, input: "", comments: d2.comments || [] } }));
-      setTimeout(() => setCommentPanels(prev => ({ ...prev, [idx]: { ...prev[idx], saved: false } })), 3000);
+      setCommentPanels(prev => ({ ...prev, [pageId]: { ...prev[pageId], saving: false, saved: true, input: "", comments: d2.comments || [] } }));
+      setTimeout(() => setCommentPanels(prev => ({ ...prev, [pageId]: { ...prev[pageId], saved: false } })), 3000);
     } else {
-      setCommentPanels(prev => ({ ...prev, [idx]: { ...prev[idx], saving: false } }));
+      setCommentPanels(prev => ({ ...prev, [pageId]: { ...prev[pageId], saving: false } }));
     }
   };
 
@@ -1278,14 +1279,14 @@ export default function Home() {
                           <span onClick={e=>{e.stopPropagation();toggleCommentPanel(i,row.pageId)}}
                             style={{cursor:"pointer",flexShrink:0,position:"relative",display:"inline-flex",
                               alignItems:"center",marginLeft:4,
-                              opacity:commentPanels[i]?.comments?.length>0?1:0.2}}>
+                              opacity:commentPanels[row.pageId]?.comments?.length>0?1:0.2}}>
                             <span style={{fontSize:20}}>💬</span>
-                            {commentPanels[i]?.comments?.length>0&&(
+                            {commentPanels[row.pageId]?.comments?.length>0&&(
                               <span style={{position:"absolute",top:-4,right:-8,background:"#ef4444",color:"#fff",
                                 fontSize:9,fontWeight:800,minWidth:15,height:15,borderRadius:9999,
                                 display:"flex",alignItems:"center",justifyContent:"center",padding:"0 3px",
                                 border:"1.5px solid #fff"}}>
-                                {commentPanels[i].comments.length}
+                                {commentPanels[row.pageId].comments.length}
                               </span>
                             )}
                           </span>
@@ -1475,7 +1476,7 @@ export default function Home() {
                         })()}
                         {/* 댓글 패널 */}
                         {(() => {
-                          const panel = commentPanels[i] || {};
+                          const panel = commentPanels[row.pageId] || {};
                           const isOpen = panel.open && !panel.closing;
                           const isClosing = panel.closing;
                           return (
@@ -1504,14 +1505,14 @@ export default function Home() {
                                           </div>
                                           {(c.nickname===nickname||user?.primaryEmailAddress?.emailAddress==="dlaudwp90@gmail.com")&&(
                                             <div style={{display:"flex",gap:3}}>
-                                              <button onClick={()=>setCommentPanels(prev=>({...prev,[i]:{...prev[i],editingId:c.id,editInput:c.content}}))}
+                                              <button onClick={()=>setCommentPanels(prev=>({...prev,[row.pageId]:{...prev[row.pageId],editingId:c.id,editInput:c.content}}))}
                                                 style={{fontSize:9,fontWeight:700,background:dark?"#14532d":"#f0fdf4",color:dark?"#86efac":"#166534",
                                                   border:dark?"1px solid #166534":"1px solid #bbf7d0",borderRadius:4,padding:"2px 5px",cursor:"pointer",fontFamily:"inherit"}}>수정</button>
                                               <button onClick={async()=>{if(!confirm("삭제?"))return;
                                                 await fetch("/api/comments",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"delete",pageId:row.pageId,commentId:c.id})});
                                                 const r2=await fetch("/api/comments",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"get",pageId:row.pageId})});
                                                 const d2=await r2.json();
-                                                setCommentPanels(prev=>({...prev,[i]:{...prev[i],comments:d2.comments||[]}}));}}
+                                                setCommentPanels(prev=>({...prev,[row.pageId]:{...prev[row.pageId],comments:d2.comments||[]}}));}}
                                                 style={{fontSize:9,fontWeight:700,background:dark?"#450a0a":"#fff1f2",color:dark?"#f87171":"#dc2626",
                                                   border:dark?"1px solid #dc2626":"1px solid #fecaca",borderRadius:4,padding:"2px 5px",cursor:"pointer",fontFamily:"inherit"}}>삭제</button>
                                             </div>
@@ -1522,14 +1523,14 @@ export default function Home() {
                                         {panel.editingId===c.id&&(
                                           <div style={{marginTop:6,display:"flex",flexDirection:"column",gap:4}}>
                                             <textarea value={panel.editInput||""} rows={2}
-                                              onChange={e=>setCommentPanels(prev=>({...prev,[i]:{...prev[i],editInput:e.target.value}}))}
+                                              onChange={e=>setCommentPanels(prev=>({...prev,[row.pageId]:{...prev[row.pageId],editInput:e.target.value}}))}
                                               style={{width:"100%",fontSize:12,border:dark?"1.5px solid #334155":"1.5px solid #c7d2fe",
                                                 borderRadius:6,padding:"6px 8px",outline:"none",fontFamily:"inherit",
                                                 background:dark?"#0f172a":"#fff",color:dark?"#e2e8f0":"#1f2937",boxSizing:"border-box"}}/>
                                             <div style={{display:"flex",gap:4}}>
                                               <button onClick={()=>handleEditComment(i,row.pageId,c.id)}
                                                 style={{fontSize:11,fontWeight:700,padding:"4px 10px",background:"#13274F",color:"#fff",border:"none",borderRadius:6,cursor:"pointer",fontFamily:"inherit"}}>수정완료</button>
-                                              <button onClick={()=>setCommentPanels(prev=>({...prev,[i]:{...prev[i],editingId:null}}))}
+                                              <button onClick={()=>setCommentPanels(prev=>({...prev,[row.pageId]:{...prev[row.pageId],editingId:null}}))}
                                                 style={{fontSize:11,padding:"4px 10px",background:"none",border:dark?"1px solid #334155":"1px solid #e5e7eb",borderRadius:6,cursor:"pointer",color:dark?"#94a3b8":"#6b7280",fontFamily:"inherit"}}>취소</button>
                                             </div>
                                           </div>
@@ -1544,7 +1545,7 @@ export default function Home() {
                                   <textarea value={panel.input||""} rows={2} placeholder="댓글 입력"
                                   enterKeyHint="enter"
                                   onKeyDown={e => { if(e.key==="Enter") e.stopPropagation(); }}
-                                    onChange={e=>setCommentPanels(prev=>({...prev,[i]:{...prev[i],input:e.target.value}}))}
+                                    onChange={e=>setCommentPanels(prev=>({...prev,[row.pageId]:{...prev[row.pageId],input:e.target.value}}))}
                                     style={{width:"100%",fontSize:13,border:dark?"1.5px solid #334155":"1.5px solid #c7d2fe",
                                       borderRadius:8,padding:"8px 10px",outline:"none",fontFamily:"inherit",
                                       background:dark?"#1e293b":"#fff",color:dark?"#e2e8f0":"#1f2937",boxSizing:"border-box"}}/>
@@ -1589,20 +1590,20 @@ export default function Home() {
                         <span onClick={e=>{e.stopPropagation();toggleCommentPanel(i,row.pageId)}}
                           style={{ cursor:"pointer", flexShrink:0, position:"relative",
                             display:"inline-flex", alignItems:"center", marginLeft:6,
-                            opacity: commentPanels[i]?.comments?.length>0 ? 1 : 0.2,
+                            opacity: commentPanels[row.pageId]?.comments?.length>0 ? 1 : 0.2,
                             transition:"opacity 0.15s" }}
-                          title={commentPanels[i]?.comments?.length>0?"댓글 보기":"댓글 달기"}
+                          title={commentPanels[row.pageId]?.comments?.length>0?"댓글 보기":"댓글 달기"}
                           onMouseEnter={e=>e.currentTarget.style.opacity="0.75"}
-                          onMouseLeave={e=>e.currentTarget.style.opacity=commentPanels[i]?.comments?.length>0?"1":"0.2"}>
+                          onMouseLeave={e=>e.currentTarget.style.opacity=commentPanels[row.pageId]?.comments?.length>0?"1":"0.2"}>
                           <span style={{ fontSize:26, lineHeight:1 }}>💬</span>
-                          {commentPanels[i]?.comments?.length>0&&(
+                          {commentPanels[row.pageId]?.comments?.length>0&&(
                             <span style={{ position:"absolute", top:-6, right:-10,
                               background:"#ef4444", color:"#fff", fontSize:10, fontWeight:800,
                               minWidth:17, height:17, borderRadius:9999,
                               display:"flex", alignItems:"center", justifyContent:"center",
                               padding:"0 4px", boxShadow:"0 1px 4px rgba(0,0,0,0.25)",
                               lineHeight:1, border:"1.5px solid #fff" }}>
-                              {commentPanels[i].comments.length}
+                              {commentPanels[row.pageId].comments.length}
                             </span>
                           )}
                         </span>
@@ -1727,7 +1728,7 @@ export default function Home() {
                       </div>
                       {/* PC 카드 댓글 패널 */}
                       {(() => {
-                        const panel = commentPanels[i] || {};
+                        const panel = commentPanels[row.pageId] || {};
                         const isOpen = panel.open && !panel.closing;
                         const isClosing = panel.closing;
                         return (
@@ -1757,14 +1758,14 @@ export default function Home() {
                                         {(c.nickname===nickname||user?.primaryEmailAddress?.emailAddress==="dlaudwp90@gmail.com")&&(
                                           <div style={{display:"flex",gap:3}}>
                                             <button type="button"
-                                              onClick={e=>{e.stopPropagation();setCommentPanels(prev=>({...prev,[i]:{...prev[i],editingId:prev[i]?.editingId===c.id?null:c.id,editInput:c.content}}));}}
+                                              onClick={e=>{e.stopPropagation();setCommentPanels(prev=>({...prev,[row.pageId]:{...prev[row.pageId],editingId:prev[row.pageId]?.editingId===c.id?null:c.id,editInput:c.content}}));}}
                                               style={{fontSize:9,fontWeight:700,background:dark?"#14532d":"#f0fdf4",color:dark?"#86efac":"#166534",border:"1px solid #bbf7d0",borderRadius:4,padding:"2px 5px",cursor:"pointer",fontFamily:"inherit",position:"relative",zIndex:10}}>수정</button>
                                             <button type="button"
                                               onClick={async e=>{e.stopPropagation();if(!confirm("댓글을 삭제하시겠습니까?"))return;
                                               await fetch("/api/comments",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"delete",pageId:row.pageId,commentId:c.id})});
                                               const r2=await fetch("/api/comments",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"get",pageId:row.pageId})});
                                               const d2=await r2.json();
-                                              setCommentPanels(prev=>({...prev,[i]:{...prev[i],comments:d2.comments||[]}}));}}
+                                              setCommentPanels(prev=>({...prev,[row.pageId]:{...prev[row.pageId],comments:d2.comments||[]}}));}}
                                               style={{fontSize:9,fontWeight:700,background:dark?"#450a0a":"#fff1f2",color:dark?"#f87171":"#dc2626",border:"1px solid #fecaca",borderRadius:4,padding:"2px 5px",cursor:"pointer",fontFamily:"inherit",position:"relative",zIndex:10}}>삭제</button>
                                           </div>
                                         )}
@@ -1774,7 +1775,7 @@ export default function Home() {
                                         <div style={{marginTop:6,display:"flex",flexDirection:"column",gap:4}}>
                                           <textarea value={panel.editInput||""} rows={2}
                                             onKeyDown={e=>{if(e.key==="Enter")e.stopPropagation();}}
-                                            onChange={e=>setCommentPanels(prev=>({...prev,[i]:{...prev[i],editInput:e.target.value}}))}
+                                            onChange={e=>setCommentPanels(prev=>({...prev,[row.pageId]:{...prev[row.pageId],editInput:e.target.value}}))}
                                             style={{width:"100%",fontSize:12,border:dark?"1.5px solid #334155":"1.5px solid #c7d2fe",
                                               borderRadius:6,padding:"6px 8px",outline:"none",fontFamily:"inherit",
                                               background:dark?"#0f172a":"#fff",color:dark?"#e2e8f0":"#1f2937",boxSizing:"border-box"}}/>
@@ -1783,7 +1784,7 @@ export default function Home() {
                                               onClick={e=>{e.stopPropagation();handleEditComment(i,row.pageId,c.id);}}
                                               style={{fontSize:11,fontWeight:700,padding:"4px 10px",background:"#13274F",color:"#fff",border:"none",borderRadius:6,cursor:"pointer",fontFamily:"inherit",position:"relative",zIndex:10}}>수정완료</button>
                                             <button type="button"
-                                              onClick={e=>{e.stopPropagation();setCommentPanels(prev=>({...prev,[i]:{...prev[i],editingId:null}}));}}
+                                              onClick={e=>{e.stopPropagation();setCommentPanels(prev=>({...prev,[row.pageId]:{...prev[row.pageId],editingId:null}}));}}
                                               style={{fontSize:11,padding:"4px 10px",background:"none",border:dark?"1px solid #334155":"1px solid #e5e7eb",borderRadius:6,cursor:"pointer",color:dark?"#94a3b8":"#6b7280",fontFamily:"inherit",position:"relative",zIndex:10}}>취소</button>
                                           </div>
                                         </div>
@@ -1798,7 +1799,7 @@ export default function Home() {
                                 <textarea value={panel.input||""} rows={2} placeholder="댓글 입력"
                                   enterKeyHint="enter"
                                   onKeyDown={e=>{if(e.key==="Enter")e.stopPropagation();}}
-                                  onChange={e=>setCommentPanels(prev=>({...prev,[i]:{...prev[i],input:e.target.value}}))}
+                                  onChange={e=>setCommentPanels(prev=>({...prev,[row.pageId]:{...prev[row.pageId],input:e.target.value}}))}
                                   style={{width:"100%",fontSize:12,border:"1.5px solid #c7d2fe",borderRadius:8,
                                     padding:"6px 8px",outline:"none",fontFamily:"inherit",
                                     background:dark?"#1e293b":"#fff",color:dark?"#e2e8f0":"#1f2937",boxSizing:"border-box"}}/>
@@ -1914,7 +1915,7 @@ export default function Home() {
                               <span className="doc-title" onClick={e=>handleTitleClick(e,row.url)}>
                                 {renderSingleLine(row.title)}
                               </span>
-                              {commentPanels[i]?.open ? (
+                              {commentPanels[row.pageId]?.open ? (
                                 <span onClick={e => { e.stopPropagation(); toggleCommentPanel(i, row.pageId); }}
                                   title="댓글 접기"
                                   style={{ cursor:"pointer", flexShrink:0, fontSize:14,
@@ -1927,13 +1928,13 @@ export default function Home() {
                                 <span onClick={e => { e.stopPropagation(); toggleCommentPanel(i, row.pageId); }}
                                   style={{ cursor:"pointer", flexShrink:0, position:"relative",
                                     display:"inline-flex", alignItems:"center", marginLeft:6,
-                                    opacity: commentPanels[i]?.comments?.length > 0 ? 1 : 0.2,
+                                    opacity: commentPanels[row.pageId]?.comments?.length > 0 ? 1 : 0.2,
                                     transition:"opacity 0.15s" }}
-                                  title={commentPanels[i]?.comments?.length > 0 ? "댓글 보기" : "댓글 달기"}
+                                  title={commentPanels[row.pageId]?.comments?.length > 0 ? "댓글 보기" : "댓글 달기"}
                                   onMouseEnter={e => e.currentTarget.style.opacity="0.75"}
-                                  onMouseLeave={e => e.currentTarget.style.opacity = commentPanels[i]?.comments?.length > 0 ? "1" : "0.2"}>
+                                  onMouseLeave={e => e.currentTarget.style.opacity = commentPanels[row.pageId]?.comments?.length > 0 ? "1" : "0.2"}>
                                   <span style={{ fontSize:26, lineHeight:1 }}>💬</span>
-                                  {commentPanels[i]?.comments?.length > 0 && (
+                                  {commentPanels[row.pageId]?.comments?.length > 0 && (
                                     <span style={{
                                       position:"absolute", top:-6, right:-10,
                                       background:"#ef4444",
@@ -1947,7 +1948,7 @@ export default function Home() {
                                       lineHeight:1,
                                       border:"1.5px solid #fff"
                                     }}>
-                                      {commentPanels[i].comments.length}
+                                      {commentPanels[row.pageId].comments.length}
                                     </span>
                                   )}
                                 </span>
@@ -2098,7 +2099,7 @@ export default function Home() {
 
                           {/* 댓글 패널 */}
                           {(() => {
-                            const panel = commentPanels[i] || {};
+                            const panel = commentPanels[row.pageId] || {};
                             const isOpen = panel.open && !panel.closing;
                             const isClosing = panel.closing;
                             return (
@@ -2143,8 +2144,8 @@ export default function Home() {
                                                   <div style={{ display:"flex", gap:4 }}>
                                                     <button
                                                       onClick={() => {
-                                                        setCommentPanels(prev => ({ ...prev, [i]: { ...prev[i],
-                                                          editingId: commentPanels[i]?.editingId === c.id ? null : c.id,
+                                                        setCommentPanels(prev => ({ ...prev, [row.pageId]: { ...prev[row.pageId],
+                                                          editingId: commentPanels[row.pageId]?.editingId === c.id ? null : c.id,
                                                           editInput: c.content,
                                                         }}));
                                                       }}
@@ -2167,7 +2168,7 @@ export default function Home() {
                                                           body: JSON.stringify({ action: "get", pageId: row.pageId }),
                                                         });
                                                         const d2 = await r2.json();
-                                                        setCommentPanels(prev => ({ ...prev, [i]: { ...prev[i], comments: d2.comments || [] } }));
+                                                        setCommentPanels(prev => ({ ...prev, [row.pageId]: { ...prev[row.pageId], comments: d2.comments || [] } }));
                                                       }}
                                                       style={{ fontSize:10, fontWeight:700, background:dark?"#450a0a":"#fff1f2",
                                                         color:dark?"#f87171":"#dc2626", border:dark?"1px solid #dc2626":"1px solid #fecaca",
@@ -2180,11 +2181,11 @@ export default function Home() {
                                               <div style={{ fontSize:13, color:dark?"#e2e8f0":"#1f2937", whiteSpace:"pre-wrap", textAlign:"left",
                                                 borderTop:dark?"1px solid #334155":"1px solid #e0e7ff",
                                                 paddingTop:6, marginTop:2 }}>{body}</div>
-                                              {commentPanels[i]?.editingId === c.id && (
+                                              {commentPanels[row.pageId]?.editingId === c.id && (
                                                 <div style={{ marginTop:8, display:"flex", flexDirection:"column", gap:6 }}>
                                                   <textarea
-                                                    value={commentPanels[i]?.editInput || ""}
-                                                    onChange={e => setCommentPanels(prev => ({ ...prev, [i]: { ...prev[i], editInput: e.target.value } }))}
+                                                    value={commentPanels[row.pageId]?.editInput || ""}
+                                                    onChange={e => setCommentPanels(prev => ({ ...prev, [row.pageId]: { ...prev[row.pageId], editInput: e.target.value } }))}
                                                     
                                                     rows={2}
                                                     style={{ width:"100%", fontSize:13, border:dark?"1.5px solid #334155":"1.5px solid #c7d2fe",
@@ -2197,7 +2198,7 @@ export default function Home() {
                                                         color:"#fff", border:"none", borderRadius:6, cursor:"pointer", fontFamily:"inherit" }}>
                                                       수정 완료
                                                     </button>
-                                                    <button onClick={() => setCommentPanels(prev => ({ ...prev, [i]: { ...prev[i], editingId: null } }))}
+                                                    <button onClick={() => setCommentPanels(prev => ({ ...prev, [row.pageId]: { ...prev[row.pageId], editingId: null } }))}
                                                       style={{ fontSize:11, fontWeight:700, padding:"4px 12px", background:"none",
                                                         border:dark?"1px solid #334155":"1px solid #e5e7eb", borderRadius:6, cursor:"pointer",
                                                         color:dark?"#94a3b8":"#6b7280", fontFamily:"inherit" }}>
@@ -2217,7 +2218,7 @@ export default function Home() {
                                     <div style={{ display:"flex", flexDirection:"column", gap:6, flexShrink:0 }}>
                                       <textarea
                                         value={panel.input || ""}
-                                        onChange={e => setCommentPanels(prev => ({ ...prev, [i]: { ...prev[i], input: e.target.value } }))}
+                                        onChange={e => setCommentPanels(prev => ({ ...prev, [row.pageId]: { ...prev[row.pageId], input: e.target.value } }))}
                                         
                                         placeholder={"댓글 입력"}
                                         enterKeyHint="enter"
