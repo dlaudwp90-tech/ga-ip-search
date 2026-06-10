@@ -1,3 +1,22 @@
+// ============================================================================
+// pages/index.js  —  G&A IP 사내 검색 메인 화면
+// ----------------------------------------------------------------------------
+// [이 파일이 하는 일]
+//   · 노션 DB를 검색하고, 최근 편집된 건을 실시간으로 보여주는 메인 페이지입니다.
+//   · 대표검토(확인/반려/검토) 토글, 댓글, 알림, 파일 다운로드 등을 포함합니다.
+//
+// [화면(뷰) 규칙]  ⚠ 중요
+//   · 모바일(가로폭 768px 이하)  → '표(그리드)' 뷰 하나만 사용 (카드 뷰 없음)
+//   · PC·태블릿(769px 이상)      → '카드' 뷰 하나만 사용 (표 뷰 없음)
+//   · 기기마다 단일 뷰. 표/카드 전환 버튼은 없앴습니다.
+//   · 어떤 뷰가 보일지는 인라인 style 이 아니라 맨 아래 CSS 미디어쿼리
+//     (.table-outer / .pc-cards) 가 결정합니다. ← 이 부분 함부로 바꾸지 말 것.
+//
+// [수정 시 주의]
+//   · PC와 모바일 뷰는 서로 독립입니다. 한쪽을 고칠 때 다른 쪽 영향 없는지 확인.
+//   · viewType / tabView 상태값은 더 이상 화면 표시에 영향을 주지 않습니다(추후 정리 예정).
+//   · 코드가 길어 부분 교체보다 '전체 파일 교체'가 안전합니다.
+// ============================================================================
 import React from "react";
 import { useClerk, useUser } from "@clerk/nextjs";
 import { useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
@@ -549,9 +568,9 @@ export default function Home() {
       const scrollToTarget = () => {
         const isMobile = window.innerWidth <= 768;
         let target;
-        if (isMobile) target = mobileCardRefs.current[idx];
-        else if (viewType === "card") target = pcCardRefs.current[idx];
-        else target = rowRefs.current[idx];
+        // 모바일(<=768px)=표 뷰 -> 표의 행(rowRefs)에서, PC=카드 뷰 -> 카드(pcCardRefs)에서 대상 찾기
+        if (isMobile) target = rowRefs.current[idx];
+        else          target = pcCardRefs.current[idx];
         if (target) {
           const top = target.getBoundingClientRect().top + window.scrollY - 80;
           window.scrollTo({ top, behavior: "smooth" });
@@ -1076,50 +1095,6 @@ export default function Home() {
             <span style={{ fontSize:9, color:dark?"#94a3b8":"#9ca3af", fontWeight:500, whiteSpace:"nowrap", letterSpacing:"0.02em" }}>{dark?"라이트모드":"다크모드"}</span>
           </div>
 
-          {/* 태블릿 뷰 토글 */}
-          <button className="view-toggle-btn"
-            title={tabView==="mobile"?"PC 뷰로 전환":tabView==="pc"?"자동 전환":"모바일 뷰로 전환"}
-            onClick={() => {
-              setTabView(v => {
-                const next = v==="auto"?"mobile":v==="mobile"?"pc":"auto";
-                const p = document.querySelector(".page");
-                if (p) p.setAttribute("data-view", next);
-                return next;
-              });
-            }}
-            style={{ background:"none", border:"2px solid #d0d9f0", borderRadius:"50%",
-              width:40, height:40, fontSize:18, cursor:"pointer",
-              display:"flex", alignItems:"center", justifyContent:"center",
-              transition:"border-color .2s", flexShrink:0 }}>
-            {tabView==="mobile"?"🖥️":tabView==="pc"?"📱":"⇄"}
-          </button>
-
-          {/* 카드/표 전환 버튼 - 가장 오른쪽, 네모 */}
-          <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:3 }}>
-            <button title={viewType==="table"?"카드 뷰로 전환":"표 뷰로 전환"}
-              onClick={() => switchViewType(viewType==="table"?"card":"table")}
-              style={{ background:"none", border:"2px solid #d0d9f0", borderRadius:8,
-                width:40, height:40, cursor:"pointer",
-                display:"flex", alignItems:"center", justifyContent:"center",
-                color:dark?"#94a3b8":"#6b7280", transition:"all .2s", flexShrink:0 }}>
-              {viewType==="table" ? (
-                <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-                  <rect x="1" y="1" width="7" height="7" rx="1.5" fill="currentColor"/>
-                  <rect x="10" y="1" width="7" height="7" rx="1.5" fill="currentColor"/>
-                  <rect x="1" y="10" width="7" height="7" rx="1.5" fill="currentColor"/>
-                  <rect x="10" y="10" width="7" height="7" rx="1.5" fill="currentColor"/>
-                </svg>
-              ) : (
-                <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-                  <rect x="1" y="2" width="16" height="2.5" rx="1" fill="currentColor"/>
-                  <rect x="1" y="7" width="16" height="2.5" rx="1" fill="currentColor"/>
-                  <rect x="1" y="12" width="16" height="2.5" rx="1" fill="currentColor"/>
-                </svg>
-              )}
-            </button>
-            <span style={{ fontSize:9, color:dark?"#94a3b8":"#9ca3af", fontWeight:500, whiteSpace:"nowrap", letterSpacing:"0.02em" }}>{viewType==="table"?"카드 뷰":"테이블 뷰"}</span>
-          </div>
-
         </div>{/* ── 우측 버튼 묶음 끝 ── */}
 
         {/* 알림 드롭다운 */}
@@ -1222,27 +1197,6 @@ export default function Home() {
                 기본 설정 (자동 저장)
               </div>
 
-              {/* 기본 뷰 */}
-              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
-                padding:"4px 10px", fontSize:11, color:dark?"#e2e8f0":"#13274F" }}>
-                <span>기본 뷰</span>
-                <div style={{ display:"flex", gap:2, border:dark?"1px solid #334155":"1px solid #cbd5e1",
-                  borderRadius:6, padding:1, background:dark?"#0f172a":"#f8faff" }}>
-                  {[
-                    { v:"table", label:"표" },
-                    { v:"card",  label:"카드" },
-                  ].map(o => (
-                    <button key={o.v} onClick={() => setViewType(o.v)}
-                      style={{ fontSize:10, fontWeight:600, padding:"3px 8px", borderRadius:4,
-                        border:"none", cursor:"pointer", fontFamily:"inherit",
-                        background: viewType===o.v ? (dark?"#334155":"#13274F") : "transparent",
-                        color: viewType===o.v ? "#fff" : (dark?"#94a3b8":"#6b7280") }}>
-                      {o.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
               {/* 테마 */}
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
                 padding:"4px 10px", fontSize:11, color:dark?"#e2e8f0":"#13274F" }}>
@@ -1264,27 +1218,6 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* 기기 뷰 */}
-              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
-                padding:"4px 10px 8px", fontSize:11, color:dark?"#e2e8f0":"#13274F" }}>
-                <span>기기 뷰</span>
-                <div style={{ display:"flex", gap:2, border:dark?"1px solid #334155":"1px solid #cbd5e1",
-                  borderRadius:6, padding:1, background:dark?"#0f172a":"#f8faff" }}>
-                  {[
-                    { v:"auto",   label:"자동" },
-                    { v:"mobile", label:"모바일" },
-                    { v:"pc",     label:"PC" },
-                  ].map(o => (
-                    <button key={o.v} onClick={() => setTabView(o.v)}
-                      style={{ fontSize:10, fontWeight:600, padding:"3px 7px", borderRadius:4,
-                        border:"none", cursor:"pointer", fontFamily:"inherit",
-                        background: tabView===o.v ? (dark?"#334155":"#13274F") : "transparent",
-                        color: tabView===o.v ? "#fff" : (dark?"#94a3b8":"#6b7280") }}>
-                      {o.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
             </div>
 
             <button
@@ -1357,9 +1290,11 @@ export default function Home() {
                   )}
                 </div>
 
-                {/* ── 모바일 카드 뷰 ── */}
+                {/* ── [사용 안 함] 옛 모바일 카드 뷰 ──
+                    모바일은 이제 '표 뷰'를 쓰므로 이 카드 블록은 항상 숨김(display:"none").
+                    ⚠ 추후 정리 단계에서 블록 전체 삭제 예정. 지금은 그대로 둘 것. */}
                 <div className="mobile-cards" style={{
-                display: viewType==="card" ? "none" : tabView==="pc" ? "none" : tabView==="mobile" ? "flex" : undefined,
+                display: "none",
                 opacity: fadeVisible ? 1 : 0, transition: "opacity 0.28s ease" }}>
                   {results.map((row, i) => (
                     <React.Fragment key={i}>
@@ -1661,10 +1596,11 @@ export default function Home() {
                   ))}
                 </div>
 
-                {/* ── PC 테이블 뷰 ── */}
-                {/* ── PC 카드 그리드 ── */}
-              {viewType==="card" && (
-                <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14,
+                {/* ── PC·태블릿(769px 이상) 기본 뷰 = 카드 그리드 ──
+                    항상 렌더링하고, 보일지 말지는 아래 CSS(.pc-cards)가 화면 폭으로 결정함.
+                    모바일에서는 .pc-cards 가 display:none 으로 숨겨짐. */}
+              {(
+                <div className="pc-cards" style={{
                   opacity: fadeVisible ? 1 : 0, transition: "opacity 0.28s ease" }}>
                   {results.map((row, i) => (
                     <div key={i}
@@ -1974,8 +1910,9 @@ export default function Home() {
                 </div>
               )}
 
+              {/* ── 모바일(768px 이하) 기본 뷰 = 표(그리드) ──
+                  보일지 말지는 아래 CSS(.table-outer 미디어쿼리)가 결정. PC에서는 숨김. */}
               <div className="table-outer" ref={tableOuterRef} style={{
-                display: viewType==="card" ? "none" : tabView==="mobile" ? "none" : tabView==="pc" ? "block" : undefined,
                 opacity: fadeVisible ? 1 : 0, transition: "opacity 0.28s ease" }}>
                   <table>
                     <thead>
@@ -2424,17 +2361,21 @@ export default function Home() {
           padding:3px 8px; text-decoration:none; display:inline-block; }
         .dark .m-file-link { background:#1e3a6e; color:#93c5fd; }
         .m-review-row { display:flex; gap:4px; align-items:center; }
-        @media (min-width: 769px) and (max-width: 1024px) {
-          .view-toggle-btn { display:flex !important; }
+        /* ── [중요] 기기별 단일 뷰 규칙 ──
+           모바일(<=768px) = 표(.table-outer)만,  PC·태블릿(>=769px) = 카드(.pc-cards)만.
+           이 미디어쿼리가 "어떤 뷰가 보이는가"의 단일 기준입니다. 함부로 바꾸지 말 것. */
+        /* PC·태블릿(769px 이상): 카드만 표시, 표는 숨김 */
+        @media (min-width: 769px) {
+          .pc-cards     { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
+          .table-outer  { display:none; }
+          .mobile-cards { display:none; }
         }
-        @media (min-width: 1025px) {
-          .view-toggle-btn { display:none !important; }
-        }
+        /* 모바일(768px 이하): 표만 표시, 카드는 숨김 */
         @media (max-width: 768px) {
-          .view-toggle-btn { display:none !important; }
-          .mobile-cards { display:flex; }
-          .table-outer { display:none; }
-          .count-btns { flex-wrap:wrap; }
+          .pc-cards     { display:none; }
+          .table-outer  { display:block; }
+          .mobile-cards { display:none; }
+          .count-btns   { flex-wrap:wrap; }
         }
         @keyframes spin { to{transform:rotate(360deg)} }
         .fade-wrap { opacity:0; transform:translateY(8px); transition:opacity .3s ease,transform .3s ease; }
