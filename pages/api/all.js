@@ -1,5 +1,32 @@
 // pages/api/all.js
 // sort + filters 지원 버전
+//  · 글자색/볼드 표시: 각 텍스트 속성의 '줄별 색·볼드 정보'(titleStyle/appNumStyles/
+//    appOwnerStyles/agentCodeStyles)를 함께 내려줍니다. /all 화면(all.js)이 이를 보고 색을 칠합니다.
+
+// ── 노션 rich_text → 줄별 색/볼드 정보 추출 ──
+//   각 줄(\n 기준)마다 { c: 색이름|null, b: 볼드여부 } 를 반환.
+//   plain_text 를 이어붙인 문자열을 \n 으로 나눈 줄 순서와 정확히 일치합니다.
+function richToLineStyles(richArr) {
+  if (!Array.isArray(richArr) || richArr.length === 0) return [];
+  const lines = [{ c: null, b: false }];
+  for (const seg of richArr) {
+    const ann = seg.annotations || {};
+    const color = (ann.color && ann.color !== "default") ? ann.color : null; // 'default'는 색 없음
+    const bold = !!ann.bold;
+    const parts = (seg.plain_text || "").split("\n");
+    parts.forEach((part, pi) => {
+      if (pi > 0) lines.push({ c: null, b: false }); // 줄바꿈마다 새 줄 시작
+      const cur = lines[lines.length - 1];
+      // ⚠ 실제 글자가 있는 조각에만 색/볼드 적용.
+      //   (색칠된 텍스트에 줄바꿈이 딸려오면 '빈 조각'이 생기는데,
+      //    그 빈 조각이 다음 줄로 색을 번지게 하던 버그 방지 — 예: "5년납부"가 빨강이면 다음 "16류"는 검정)
+      if (part === "") return;
+      if (color && !cur.c) cur.c = color; // 그 줄의 첫 색을 대표색으로
+      if (bold) cur.b = true;
+    });
+  }
+  return lines;
+}
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
@@ -37,7 +64,13 @@ export default async function handler(req, res) {
     }).join("\n");
     const pageId = page.id?.replace(/-/g, "") || "";
     const lastEditedTime = page.last_edited_time || "";
-    return { title, typeItems, statusItem, categoryItems, docWorkStatusItem, appNum, appOwner, agentCode, deadline, url, fileLinks, pageId, lastEditedTime };
+    // ↓ 노션 글자색·볼드(줄별) 정보 — /all 화면에서 그대로 표시하기 위해 함께 내려보냄
+    const titleStyleArr   = richToLineStyles(titleArr);
+    const appNumStyles    = richToLineStyles(props["출원번호"]?.rich_text);
+    const appOwnerStyles  = richToLineStyles(props["출원인(특허고객번호)"]?.rich_text);
+    const agentCodeStyles = richToLineStyles(props["대리인 코드"]?.rich_text);
+    return { title, typeItems, statusItem, categoryItems, docWorkStatusItem, appNum, appOwner, agentCode, deadline, url, fileLinks, pageId, lastEditedTime,
+             titleStyle: titleStyleArr[0] || null, appNumStyles, appOwnerStyles, agentCodeStyles };
   };
 
   // ─── 정렬 키 → Notion sorts 매핑 ──────────────────────
