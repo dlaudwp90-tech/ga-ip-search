@@ -1,8 +1,24 @@
+// ============================================================================
+// pages/all.js  —  G&A IP 사내 검색 '전체보기' 화면
+// ----------------------------------------------------------------------------
+// [이 파일이 하는 일]
+//   · 노션 DB 전체 목록을 정렬·필터·그룹으로 보여주는 페이지입니다.
+//
+// [수정 시 주의]
+//   · PC와 모바일 뷰는 서로 독립입니다. 한쪽을 고칠 때 다른 쪽 영향 없는지 확인.
+//   · 카드 이동(재정렬) 애니메이션은 framer-motion 라이브러리를 씁니다.
+//     ⚠ package.json 에 "framer-motion" 의존성이 반드시 있어야 합니다
+//        (index.js 배포 때 이미 추가돼 있으면 추가 작업 불필요).
+//   · 코드가 길어 부분 교체보다 '전체 파일 교체'가 안전합니다.
+// ============================================================================
+
 import React from "react";
-import { useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useClerk, useUser } from "@clerk/nextjs";
 import Head from "next/head";
 import { useRouter } from "next/router";
+// framer-motion: 카드 재정렬(위치 이동) 애니메이션 라이브러리. ⚠ package.json 의존성 필요
+import { motion } from "framer-motion";
 
 // ─── index.js와 동일한 상수 ───────────────────────────────────────────────
 const STATUS_OPTIONS = [
@@ -235,7 +251,6 @@ export default function AllPage() {
 
   // ── FLIP 애니메이션 ──
   const pcCardRefs     = useRef({});         // PC 카드뷰 요소 ref
-  const positionMapRef = useRef(new Map());  // pageId → {top, left}
 
   // 시스템 다크모드 변경 자동 감지
   const switchViewType = (next) => {
@@ -653,124 +668,9 @@ export default function AllPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, filters, sortKey]); // sortKey 추가 — 정렬 변경 시 새 클로저 생성
 
-  // ── FLIP 애니메이션: 매 렌더마다 자동 위치 추적 ──
-  // 상단 이동(dy > 0): 1s 축소 → 1s 대기 → 3s 이동 → 1s 복원 (총 6s)
-  // 하단 이동(dy < 0): 2s 자기자리 유지 → 3s 이동 (크기 변화 없음)
-  useLayoutEffect(() => {
-    if (!results?.length) {
-      positionMapRef.current = new Map();
-      return;
-    }
-
-    const elements = new Map();
-    const collect = (refMap) => {
-      Object.entries(refMap).forEach(([idx, el]) => {
-        if (!el) return;
-        const pageId = results[Number(idx)]?.pageId;
-        if (!pageId || elements.has(pageId)) return;
-        // offsetTop/offsetLeft: 레이아웃 기준 위치 (스크롤·transform 영향 없음)
-        // viewport 기반 getBoundingClientRect는 스크롤 변동 시 모든 카드가
-        // 같은 방향으로 이동한 것처럼 보여 dy 계산이 잘못됨
-        if (el.offsetWidth === 0 && el.offsetHeight === 0) return; // unmount/hidden
-        const top  = el.offsetTop;
-        const left = el.offsetLeft;
-        elements.set(pageId, { el, top, left });
-      });
-    };
-    collect(rowRefs.current);
-    collect(pcCardRefs.current);
-
-    const oldPositions = positionMapRef.current;
-
-    // 새 위치 맵을 즉시 저장 (다음 렌더에서 비교 기준)
-    const nextMap = new Map();
-    elements.forEach(({ top, left }, pageId) => {
-      nextMap.set(pageId, { top, left });
-    });
-    positionMapRef.current = nextMap;
-
-    elements.forEach(({ el, top, left }, pageId) => {
-      const oldPos = oldPositions.get(pageId);
-      if (!oldPos) return;
-
-      const dy = oldPos.top - top;
-      const dx = oldPos.left - left;
-      if (Math.abs(dy) < 2 && Math.abs(dx) < 2) return;
-
-      // 진행 중인 timeout 정리 (이전 애니메이션 중단)
-      if (el._flipT2) { clearTimeout(el._flipT2); el._flipT2 = null; }
-      if (el._flipT3) { clearTimeout(el._flipT3); el._flipT3 = null; }
-
-      const isMovingUp = dy > 0;
-
-      // ═══ Step 1: INVERT — 즉시 이전 위치로 이동 (transition 없이) ═══
-      el.style.transition = "none";
-      el.style.transform  = `translate(${dx}px, ${dy}px)`;
-      // 강제 reflow — 브라우저가 invert를 즉시 paint하도록
-      // eslint-disable-next-line no-unused-expressions
-      el.offsetHeight;
-
-      if (isMovingUp) {
-        // ═══════════════════════════════════════
-        //   상단 이동 카드 (최신화된 카드)
-        // ═══════════════════════════════════════
-        // 0~1s : 자기 자리에서 scale 1 → 0.92 축소
-        // 1~2s : 축소된 채 대기
-        // 2~5s : 새 자리로 S커브 이동 (scale 0.92 유지)
-        // 5~6s : scale 0.92 → 1 복원
-
-        // 이중 rAF: invert가 확실히 paint된 다음 프레임에 축소 transition 시작
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            // Phase 1a: 1초 축소 (translate은 그대로 = 자기 자리에서 작아짐)
-            el.style.transition = "transform 1s cubic-bezier(0.33, 1, 0.68, 1)";
-            el.style.transform  = `translate(${dx}px, ${dy}px) scale(0.92)`;
-          });
-        });
-
-        // Phase 2: 2초 후 → 3초 S커브 이동 (scale 0.92 유지)
-        el._flipT2 = setTimeout(() => {
-          el.style.transition = "transform 3s cubic-bezier(0.37, 0, 0.63, 1)";
-          el.style.transform  = "translate(0px, 0px) scale(0.92)";
-        }, 2000);
-
-        // Phase 3: 5초 후 → 1초 크기 복원
-        el._flipT3 = setTimeout(() => {
-          el.style.transition = "transform 1s cubic-bezier(0.33, 1, 0.68, 1)";
-          el.style.transform  = "translate(0px, 0px) scale(1)";
-
-          const onEnd = (e) => {
-            if (e.propertyName !== "transform") return;
-            el.style.transition = "";
-            el.style.transform  = "";
-            el.removeEventListener("transitionend", onEnd);
-          };
-          el.addEventListener("transitionend", onEnd);
-        }, 5000);
-
-      } else {
-        // ═══════════════════════════════════════
-        //   하단 이동 카드 (최신화되지 않은 카드)
-        // ═══════════════════════════════════════
-        // 0~2s : 자기(이전) 자리에 머무름 — invert 적용 후 transition 안 걸려서 그대로
-        // 2~5s : 새 자리로 S커브 이동 (scale 변화 없음 — 절대 축소 안 됨)
-
-        el._flipT2 = setTimeout(() => {
-          el.style.transition = "transform 3s cubic-bezier(0.37, 0, 0.63, 1)";
-          // scale 명시 안 함 → 기본 scale(1) 유지
-          el.style.transform  = "translate(0px, 0px)";
-
-          const onEnd = (e) => {
-            if (e.propertyName !== "transform") return;
-            el.style.transition = "";
-            el.style.transform  = "";
-            el.removeEventListener("transitionend", onEnd);
-          };
-          el.addEventListener("transitionend", onEnd);
-        }, 2000);
-      }
-    });
-  }, [results]);
+  // ── 카드 재정렬 애니메이션: framer-motion이 자동 처리 ──
+  // (이전 수동 FLIP 제거. 각 카드의 <motion.div layout="position"> + 고유 key가
+  //  목록 변경 시 옛 위치 → 새 위치로 부드럽게 이동시킨다.)
 
   // ── 버튼 클릭 처리 ──
   const handleStatusSelect = useCallback(async (url, newStatus) => {
@@ -1736,9 +1636,12 @@ export default function AllPage() {
               <div className="mobile-cards" style={{
               display: viewType==="card" ? "none" : tabView==="pc" ? "none" : tabView==="mobile" ? "flex" : undefined,
               opacity: fadeVisible ? 1 : 0, transition: "opacity 0.28s ease" }}>
+                {/* framer-motion 카드(모바일): 위치만 애니메이션, 목록 바뀔 때만 동작, key=고유 pageId로 재정렬 추적 */}
                 {results.map((row, i) => (
-                  <React.Fragment key={i}>
-                    <div className="m-card"
+                    <motion.div className="m-card"
+                      layout="position"
+                      layoutDependency={results}
+                      key={row.pageId || i}
                       id={`m-card-${i}`}
                       ref={el => mobileCardRefs.current[i] = el}
                       style={{ background: dark ? (i%2===0?"#1e293b":"#172035") : (i%2===0?"#fff":"#f7f8ff") }}>
@@ -2029,8 +1932,7 @@ export default function AllPage() {
                           </div>
                         );
                       })()}
-                    </div>
-                  </React.Fragment>
+                    </motion.div>
                 ))}
               </div>
 
@@ -2039,8 +1941,9 @@ export default function AllPage() {
               {viewType==="card" && (
                 <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14,
                   opacity: fadeVisible ? 1 : 0, transition: "opacity 0.28s ease" }}>
+                  {/* framer-motion 카드(PC): 위치만 애니메이션 + 목록(검색/필터/폴링) 바뀔 때만 동작 */}
                   {results.map((row, i) => (
-                    <div key={i} id={`pc-card-${i}`}
+                    <motion.div layout="position" layoutDependency={results} key={row.pageId || i} id={`pc-card-${i}`}
                       ref={el => pcCardRefs.current[i] = el}
                       style={{ background:dark?"#1e293b":"#fff",
                       border:dark?"1px solid #334155":"1px solid #e5e9f5",
@@ -2340,7 +2243,7 @@ export default function AllPage() {
                           </div>
                         );
                       })()}
-                    </div>
+                    </motion.div>
                   ))}
                 </div>
               )}
