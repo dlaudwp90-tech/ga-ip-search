@@ -1820,36 +1820,6 @@ export default function AllPage() {
                         <CardUploadPanel pageId={row.pageId} fileLinks={(row.fileLinks||"").split("\n").filter(Boolean)} dark={dark}
                           onChange={urls=>updateRowFiles(row.pageId,urls)} onClose={()=>toggleUploadPanel(row.pageId)} />
                       )}
-                      {/* 대표검토 버튼 */}
-                      <div className="m-review-row">
-                        {STATUS_OPTIONS.map(opt => {
-                          const isActive = (reviewStates[row.url] ?? null) === opt.key;
-                          const c = dark ? opt.darkColor : opt.color;
-                          const obg = dark ? opt.darkBg : opt.bg;
-                          return (
-                            <button key={opt.key}
-                              onClick={() => handleStatusSelect(row.url, isActive ? null : opt.key)}
-                              disabled={checkLocked || savingUrl === row.url}
-                              title={checkLocked ? "🔒 잠금 해제 후 선택" : opt.label}
-                              style={{ display:"flex", alignItems:"center", gap:4, flex:1,
-                                background: isActive ? obg : "transparent",
-                                border:`1.5px solid ${isActive ? c : (dark?"#334155":"#e5e7eb")}`,
-                                borderRadius:7, padding:"5px 6px", cursor:(checkLocked||savingUrl===row.url)?"not-allowed":"pointer",
-                                fontFamily:"inherit", opacity:checkLocked?0.6:1, transition:"all 0.15s" }}>
-                              <span style={{ width:8, height:8, borderRadius:"50%", flexShrink:0,
-                                border:`1.5px solid ${c}`, background:isActive?c:"transparent", display:"inline-block" }}/>
-                              <span style={{ fontSize:11, fontWeight:700,
-                                color:isActive?c:(dark?"#94a3b8":"#6b7280") }}>{opt.short}</span>
-                            </button>
-                          );
-                        })}
-                        <button onClick={handleLockToggle}
-                          style={{ background:"none", border:`1.5px solid ${checkLocked?"#e5e7eb":"#fbbf24"}`,
-                            borderRadius:7, padding:"5px 8px", cursor:"pointer", fontSize:14, lineHeight:1,
-                            backgroundColor:checkLocked?"transparent":"rgba(251,191,36,0.1)" }}>
-                          {checkLocked?"🔒":"🔓"}
-                        </button>
-                      </div>
                       {/* 배지 행 */}
                       <div className="m-card-badges">
                         {row.statusItem&&<span className="badge" style={notionBadgeStyle(row.statusItem.color,dark)}>{row.statusItem.name}</span>}
@@ -2152,33 +2122,6 @@ export default function AllPage() {
                             ...notionTextStyle(row.titleStyle,dark) }}>
                           {renderSingleLine(row.title)}
                         </span>
-                      </div>
-                      {/* Row3: 대표검토 버튼 */}
-                      <div style={{ display:"flex", gap:4, alignItems:"center" }}>
-                        {STATUS_OPTIONS.map(opt => {
-                          const isActive = (reviewStates[row.url]??null)===opt.key;
-                          const c = dark?opt.darkColor:opt.color;
-                          const obg = dark?opt.darkBg:opt.bg;
-                          return (
-                            <button key={opt.key}
-                              onClick={()=>handleStatusSelect(row.url,isActive?null:opt.key)}
-                              disabled={checkLocked||savingUrl===row.url}
-                              style={{ display:"flex", alignItems:"center", gap:3, flex:1,
-                                background:isActive?obg:"transparent",
-                                border:`1.5px solid ${isActive?c:(dark?"#334155":"#e5e7eb")}`,
-                                borderRadius:6, padding:"4px 4px", cursor:"pointer", fontFamily:"inherit", transition:"all 0.15s" }}>
-                              <span style={{ width:7,height:7,borderRadius:"50%",flexShrink:0,
-                                border:`1.5px solid ${c}`,background:isActive?c:"transparent",display:"inline-block"}}/>
-                              <span style={{fontSize:10,fontWeight:700,color:isActive?c:(dark?"#94a3b8":"#6b7280")}}>{opt.short}</span>
-                            </button>
-                          );
-                        })}
-                        <button onClick={handleLockToggle}
-                          style={{ background:"none", border:`1.5px solid ${checkLocked?"#e5e7eb":"#fbbf24"}`,
-                            borderRadius:6, padding:"4px 6px", cursor:"pointer", fontSize:12,
-                            backgroundColor:checkLocked?"transparent":"rgba(251,191,36,0.1)" }}>
-                          {checkLocked?"🔒":"🔓"}
-                        </button>
                       </div>
                       {/* Row4: 상태/서류작업 배지 */}
                       {(row.statusItem||row.docWorkStatusItem)&&(
