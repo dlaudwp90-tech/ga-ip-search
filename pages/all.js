@@ -910,6 +910,28 @@ export default function AllPage() {
 
   const remainingCount = totalCount !== null ? Math.max(0, totalCount - results.length) : null;
 
+  // ── 카드 색상 판정: 상태 AND 서류가 모두 '완료' 그룹이면 연두, 아니면 옅은 주황 ──
+  //   '완료' 여부는 dbOptions(상태/서류 그룹)에서 그룹명이 '완료'인 그룹의 옵션 이름으로 판정한다.
+  //   ⚠ DB옵션 로딩 전에는 색이 늦게 입혀질 수 있음(정상). 상태/서류 중 하나라도 비었거나 미완료면 주황.
+  const _completeSet = (groups) => {
+    const s = new Set();
+    (groups || []).forEach(g => {
+      if (translateGroup(g.name) === "완료") (g.options || []).forEach(o => s.add(o.name));
+    });
+    return s;
+  };
+  const _completeStatus = _completeSet(dbOptions.statusGroups);
+  const _completeDoc    = _completeSet(dbOptions.docWorkStateGroups);
+  // row → 카드 배경/테두리 색 (둘 다 완료=연두 / 하나라도 미완료=옅은 주황)
+  const cardBg = (row) => {
+    const sDone = !!(row.statusItem && _completeStatus.has(row.statusItem.name));
+    const dDone = !!(row.docWorkStatusItem && _completeDoc.has(row.docWorkStatusItem.name));
+    const t = (sDone && dDone)
+      ? { bg: "#e8f8ee", bd: "#86efac", dbg: "#16301e", dbd: "#2f6b3f" }   // 연두 (둘 다 완료)
+      : { bg: "#fff4e6", bd: "#fdba74", dbg: "#382815", dbd: "#7c531a" };  // 옅은 주황 (미완료)
+    return { background: dark ? t.dbg : t.bg, border: `1px solid ${dark ? t.dbd : t.bd}` };
+  };
+
   return (
     <>
       <Head>
@@ -1526,7 +1548,7 @@ export default function AllPage() {
                       key={row.pageId || i}
                       id={`m-card-${i}`}
                       ref={el => mobileCardRefs.current[i] = el}
-                      style={{ background: dark ? (i%2===0?"#1e293b":"#172035") : (i%2===0?"#fff":"#f7f8ff") }}>
+                      style={{ ...cardBg(row) }}>
                       {/* 제목 행 */}
                       <div className="m-card-top">
                         <span className="m-card-icon">📄</span>
@@ -1805,8 +1827,7 @@ export default function AllPage() {
                   {results.map((row, i) => (
                     <motion.div layout="position" layoutDependency={results} key={row.pageId || i} id={`pc-card-${i}`}
                       ref={el => pcCardRefs.current[i] = el}
-                      style={{ background:dark?"#1e293b":"#fff",
-                      border:dark?"1px solid #334155":"1px solid #e5e9f5",
+                      style={{ ...cardBg(row),
                       borderRadius:14, padding:"14px 16px",
                       boxShadow:"0 2px 10px rgba(19,39,79,0.07)",
                       display:"flex", flexDirection:"column", gap:8 }}>
