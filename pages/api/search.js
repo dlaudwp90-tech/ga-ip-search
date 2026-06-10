@@ -21,6 +21,10 @@ function richToLineStyles(richArr) {
     parts.forEach((part, pi) => {
       if (pi > 0) lines.push({ c: null, b: false }); // 줄바꿈마다 새 줄 시작
       const cur = lines[lines.length - 1];
+      // ⚠ 실제 글자가 있는 조각에만 색/볼드 적용.
+      //   (색칠된 텍스트에 줄바꿈이 딸려오면 '빈 조각'이 생기는데,
+      //    그 빈 조각이 다음 줄로 색을 번지게 하던 버그를 막음 — 예: "5년납부"가 빨강이면 다음 "16류"는 검정)
+      if (part === "") return;
       if (color && !cur.c) cur.c = color; // 그 줄의 첫 색을 대표색으로
       if (bold) cur.b = true;
     });
