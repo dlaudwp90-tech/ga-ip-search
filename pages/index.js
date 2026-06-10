@@ -16,12 +16,17 @@
 //   · PC와 모바일 뷰는 서로 독립입니다. 한쪽을 고칠 때 다른 쪽 영향 없는지 확인.
 //   · viewType / tabView 상태값은 더 이상 화면 표시에 영향을 주지 않습니다(추후 정리 예정).
 //   · 코드가 길어 부분 교체보다 '전체 파일 교체'가 안전합니다.
+//   · 카드 이동(재정렬) 애니메이션은 framer-motion 라이브러리를 씁니다.
+//     ⚠ package.json 에 "framer-motion" 의존성이 반드시 있어야 하며,
+//        이 파일(index.js)만 단독 배포하면 빌드가 실패합니다 → package.json과 함께 배포할 것.
 // ============================================================================
 import React from "react";
 import { useClerk, useUser } from "@clerk/nextjs";
-import { useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
+// framer-motion: 카드 재정렬(위치 이동) 애니메이션 라이브러리. ⚠ package.json 의존성 필요
+import { motion } from "framer-motion";
 
 // ─── 상태 옵션 ──
 const STATUS_OPTIONS = [
@@ -230,7 +235,6 @@ export default function Home() {
   const [pollToast, setPollToast] = useState(null); // { text, type: "update"|"new" }
 
   // ── FLIP 애니메이션 ──
-  const positionMapRef = useRef(new Map());
 
   // 1분마다 현재 시각 갱신 (1시간 뱃지 자동 소멸)
   // 시스템 다크모드 변경 자동 감지
@@ -377,106 +381,9 @@ export default function Home() {
     return () => clearInterval(id);
   }, [isRecent]);
 
-  // ── FLIP 애니메이션: 매 렌더마다 자동 위치 추적 ──
-  // 상단 이동(dy > 0): 1s 축소 → 1s 대기 → 3s 이동 → 1s 복원 (총 6s)
-  // 하단 이동(dy < 0): 2s 자기자리 유지 → 3s 이동 (크기 변화 없음)
-  useLayoutEffect(() => {
-    if (!results?.length) {
-      positionMapRef.current = new Map();
-      return;
-    }
-
-    const elements = new Map();
-    const collect = (refMap) => {
-      Object.entries(refMap).forEach(([idx, el]) => {
-        if (!el) return;
-        const pageId = results[Number(idx)]?.pageId;
-        if (!pageId || elements.has(pageId)) return;
-        // offsetTop/offsetLeft: 레이아웃 기준 위치 (스크롤·transform 영향 없음)
-        if (el.offsetWidth === 0 && el.offsetHeight === 0) return;
-        const top  = el.offsetTop;
-        const left = el.offsetLeft;
-        elements.set(pageId, { el, top, left });
-      });
-    };
-    collect(rowRefs.current);
-    collect(pcCardRefs.current);
-
-    const oldPositions = positionMapRef.current;
-
-    // 새 위치 맵을 즉시 저장
-    const nextMap = new Map();
-    elements.forEach(({ top, left }, pageId) => {
-      nextMap.set(pageId, { top, left });
-    });
-    positionMapRef.current = nextMap;
-
-    elements.forEach(({ el, top, left }, pageId) => {
-      const oldPos = oldPositions.get(pageId);
-      if (!oldPos) return;
-
-      const dy = oldPos.top - top;
-      const dx = oldPos.left - left;
-      if (Math.abs(dy) < 2 && Math.abs(dx) < 2) return;
-
-      if (el._flipT2) { clearTimeout(el._flipT2); el._flipT2 = null; }
-      if (el._flipT3) { clearTimeout(el._flipT3); el._flipT3 = null; }
-
-      const isMovingUp = dy > 0;
-
-      // Step 1: INVERT — 즉시 이전 위치로 이동 (transition 없이)
-      el.style.transition = "none";
-      el.style.transform  = `translate(${dx}px, ${dy}px)`;
-      // 강제 reflow
-      // eslint-disable-next-line no-unused-expressions
-      el.offsetHeight;
-
-      if (isMovingUp) {
-        // ═══ 상단 이동 카드 ═══
-        // 0~1s 축소, 1~2s 대기, 2~5s 이동, 5~6s 복원
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            el.style.transition = "transform 1s cubic-bezier(0.33, 1, 0.68, 1)";
-            el.style.transform  = `translate(${dx}px, ${dy}px) scale(0.92)`;
-          });
-        });
-
-        el._flipT2 = setTimeout(() => {
-          el.style.transition = "transform 3s cubic-bezier(0.37, 0, 0.63, 1)";
-          el.style.transform  = "translate(0px, 0px) scale(0.92)";
-        }, 2000);
-
-        el._flipT3 = setTimeout(() => {
-          el.style.transition = "transform 1s cubic-bezier(0.33, 1, 0.68, 1)";
-          el.style.transform  = "translate(0px, 0px) scale(1)";
-
-          const onEnd = (e) => {
-            if (e.propertyName !== "transform") return;
-            el.style.transition = "";
-            el.style.transform  = "";
-            el.removeEventListener("transitionend", onEnd);
-          };
-          el.addEventListener("transitionend", onEnd);
-        }, 5000);
-
-      } else {
-        // ═══ 하단 이동 카드 (축소 절대 X) ═══
-        // 0~2s: 이전 자리에 머무름, 2~5s: 부드럽게 이동
-        el._flipT2 = setTimeout(() => {
-          el.style.transition = "transform 3s cubic-bezier(0.37, 0, 0.63, 1)";
-          el.style.transform  = "translate(0px, 0px)";
-
-          const onEnd = (e) => {
-            if (e.propertyName !== "transform") return;
-            el.style.transition = "";
-            el.style.transform  = "";
-            el.removeEventListener("transitionend", onEnd);
-          };
-          el.addEventListener("transitionend", onEnd);
-        }, 2000);
-      }
-    });
-  }, [results]);
+  // ── 카드 재정렬 애니메이션: framer-motion이 자동 처리 ──
+  // (이전의 수동 FLIP 코드 제거. 각 카드의 <motion.div layout="position"> + 고유 key가
+  //  목록 변경 시 옛 위치 → 새 위치로 부드럽게 이동시킨다. 위치 계산/타이머는 라이브러리가 담당.)
 
   const handleStatusSelect = useCallback(async (url, newStatus) => {
     if (checkLocked) return;
@@ -1353,9 +1260,15 @@ export default function Home() {
                     세로로 쌓이는 카드(.m-card). 보일지 말지는 아래 CSS(.mobile-cards)가 결정. PC에서는 숨김. */}
                 <div className="mobile-cards" style={{
                 opacity: fadeVisible ? 1 : 0, transition: "opacity 0.28s ease" }}>
+                  {/* framer-motion 카드(아래 motion.div):
+                      layout="position" = 위치(좌표)만 애니메이션 — 높이/크기 변화는 기존 CSS에 맡김
+                      layoutDependency={results} = 목록(검색·폴링)이 바뀔 때만 동작 (댓글 열기/호버 등엔 미동작)
+                      key={row.pageId} = 재정렬돼도 같은 카드로 인식 → 옛 위치에서 새 위치로 부드럽게 이동 */}
                   {results.map((row, i) => (
-                    <React.Fragment key={i}>
-                      <div className="m-card"
+                    <motion.div className="m-card"
+                      layout="position"
+                      layoutDependency={results}
+                      key={row.pageId || i}
                         ref={el => mobileCardRefs.current[i] = el}
                         style={{ background: dark ? (i%2===0?"#1e293b":"#172035") : (i%2===0?"#fff":"#f7f8ff") }}>
                         {/* 제목 행 */}
@@ -1648,8 +1561,7 @@ export default function Home() {
                             </div>
                           );
                         })()}
-                      </div>
-                    </React.Fragment>
+                      </motion.div>
                   ))}
                 </div>
 
@@ -1659,8 +1571,9 @@ export default function Home() {
               {(
                 <div className="pc-cards" style={{
                   opacity: fadeVisible ? 1 : 0, transition: "opacity 0.28s ease" }}>
+                  {/* framer-motion 카드(PC): 위치만 애니메이션 + 목록 바뀔 때만 동작 (모바일과 동일) */}
                   {results.map((row, i) => (
-                    <div key={i}
+                    <motion.div layout="position" layoutDependency={results} key={row.pageId || i}
                       ref={el => pcCardRefs.current[i] = el}
                       style={{ background:dark?"#1e293b":"#fff",
                       border:dark?"1px solid #334155":"1px solid #e5e9f5",
@@ -1963,7 +1876,7 @@ export default function Home() {
                           </div>
                         );
                       })()}
-                    </div>
+                    </motion.div>
                   ))}
                 </div>
               )}
