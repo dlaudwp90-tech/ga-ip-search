@@ -106,7 +106,7 @@ async function removeFileLink(pageId, urlToRemove) {
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
-  const { action, fileName, contentType, folder, publicUrl, key } = req.body;
+  const { action, fileName, contentType, folder, publicUrl, key, pageId } = req.body;
 
   if (action === "check") {
     const pageId = await getNotionPageId(folder);
@@ -128,13 +128,12 @@ export default async function handler(req, res) {
   if (action === "notify") {
     let notionUpdated = false;
     let notionFound = false;
-    if (folder) {
-      const pageId = await getNotionPageId(folder);
-      if (pageId) {
-        notionFound = true;
-        await appendFileLink(pageId, publicUrl);
-        notionUpdated = true;
-      }
+    // pageId가 오면 제목 조회 없이 그 페이지를 바로 사용(카드 업로드용). 없으면 기존처럼 폴더명=제목으로 조회.
+    const pid = pageId || (folder ? await getNotionPageId(folder) : null);
+    if (pid) {
+      notionFound = true;
+      await appendFileLink(pid, publicUrl);
+      notionUpdated = true;
     }
     return res.status(200).json({ ok: true, notionUpdated, notionFound });
   }
@@ -145,10 +144,8 @@ export default async function handler(req, res) {
         Bucket: process.env.R2_BUCKET_NAME,
         Key: key,
       }));
-      if (folder) {
-        const pageId = await getNotionPageId(folder);
-        if (pageId) await removeFileLink(pageId, publicUrl);
-      }
+      const pid = pageId || (folder ? await getNotionPageId(folder) : null);
+      if (pid) await removeFileLink(pid, publicUrl);
       return res.status(200).json({ ok: true });
     } catch (err) {
       return res.status(500).json({ error: err.message });
