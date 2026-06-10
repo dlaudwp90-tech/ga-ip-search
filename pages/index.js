@@ -164,6 +164,94 @@ function rowBg(i, dark, hover = false) {
   return dark ? "#172035" : "#f7f8ff";
 }
 
+// ── 카드 내 파일 업로드 패널 ──
+//   각 카드의 📎 버튼을 누르면 펼쳐짐. 드래그앤드롭 또는 클릭으로 R2에 업로드, 기존 파일은 🗑로 삭제.
+//   ⚠ 저장 폴더는 카드 고유 'pageId' 기준 → 노션 제목을 바꿔도 파일이 안 깨짐.
+//   업로드/삭제 시 노션 '파일다운링크'도 /api/upload가 함께 갱신함. (비개발자: 이 컴포넌트는 한 덩어리로 유지)
+function CardUploadPanel({ pageId, fileLinks, dark, onChange, onClose }) {
+  const [dragging, setDragging] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const fileRef = useRef(null);
+
+  // 한글 등 파일명 경로를 노션 저장 형식과 동일하게 인코딩 (appendFileLink와 일치)
+  const encUrl = (u) => u.split("/").map((p, i) => (i < 3 ? p : encodeURIComponent(decodeURIComponent(p)))).join("/");
+
+  // 선택/드롭된 파일들을 차례로 업로드: presign → R2 PUT → 노션 링크 갱신(notify)
+  const doUpload = async (filesIn) => {
+    const list = Array.from(filesIn || []);
+    if (!list.length || busy) return;
+    setBusy(true);
+    let cur = [...fileLinks];
+    for (let n = 0; n < list.length; n++) {
+      const f = list[n];
+      setMsg(`업로드 중… (${n + 1}/${list.length}) ${f.name}`);
+      try {
+        const pr = await fetch("/api/upload", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "presign", folder: pageId, fileName: f.name, contentType: f.type || "application/octet-stream" }) });
+        const pd = await pr.json();
+        if (!pd.presignedUrl) throw new Error("presign 실패");
+        await fetch(pd.presignedUrl, { method: "PUT", headers: { "Content-Type": f.type || "application/octet-stream" }, body: f });
+        const enc = encUrl(pd.publicUrl);
+        if (!cur.includes(enc)) {
+          await fetch("/api/upload", { method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "notify", pageId, folder: pageId, publicUrl: pd.publicUrl }) });
+          cur = [...cur, enc];
+        }
+      } catch (e) { setMsg("업로드 실패: " + (e.message || "")); setBusy(false); return; }
+    }
+    onChange(cur);
+    setBusy(false); setMsg("");
+    onClose(); // 업로드가 끝나면 패널 닫기
+  };
+
+  // 파일 삭제: R2에서 영구 삭제 + 노션 링크 제거
+  const doDelete = async (url) => {
+    if (busy) return;
+    if (!window.confirm("이 파일을 삭제하시겠습니까? (저장소에서 영구 삭제)")) return;
+    const key = url.split("/").slice(3).join("/"); // URL에서 R2 키(폴더/파일명) 추출
+    setBusy(true);
+    try {
+      await fetch("/api/upload", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete", key, pageId, publicUrl: url }) });
+      onChange(fileLinks.filter((u) => u !== url));
+    } catch { setMsg("삭제 실패"); }
+    setBusy(false);
+  };
+
+  return (
+    <div onClick={(e) => e.stopPropagation()}
+      style={{ margin: "4px 0 8px", padding: 10, borderRadius: 10,
+        background: dark ? "#0f172a" : "#f8faff", border: `1px solid ${dark ? "#334155" : "#dbe3f5"}` }}>
+      {/* 드롭존 (드래그앤드롭 또는 클릭) */}
+      <div onClick={() => !busy && fileRef.current && fileRef.current.click()}
+        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(e) => { e.preventDefault(); setDragging(false); doUpload(e.dataTransfer.files); }}
+        style={{ cursor: busy ? "default" : "pointer", textAlign: "center", padding: "14px 8px", borderRadius: 8,
+          border: `2px dashed ${dragging ? "#6366f1" : (dark ? "#475569" : "#c3cce6")}`,
+          background: dragging ? (dark ? "#1e293b" : "#eef1fb") : "transparent",
+          color: dark ? "#94a3b8" : "#6b7280", fontSize: 12, lineHeight: 1.4 }}>
+        {busy ? (msg || "처리 중…") : "📎 파일을 끌어다 놓거나 클릭해서 선택"}
+      </div>
+      <input ref={fileRef} type="file" multiple style={{ display: "none" }}
+        onChange={(e) => { doUpload(e.target.files); e.target.value = ""; }} />
+      {/* 현재 파일 목록 (각 파일 🗑로 삭제) */}
+      {fileLinks.length > 0 && (
+        <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+          {fileLinks.map((u, k) => (
+            <div key={k} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: dark ? "#cbd5e1" : "#374151" }}>
+              <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>📄 {decodeURIComponent(u.split("/").pop())}</span>
+              <button onClick={() => doDelete(u)} disabled={busy} title="삭제"
+                style={{ flexShrink: 0, border: "none", background: "transparent", cursor: busy ? "default" : "pointer", fontSize: 13, color: dark ? "#f87171" : "#dc2626" }}>🗑</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Home() {
   const [query,        setQuery]        = useState("");
   const [results,      setResults]      = useState(null);
@@ -206,6 +294,12 @@ export default function Home() {
 
   // ── 댓글 ──
   const [commentPanels, setCommentPanels] = useState({}); // { idx: { open, comments, loading, input, saving, saved } }
+
+  // ── 카드 파일 업로드 패널 (pageId 기준 열림/닫힘) ──
+  const [uploadPanels, setUploadPanels] = useState({});
+  const toggleUploadPanel = (pageId) => setUploadPanels(p => ({ ...p, [pageId]: { open: !p[pageId]?.open } }));
+  // 업로드/삭제 후 해당 카드의 파일 목록(fileLinks)을 즉시 갱신 (낙관적 업데이트)
+  const updateRowFiles = (pid, urls) => setResults(prev => Array.isArray(prev) ? prev.map(r => r.pageId === pid ? { ...r, fileLinks: urls.join("\n") } : r) : prev);
 
   const toggleRow = (idx) => setExpandedRows(p => ({ ...p, [idx]: !p[idx] }));
   const inputRef      = useRef(null);
@@ -1276,6 +1370,11 @@ export default function Home() {
                         <div className="m-card-top">
                           <span className="m-card-icon">📄</span>
                           <span className="m-card-title" onClick={e=>handleTitleClick(e,row.url)} style={notionTextStyle(row.titleStyle,dark)}>{renderSingleLine(row.title)}</span>
+                          <span onClick={e=>{e.stopPropagation();toggleUploadPanel(row.pageId)}}
+                            title="파일 업로드"
+                            style={{cursor:"pointer",flexShrink:0,display:"inline-flex",alignItems:"center",marginLeft:4,opacity:uploadPanels[row.pageId]?.open?1:0.45}}>
+                            <span style={{fontSize:20}}>📎</span>
+                          </span>
                           <span onClick={e=>{e.stopPropagation();toggleCommentPanel(i,row.pageId)}}
                             style={{cursor:"pointer",flexShrink:0,position:"relative",display:"inline-flex",
                               alignItems:"center",marginLeft:4,
@@ -1291,6 +1390,10 @@ export default function Home() {
                             )}
                           </span>
                         </div>
+                        {uploadPanels[row.pageId]?.open && (
+                          <CardUploadPanel pageId={row.pageId} fileLinks={(row.fileLinks||"").split("\n").filter(Boolean)} dark={dark}
+                            onChange={urls=>updateRowFiles(row.pageId,urls)} onClose={()=>toggleUploadPanel(row.pageId)} />
+                        )}
                         {/* 대표검토 버튼 */}
                         <div className="m-review-row">
                           {STATUS_OPTIONS.map(opt => {
@@ -1587,6 +1690,11 @@ export default function Home() {
                           {row.typeItems?.map((t,k)=><span key={k} className="badge" style={notionBadgeStyle(t.color,dark)}>{t.name}</span>)}
                         </div>
                         {/* 말풍선 - 표뷰와 동일 스타일 */}
+                        <span onClick={e=>{e.stopPropagation();toggleUploadPanel(row.pageId)}}
+                          title="파일 업로드"
+                          style={{cursor:"pointer",flexShrink:0,display:"inline-flex",alignItems:"center",marginLeft:6,opacity:uploadPanels[row.pageId]?.open?1:0.45}}>
+                          <span style={{fontSize:26}}>📎</span>
+                        </span>
                         <span onClick={e=>{e.stopPropagation();toggleCommentPanel(i,row.pageId)}}
                           style={{ cursor:"pointer", flexShrink:0, position:"relative",
                             display:"inline-flex", alignItems:"center", marginLeft:6,
@@ -1608,6 +1716,10 @@ export default function Home() {
                           )}
                         </span>
                       </div>
+                      {uploadPanels[row.pageId]?.open && (
+                        <CardUploadPanel pageId={row.pageId} fileLinks={(row.fileLinks||"").split("\n").filter(Boolean)} dark={dark}
+                          onChange={urls=>updateRowFiles(row.pageId,urls)} onClose={()=>toggleUploadPanel(row.pageId)} />
+                      )}
                       {/* Row2: 📄 제목 */}
                       <div style={{ display:"flex", alignItems:"center", gap:5 }}>
                         <span style={{fontSize:14,flexShrink:0}}>📄</span>
