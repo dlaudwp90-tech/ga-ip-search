@@ -136,6 +136,7 @@ export default function Home() {
   const [query,        setQuery]        = useState("");
   const [results,      setResults]      = useState(null);
   const [loading,      setLoading]      = useState(false);
+  const [loadError,    setLoadError]    = useState(false); // 노션 초기 로딩 실패 여부 (빈 화면 방지용)
   const [error,        setError]        = useState(null);
   const [searched,     setSearched]     = useState(false);
   const [dark, setDark] = useState(() => {
@@ -617,17 +618,35 @@ export default function Home() {
       }).catch(() => {});
     });
   }, [results]);
-  const fetchRecent = async () => {
-    setLoading(true); setTableVisible(false);
+  // ── 노션 '최근 편집' 목록 불러오기 ──
+  //   ⚠ 콜드 스타트/일시 지연 대비: 첫 요청이 실패하면 자동으로 다시 시도합니다(최대 3회, 0.8s→1.6s→2.4s 간격).
+  //      그래서 '처음 접속'이나 '오랜만에 접속'해서 첫 호출이 늦더라도, 빈 화면 대신 잠깐 기다렸다가 채워집니다.
+  //      3번 모두 실패하면 loadError 를 켜서 화면에 안내 + '다시 시도' 버튼을 보여줍니다(빈 화면 방지).
+  const fetchRecent = async (attempt = 0) => {
+    if (attempt === 0) { setLoading(true); setLoadError(false); setTableVisible(false); }
     try {
       const res  = await fetch("/api/search", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode: "recent" }),
       });
       const data = await res.json();
-      if (res.ok) { setResults(data.results); setIsRecent(true); setTimeout(() => setTableVisible(true), 50); }
-    } catch {}
-    finally { setLoading(false); }
+      if (res.ok) {
+        setResults(data.results); setIsRecent(true); setLoadError(false);
+        setTimeout(() => setTableVisible(true), 50);
+        setLoading(false);
+        return;
+      }
+      throw new Error("server not ok"); // 아래 catch 의 재시도 로직으로 보냄
+    } catch {
+      // 실패 → 최대 3회까지 재시도 (간격을 점점 늘림)
+      if (attempt < 3) {
+        setTimeout(() => fetchRecent(attempt + 1), 800 * (attempt + 1));
+        return; // 재시도 중에는 로딩 스피너를 그대로 유지
+      }
+      // 재시도 모두 실패 → 빈 화면 대신 안내/다시시도 표시
+      setLoadError(true);
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -1256,6 +1275,19 @@ export default function Home() {
 
         <div className="results">
           {loading && <div className="loading"><div className="spinner"/><p>Notion DB 검색 중...</p></div>}
+
+          {/* 노션 초기 로딩이 끝났는데(스피너 종료) 결과가 없고 실패한 경우 → 빈 화면 대신 안내 + 다시 시도 */}
+          {!loading && results === null && loadError && (
+            <div className="loading">
+              <p style={{ color:"#dc2626", fontSize:15, marginBottom:2, fontWeight:600 }}>노션을 불러오지 못했어요</p>
+              <p style={{ color:"#6b7280", fontSize:13 }}>잠시 후 다시 시도해 주세요.</p>
+              <button onClick={() => fetchRecent()}
+                style={{ marginTop:10, padding:"8px 20px", borderRadius:8, border:"none", cursor:"pointer",
+                  background:"#13274F", color:"#fff", fontWeight:700, fontSize:14, fontFamily:"inherit" }}>
+                ↻ 다시 시도
+              </button>
+            </div>
+          )}
           {error   && <p className="error">⚠️ {error}</p>}
           {!loading && results !== null && (
             results.length === 0 ? (
