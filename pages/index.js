@@ -326,6 +326,8 @@ export default function Home() {
 
   // ── 카드 파일 업로드 패널 (pageId 기준 열림/닫힘) ──
   const [uploadPanels, setUploadPanels] = useState({});
+  // 카드 색상 판정용: 상태/서류 그룹 옵션 (db-options API에서 로드)
+  const [dbOptions, setDbOptions] = useState({ statusGroups: [], docWorkStateGroups: [] });
   const toggleUploadPanel = (pageId) => setUploadPanels(p => ({ ...p, [pageId]: { open: !p[pageId]?.open } }));
   // 업로드/삭제 후 해당 카드의 파일 목록(fileLinks)을 즉시 갱신 (낙관적 업데이트)
   const updateRowFiles = (pid, urls) => setResults(prev => Array.isArray(prev) ? prev.map(r => r.pageId === pid ? { ...r, fileLinks: urls.join("\n") } : r) : prev);
@@ -549,6 +551,33 @@ export default function Home() {
 
 
   useEffect(() => { fetchRecent(); }, []);
+
+  // ── 카드 색상: 상태/서류 그룹 옵션 로드 (최초 1회) ──
+  //   전체보기(all.js)와 동일한 /api/db-options 에서 상태·서류의 '완료' 그룹 정보를 가져온다.
+  useEffect(() => {
+    fetch("/api/db-options").then(r => r.json()).then(d => { if (d && !d.error) setDbOptions(d); }).catch(() => {});
+  }, []);
+
+  // ── 카드 색상 판정: 상태 AND 서류가 모두 '완료' 그룹이면 연두, 아니면 옅은 주황 ──
+  //   '완료' 여부는 그룹명이 '완료'(또는 Complete/Done)인 그룹의 옵션 이름으로 판정한다.
+  //   ⚠ DB옵션 로딩 전에는 색이 늦게 입혀질 수 있음(정상). 상태/서류 중 하나라도 비었거나 미완료면 주황.
+  const _isCompleteGroup = (name) => ["완료", "Complete", "Completed", "Done"].includes(name);
+  const _completeSet = (groups) => {
+    const s = new Set();
+    (groups || []).forEach(g => { if (_isCompleteGroup(g.name)) (g.options || []).forEach(o => s.add(o.name)); });
+    return s;
+  };
+  const _completeStatus = _completeSet(dbOptions.statusGroups);
+  const _completeDoc    = _completeSet(dbOptions.docWorkStateGroups);
+  // row → 카드 배경/테두리 색 (둘 다 완료=연두 / 하나라도 미완료=옅은 주황). 다크: 추천 B
+  const cardBg = (row) => {
+    const sDone = !!(row.statusItem && _completeStatus.has(row.statusItem.name));
+    const dDone = !!(row.docWorkStatusItem && _completeDoc.has(row.docWorkStatusItem.name));
+    const t = (sDone && dDone)
+      ? { bg: "#e8f8ee", bd: "#86efac", dbg: "#173a23", dbd: "#46a06a" }
+      : { bg: "#fff4e6", bd: "#fdba74", dbg: "#3f3015", dbd: "#cf942f" };
+    return { background: dark ? t.dbg : t.bg, border: `1px solid ${dark ? t.dbd : t.bd}` };
+  };
 
   // 결과 로드 시 각 카드의 댓글 수 미리 조회 (댓글 뱃지 표시용)
   //   ⚠ 카드 식별을 'pageId'(고유 ID)로 한다 — index(몇 번째)로 하면 카드가 재정렬될 때
@@ -1159,7 +1188,7 @@ export default function Home() {
                       layoutDependency={results}
                       key={row.pageId || i}
                         ref={el => mobileCardRefs.current[i] = el}
-                        style={{ background: dark ? (i%2===0?"#1e293b":"#172035") : (i%2===0?"#fff":"#f7f8ff") }}>
+                        style={{ ...cardBg(row) }}>
                         {/* 제목 행 */}
                         <div className="m-card-top">
                           <span className="m-card-icon">📄</span>
@@ -1442,8 +1471,7 @@ export default function Home() {
                   {results.map((row, i) => (
                     <motion.div layout="position" layoutDependency={results} key={row.pageId || i}
                       ref={el => pcCardRefs.current[i] = el}
-                      style={{ background:dark?"#1e293b":"#fff",
-                      border:dark?"1px solid #334155":"1px solid #e5e9f5",
+                      style={{ ...cardBg(row),
                       borderRadius:14, padding:"14px 16px",
                       boxShadow:"0 2px 10px rgba(19,39,79,0.07)",
                       display:"flex", flexDirection:"column", gap:8 }}>
