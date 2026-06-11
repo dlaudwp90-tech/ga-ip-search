@@ -1169,6 +1169,7 @@ export default function Home() {
                   {isRecent && (
                     <div className="count-btns">
                       <button className="nav-btn nav-btn-all"   onClick={()=>router.push("/all")}>📂 문서 전체 보기</button>
+                      <button className="nav-btn nav-btn-renew" onClick={()=>router.push("/renewals")}>🔔 연차·갱신 관리</button>
                       <button className="nav-btn nav-btn-guide" onClick={()=>router.push("/guide")}>📋 문서 작성 방법 및 양식</button>
                     </div>
                   )}
@@ -1189,10 +1190,11 @@ export default function Home() {
                       key={row.pageId || i}
                         ref={el => mobileCardRefs.current[i] = el}
                         style={{ ...cardBg(row) }}>
-                        {/* 제목 행 */}
-                        <div className="m-card-top">
-                          <span className="m-card-icon">📄</span>
-                          <span className="m-card-title" onClick={e=>handleTitleClick(e,row.url)} style={notionTextStyle(row.titleStyle,dark)}>{renderSingleLine(row.title)}</span>
+                        {/* Row1: 유형 배지(상표·디자인·특허·저작) + 업로드/댓글 — PC 카드와 동일하게 맨 위로 */}
+                        <div className="m-card-row1">
+                          <div className="m-card-typebadges">
+                            {row.typeItems?.map((t,k)=><span key={k} className="badge" style={notionBadgeStyle(t.color,dark)}>{t.name}</span>)}
+                          </div>
                           <span onClick={e=>{e.stopPropagation();toggleUploadPanel(row.pageId)}}
                             title="파일 업로드"
                             style={{cursor:"pointer",flexShrink:0,display:"inline-flex",alignItems:"center",marginLeft:4,opacity:uploadPanels[row.pageId]?.open?1:0.45}}>
@@ -1217,12 +1219,18 @@ export default function Home() {
                           <CardUploadPanel pageId={row.pageId} fileLinks={(row.fileLinks||"").split("\n").filter(Boolean)} dark={dark}
                             onChange={urls=>updateRowFiles(row.pageId,urls)} onClose={()=>toggleUploadPanel(row.pageId)} />
                         )}
-                        {/* 배지 행 */}
-                        <div className="m-card-badges">
-                          {row.statusItem&&<span className="badge" style={notionBadgeStyle(row.statusItem.color,dark)}>{row.statusItem.name}</span>}
-                          {row.docWorkStatusItem&&<span className="badge" style={notionBadgeStyle(row.docWorkStatusItem.color,dark)}>{row.docWorkStatusItem.name}</span>}
-                          {row.typeItems?.map((t,k)=><span key={k} className="badge" style={notionBadgeStyle(t.color,dark)}>{t.name}</span>)}
+                        {/* Row2: 📄 제목 */}
+                        <div className="m-card-top">
+                          <span className="m-card-icon">📄</span>
+                          <span className="m-card-title" onClick={e=>handleTitleClick(e,row.url)} style={notionTextStyle(row.titleStyle,dark)}>{renderSingleLine(row.title)}</span>
                         </div>
+                        {/* Row3: 상태/서류작업 배지 — 제목 아래(PC와 동일). 유형 배지는 위 Row1로 이동 */}
+                        {(row.statusItem||row.docWorkStatusItem)&&(
+                          <div className="m-card-badges">
+                            {row.statusItem&&<span className="badge" style={notionBadgeStyle(row.statusItem.color,dark)}>{row.statusItem.name}</span>}
+                            {row.docWorkStatusItem&&<span className="badge" style={notionBadgeStyle(row.docWorkStatusItem.color,dark)}>{row.docWorkStatusItem.name}</span>}
+                          </div>
+                        )}
                         {/* 출원번호 / 출원인 */}
                         {(row.appNum||row.appOwner)&&(
                           <div className="m-card-info">
@@ -1807,6 +1815,9 @@ export default function Home() {
           text-decoration:underline; flex:1; line-height:1.3; }
         .dark .m-card-title { color:#93c5fd; }
         .m-card-badges { display:flex; flex-wrap:wrap; gap:4px; }
+        /* 모바일 카드 맨 위 줄: 유형 배지(왼쪽) + 업로드/댓글(오른쪽) — PC 카드 Row1과 동일 구성 */
+        .m-card-row1 { display:flex; align-items:center; gap:4px; }
+        .m-card-typebadges { display:flex; flex-wrap:wrap; gap:4px; flex:1; min-width:0; }
         .m-card-info { display:flex; flex-direction:column; gap:2px; }
         .m-info-item { font-size:12px; color:#6b7280; }
         .m-info-row { display:flex; align-items:flex-start; gap:6px; }
@@ -1944,6 +1955,10 @@ export default function Home() {
         .nav-btn-guide { background:#13274F; color:#fff; }
         .nav-btn-guide:hover { background:#0d1e3d; }
         .dark .nav-btn-guide { background:#1e3a6e; }
+        /* 연차·갱신 관리 버튼 — 마감/임박 관리 기능이라 눈에 띄게 주황 계열 */
+        .nav-btn-renew { background:#c2410c; color:#fff; }
+        .nav-btn-renew:hover { background:#9a3412; }
+        .dark .nav-btn-renew { background:#9a3412; }
 
 
         .cell-inner { display:flex; align-items:center; justify-content:center; gap:6px; }
