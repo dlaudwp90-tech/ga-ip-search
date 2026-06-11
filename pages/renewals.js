@@ -72,6 +72,8 @@ export default function RenewalsPage({ rows, meta }) {
   const [selected, setSelected] = useState(null); // 바텀시트 대상
   const [drawings, setDrawings] = useState([]);   // 디자인 육면도(여러 도면) 목록
   const [drLoading, setDrLoading] = useState(false); // 도면 불러오는 중 표시용
+  const [tmImg, setTmImg] = useState("");         // 상표 고화질 이미지 경로
+  const [tmLoading, setTmLoading] = useState(false); // 상표 고화질 불러오는 중 표시용
 
   const total = rows.length;
   const alertCount = rows.filter((r) => r.alive !== false && r.isAlert).length;
@@ -88,18 +90,28 @@ export default function RenewalsPage({ rows, meta }) {
 
   useEffect(() => { setShown(PAGE); }, [view, type, q]);
 
-  // 바텀시트가 '디자인'으로 열릴 때만 육면도(여러 도면)를 1회 조회한다.
-  //  - 결과는 서버(/api/kipris-design-images)에서 Redis 캐시 → 같은 디자인 재방문 시 KIPRIS 호출 0회
-  //  - 상표는 도면이 1장뿐이라 호출하지 않는다.
+  // 바텀시트가 열릴 때만 KIPRIS에서 고화질 이미지를 1회 조회한다(결과는 서버에서 Redis 캐시 → 재방문 0회).
+  //  - 디자인: 육면도(여러 도면) 목록
+  //  - 상표: 견본이미지(고해상도 1장) — 목록 이미지는 저해상도라 흐릿하므로 교체용
   useEffect(() => {
-    setDrawings([]); // 다른 항목 열릴 때 이전 도면 초기화
-    if (selected && selected.type === "디자인" && selected.appNo) {
+    setDrawings([]); // 이전 도면 초기화
+    setTmImg("");    // 이전 상표 고화질 초기화
+    if (!selected || !selected.appNo) return;
+    if (selected.type === "디자인") {
       setDrLoading(true);
       fetch(`/api/kipris-design-images?app=${encodeURIComponent(selected.appNo)}`)
         .then((r) => r.json())
         .then((d) => setDrawings(Array.isArray(d.images) ? d.images : []))
         .catch(() => {})
         .finally(() => setDrLoading(false));
+    } else {
+      // 상표
+      setTmLoading(true);
+      fetch(`/api/kipris-trademark-image?app=${encodeURIComponent(selected.appNo)}`)
+        .then((r) => r.json())
+        .then((d) => setTmImg(d.large || ""))
+        .catch(() => {})
+        .finally(() => setTmLoading(false));
     }
   }, [selected]);
 
@@ -205,7 +217,7 @@ export default function RenewalsPage({ rows, meta }) {
               <h2>{selected.title || "(명칭없음)"}</h2>
             </div>
 
-            {/* 디자인이고 육면도가 있으면 → 가로 스크롤 캐러셀(옆으로 넘겨보기), 그 외(상표/폴백) → 큰 단일 이미지 */}
+            {/* 디자인+육면도 → 가로 캐러셀 / 디자인 단일 → 대표도면 / 상표 → 고화질 견본이미지 */}
             {selected.type === "디자인" && drawings.length > 0 ? (
               <>
                 <div className="drawings">
@@ -218,13 +230,21 @@ export default function RenewalsPage({ rows, meta }) {
                 </div>
                 {drawings.length > 1 && <div className="drawHint">← 좌우로 넘겨보기 ({drawings.length}장) →</div>}
               </>
-            ) : imgUrl(selected.image || selected.thumb) ? (
-              <div className="sheetImg">
-                <img src={imgUrl(selected.image || selected.thumb)} alt="" />
-                {selected.type === "디자인" && drLoading && <div className="drawHint">도면 불러오는 중…</div>}
-              </div>
+            ) : selected.type === "디자인" ? (
+              imgUrl(selected.image || selected.thumb) ? (
+                <div className="sheetImg">
+                  <img src={imgUrl(selected.image || selected.thumb)} alt="" />
+                  {drLoading && <div className="drawHint">도면 불러오는 중…</div>}
+                </div>
+              ) : (drLoading ? <div className="drawHint">도면 불러오는 중…</div> : null)
             ) : (
-              selected.type === "디자인" && drLoading ? <div className="drawHint">도면 불러오는 중…</div> : null
+              // 상표: 고화질(tmImg)이 오면 그걸로, 오기 전/없으면 목록 이미지로 폴백
+              (tmImg || imgUrl(selected.image || selected.thumb)) ? (
+                <div className="sheetImg">
+                  <img src={tmImg ? imgUrl(tmImg) : imgUrl(selected.image || selected.thumb)} alt="" />
+                  {tmLoading && !tmImg && <div className="drawHint">고화질 이미지 불러오는 중…</div>}
+                </div>
+              ) : null
             )}
 
             <dl className="detail">
@@ -263,9 +283,11 @@ export default function RenewalsPage({ rows, meta }) {
         .badge { display: inline-block; padding: 2px 7px; border-radius: 6px; font-size: 11px; font-weight: 600; }
         .badge.tm { background: #eef2ff; color: #4338ca; } .badge.dsn { background: #ecfdf5; color: #047857; }
 
+        /* PC 표를 모바일 카드와 같은 '흰색 패널'로 → 라이트모드 색감 일치 */
+        .tableWrap { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; }
         table { width: 100%; border-collapse: collapse; font-size: 13px; }
         thead th { text-align: left; padding: 9px 10px; background: #f9fafb; color: #6b7280; font-weight: 600; border-bottom: 1px solid #e5e7eb; white-space: nowrap; }
-        tbody td { padding: 8px 10px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
+        tbody td { padding: 8px 10px; background: #fff; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
         td.title { font-weight: 600; } .mono { font-variant-numeric: tabular-nums; font-family: ui-monospace, monospace; }
         td.dday { font-weight: 700; white-space: nowrap; }
         .link { border: 0; background: none; padding: 0; font: inherit; font-weight: 600; color: #4f46e5; cursor: pointer; text-align: left; text-decoration: underline; text-underline-offset: 2px; }
@@ -279,7 +301,7 @@ export default function RenewalsPage({ rows, meta }) {
         .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 12px; background: #fff; cursor: pointer; }
         .card.alert { border-color: #fdba74; background: #fff7ed; }
         .card.overdue { border-color: #fca5a5; background: #fef2f2; }
-        .card.dead { opacity: .6; }
+        .card.dead { background: #fafafa; color: #9ca3af; }
         .cardTop { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
         .cardHead { flex: 1; min-width: 0; }
         .cardTitle { font-weight: 700; display: block; margin-top: 2px; }
@@ -318,10 +340,13 @@ export default function RenewalsPage({ rows, meta }) {
           .wrap { color: #e5e7eb; } .head h1 { color: #f3f4f6; } .meta { color: #9ca3af; } .meta b { color: #f3f4f6; }
           .seg { border-color: #374151; } .seg button { background: #1f2937; color: #9ca3af; }
           .search { background: #1f2937; border-color: #374151; color: #e5e7eb; }
-          thead th { background: #111827; color: #9ca3af; border-color: #374151; } tbody td { border-color: #1f2937; }
+          thead th { background: #111827; color: #9ca3af; border-color: #374151; }
+          .tableWrap { background: #1f2937; border-color: #374151; }
+          tbody td { background: #1f2937; border-color: #111827; }
           tr.alert td { background: #3a2a13; } tr.overdue td { background: #3a1818; } tr.dead td { background: #161616; }
           .card { background: #1f2937; border-color: #374151; }
           .card.alert { background: #3a2a13; border-color: #b45309; } .card.overdue { background: #3a1818; border-color: #b91c1c; }
+          .card.dead { background: #161616; color: #6b7280; }
           .badge.tm { background: #312e81; color: #c7d2fe; } .badge.dsn { background: #064e3b; color: #a7f3d0; }
           .more button { background: #1f2937; border-color: #374151; color: #c7d2fe; }
           .link { color: #a5b4fc; }
