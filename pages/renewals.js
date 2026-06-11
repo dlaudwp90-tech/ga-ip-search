@@ -268,7 +268,7 @@ export default function RenewalsPage({ rows, meta }) {
       )}
 
       <style jsx>{`
-        .wrap { max-width: 1100px; margin: 0 auto; padding: 20px 16px 60px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Apple SD Gothic Neo", sans-serif; color: #1f2937; }
+        .wrap { max-width: 1100px; margin: 0 auto; padding: 20px 16px 60px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Apple SD Gothic Neo", sans-serif; color: #1f2937; color-scheme: light; }
         .head h1 { font-size: 22px; margin: 0 0 6px; font-weight: 700; }
         .meta { font-size: 13px; color: #6b7280; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
         .meta b { color: #111827; } .meta b.hl { color: #d97706; } .sep { color: #d1d5db; }
@@ -336,26 +336,6 @@ export default function RenewalsPage({ rows, meta }) {
         .detail .rd { color: #b91c1c; } .detail .og { color: #c2410c; }
 
         @media (max-width: 768px) { .tableWrap { display: none; } .cards { display: flex; } }
-        @media (prefers-color-scheme: dark) {
-          .wrap { color: #e5e7eb; } .head h1 { color: #f3f4f6; } .meta { color: #9ca3af; } .meta b { color: #f3f4f6; }
-          .seg { border-color: #374151; } .seg button { background: #1f2937; color: #9ca3af; }
-          .search { background: #1f2937; border-color: #374151; color: #e5e7eb; }
-          thead th { background: #111827; color: #9ca3af; border-color: #374151; }
-          .tableWrap { background: #1f2937; border-color: #374151; }
-          tbody td { background: #1f2937; border-color: #111827; }
-          tr.alert td { background: #3a2a13; } tr.overdue td { background: #3a1818; } tr.dead td { background: #161616; }
-          .card { background: #1f2937; border-color: #374151; }
-          .card.alert { background: #3a2a13; border-color: #b45309; } .card.overdue { background: #3a1818; border-color: #b91c1c; }
-          .card.dead { background: #161616; color: #6b7280; }
-          .badge.tm { background: #312e81; color: #c7d2fe; } .badge.dsn { background: #064e3b; color: #a7f3d0; }
-          .more button { background: #1f2937; border-color: #374151; color: #c7d2fe; }
-          .link { color: #a5b4fc; }
-          .sheet { background: #1f2937; box-shadow: 0 -8px 30px rgba(0,0,0,.5); }
-          .sheetHead h2 { color: #f3f4f6; } .sheetGrip { background: #374151; }
-          .detail > div { border-color: #111827; } .detail dt { color: #9ca3af; }
-          .sheetImg img { background: #fff; border-color: #374151; }
-          .drawSlide img { background: #fff; border-color: #374151; }
-        }
       `}</style>
     </div>
   );
