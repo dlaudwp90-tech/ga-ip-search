@@ -1,18 +1,17 @@
 // pages/renewals.js
 // ─────────────────────────────────────────────────────────────────────────────
-// 【연차/갱신 관리 · 전체 포트폴리오 페이지 v2】
+// 【연차/갱신 관리 · 전체 포트폴리오 페이지 v3】
 //
-//  - 김수산 대리인의 등록 상표/디자인을 "한눈에" 보고 연차/갱신 마감을 관리하는 화면.
+//  - 김수산 대리인의 등록 상표/디자인을 한눈에 보고 연차/갱신 마감을 관리하는 화면.
 //  - ★ 데이터는 Redis 캐시(renewals:data)에서만 읽음 → KIPRIS 호출 0회 ★
-//    (캐시는 kipris-daily-sync.js 가 하루 1회 채움. 이 페이지는 새로고침해도 KIPRIS를 안 부름.)
-//  - v2 추가: 썸네일 이미지(이미지 프록시 경유), 많은 건수 대비 '더보기' 페이징.
+//  - v3 추가: 썸네일 크게(130px), 명칭 클릭 시 '바텀시트'로 상세정보(큰 이미지 + 출원/등록/존속/연차 등).
 //
 //  ⚠ 수정 주의: getServerSideProps 의 Redis 읽기(환경변수/키 이름)는 review.js 와 동일하게.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useMemo, useEffect } from "react";
 
-// ── Redis(pipeline) 읽기 — review.js 와 동일 방식 (패키지 불필요) ──
+// ── Redis(pipeline) 읽기 — review.js 와 동일 방식 ──
 async function redisGet(key) {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -38,7 +37,6 @@ export async function getServerSideProps() {
     if (rawMeta) meta = JSON.parse(rawMeta);
   } catch {}
 
-  // 서버 기준 '오늘'로 남은일수/알림여부 미리 계산 (하이드레이션 불일치 방지)
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const ALERT_MONTHS = 9;
   const rows = data.map((x) => {
@@ -54,21 +52,24 @@ export async function getServerSideProps() {
   return { props: { rows, meta } };
 }
 
-// 등록번호 13자리 → 보기 좋게 (예: 4024140350000 → 40-2414035)
-const fmtRegNo = (s) => (!s || s.length < 9) ? (s || "") : `${s.slice(0, 2)}-${s.slice(2, 9)}`;
+// ── 표시 헬퍼 ──
+const fmtRegNo = (s) => (!s || s.length < 9) ? (s || "") : `${s.slice(0, 2)}-${s.slice(2, 9)}`;            // 등록번호 40-2414035
+const fmtAppNo = (s) => (!s || s.length < 7) ? (s || "—") : `${s.slice(0, 2)}-${s.slice(2, 6)}-${s.slice(6)}`; // 출원번호 40-2025-0091177
 const d = (s) => s || "—";
 const fmtSync = (iso) => { if (!iso) return "—"; try { return new Date(iso).toLocaleString("ko-KR", { timeZone: "Asia/Seoul", dateStyle: "medium", timeStyle: "short" }); } catch { return iso; } };
 const dday = (n) => n == null ? "—" : (n === 0 ? "D-DAY" : (n > 0 ? `D-${n}` : `지남 +${Math.abs(n)}일`));
-// 이미지 프록시 URL (http KIPRIS 이미지를 https로 우회)
-const imgUrl = (r) => { const u = r.thumb || r.image; return u ? `/api/kipris-image?u=${encodeURIComponent(u)}` : null; };
+const imgUrl = (u) => u ? `/api/kipris-image?u=${encodeURIComponent(u)}` : null;
+const fmtClass = (r) => { if (!r.classCode) return "—"; return r.type === "상표" ? r.classCode.split("|").join(", ") + "류" : r.classCode; };
 
-const PAGE = 100; // 한 번에 표시할 개수
+const PAGE = 100;
+const THUMB = 130; // 썸네일 한 변 px (이전 44 → 약 3배)
 
 export default function RenewalsPage({ rows, meta }) {
-  const [view, setView] = useState("all");   // all | alert
-  const [type, setType] = useState("전체");   // 전체 | 상표 | 디자인
+  const [view, setView] = useState("all");
+  const [type, setType] = useState("전체");
   const [q, setQ] = useState("");
   const [shown, setShown] = useState(PAGE);
+  const [selected, setSelected] = useState(null); // 바텀시트 대상
 
   const total = rows.length;
   const alertCount = rows.filter((r) => r.alive !== false && r.isAlert).length;
@@ -83,18 +84,17 @@ export default function RenewalsPage({ rows, meta }) {
     return arr;
   }, [rows, view, type, q]);
 
-  useEffect(() => { setShown(PAGE); }, [view, type, q]); // 필터 바뀌면 표시개수 초기화
+  useEffect(() => { setShown(PAGE); }, [view, type, q]);
 
   const visible = list.slice(0, shown);
   const rowTone = (r) => r.alive === false ? "dead" : r.overdue ? "overdue" : r.isAlert ? "alert" : "normal";
 
-  const Thumb = ({ r }) => {
-    const src = imgUrl(r);
-    // styled-jsx는 중첩 컴포넌트에 클래스 스코프가 안 걸려서, 크기는 인라인으로 강제(이미지가 커지는 문제 방지)
-    const box = { width: 44, height: 44, objectFit: "contain", background: "#fff", border: "1px solid #e5e7eb", borderRadius: 6, flex: "0 0 auto", display: "block" };
+  const Thumb = ({ r, size }) => {
+    const src = imgUrl(r.thumb || r.image);
+    const box = { width: size, height: size, objectFit: "contain", background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, flex: "0 0 auto", display: "block" };
     return src
       ? <img src={src} loading="lazy" alt="" style={box} />
-      : <span style={{ ...box, display: "inline-flex", alignItems: "center", justifyContent: "center", color: "#d1d5db", fontSize: 12 }}>—</span>;
+      : <span style={{ ...box, display: "inline-flex", alignItems: "center", justifyContent: "center", color: "#cbd5e1", fontSize: 12 }}>이미지<br/>없음</span>;
   };
 
   return (
@@ -135,9 +135,9 @@ export default function RenewalsPage({ rows, meta }) {
           <tbody>
             {visible.map((r) => (
               <tr key={r.regNo} className={rowTone(r)}>
-                <td><Thumb r={r} /></td>
+                <td><Thumb r={r} size={THUMB} /></td>
                 <td><span className={`badge ${(r.type || "상표") === "디자인" ? "dsn" : "tm"}`}>{r.type || "상표"}</span></td>
-                <td className="title">{r.title || <span className="muted">(명칭없음)</span>}</td>
+                <td className="title"><button className="link" onClick={() => setSelected(r)}>{r.title || "(명칭없음)"}</button></td>
                 <td className="mono">{fmtRegNo(r.regNo)}</td>
                 <td>{d(r.regDate)}</td>
                 <td>{r.detailPending ? <span className="muted">조회중</span> : (r.paymentType || "—")}</td>
@@ -154,9 +154,9 @@ export default function RenewalsPage({ rows, meta }) {
       {/* 모바일: 카드 */}
       <div className="cards">
         {visible.map((r) => (
-          <div key={r.regNo} className={`card ${rowTone(r)}`}>
+          <div key={r.regNo} className={`card ${rowTone(r)}`} onClick={() => setSelected(r)}>
             <div className="cardTop">
-              <Thumb r={r} />
+              <Thumb r={r} size={THUMB} />
               <div className="cardHead">
                 <span className={`badge ${(r.type || "상표") === "디자인" ? "dsn" : "tm"}`}>{r.type || "상표"}</span>
                 <span className="cardTitle">{r.title || "(명칭없음)"}</span>
@@ -176,6 +176,42 @@ export default function RenewalsPage({ rows, meta }) {
         <div className="more"><button onClick={() => setShown((s) => s + PAGE)}>더보기 ({list.length - shown}건 남음)</button></div>
       )}
 
+      {/* ── 바텀시트(상세) ── */}
+      {selected && (
+        <div className="sheetBackdrop" onClick={() => setSelected(null)}>
+          <div className="sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="sheetGrip" />
+            <button className="sheetClose" onClick={() => setSelected(null)}>✕</button>
+
+            <div className="sheetHead">
+              <span className={`badge ${(selected.type || "상표") === "디자인" ? "dsn" : "tm"}`}>{selected.type || "상표"}</span>
+              <h2>{selected.title || "(명칭없음)"}</h2>
+            </div>
+
+            {imgUrl(selected.image || selected.thumb) && (
+              <div className="sheetImg"><img src={imgUrl(selected.image || selected.thumb)} alt="" /></div>
+            )}
+
+            <dl className="detail">
+              <div><dt>등록번호</dt><dd className="mono">{fmtRegNo(selected.regNo)}</dd></div>
+              <div><dt>출원번호</dt><dd className="mono">{fmtAppNo(selected.appNo)}</dd></div>
+              <div><dt>출원일</dt><dd>{d(selected.appDate)}</dd></div>
+              <div><dt>등록일</dt><dd>{d(selected.regDate)}</dd></div>
+              <div><dt>존속기간 만료</dt><dd>{d(selected.expirationDate)}</dd></div>
+              <div><dt>{selected.type === "디자인" ? "물품분류" : "상품류"}</dt><dd>{fmtClass(selected)}</dd></div>
+              <div><dt>권리자</dt><dd>{d(selected.holder)}</dd></div>
+              <div><dt>납부유형</dt><dd>{selected.paymentType || "—"}{selected.maxLastAnnual ? ` (${selected.maxLastAnnual}년차)` : ""}</dd></div>
+              <div><dt>다음 마감</dt><dd>
+                {selected.alive === false
+                  ? <span className="muted">소멸{selected.terminationCause ? ` · ${selected.terminationCause}` : ""}</span>
+                  : <>{selected.nextDeadlineKind || "—"} · {d(selected.nextDeadline)} <b className={selected.overdue ? "rd" : selected.isAlert ? "og" : ""}>{dday(selected.daysLeft)}</b></>}
+              </dd></div>
+              <div><dt>상태</dt><dd>{selected.status || "—"}</dd></div>
+            </dl>
+          </div>
+        </div>
+      )}
+
       <style jsx>{`
         .wrap { max-width: 1100px; margin: 0 auto; padding: 20px 16px 60px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Apple SD Gothic Neo", sans-serif; color: #1f2937; }
         .head h1 { font-size: 22px; margin: 0 0 6px; font-weight: 700; }
@@ -192,14 +228,12 @@ export default function RenewalsPage({ rows, meta }) {
         .badge { display: inline-block; padding: 2px 7px; border-radius: 6px; font-size: 11px; font-weight: 600; }
         .badge.tm { background: #eef2ff; color: #4338ca; } .badge.dsn { background: #ecfdf5; color: #047857; }
 
-        .thumb { width: 44px; height: 44px; object-fit: contain; background: #fff; border: 1px solid #eee; border-radius: 6px; display: inline-block; }
-        .thumb.noimg { display: inline-flex; align-items: center; justify-content: center; color: #d1d5db; font-size: 12px; }
-
         table { width: 100%; border-collapse: collapse; font-size: 13px; }
         thead th { text-align: left; padding: 9px 10px; background: #f9fafb; color: #6b7280; font-weight: 600; border-bottom: 1px solid #e5e7eb; white-space: nowrap; }
         tbody td { padding: 8px 10px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
         td.title { font-weight: 600; } .mono { font-variant-numeric: tabular-nums; font-family: ui-monospace, monospace; }
         td.dday { font-weight: 700; white-space: nowrap; }
+        .link { border: 0; background: none; padding: 0; font: inherit; font-weight: 600; color: #4f46e5; cursor: pointer; text-align: left; text-decoration: underline; text-underline-offset: 2px; }
         .muted { color: #9ca3af; } .empty { text-align: center; color: #9ca3af; padding: 30px; }
 
         tr.alert td { background: #fff7ed; } tr.alert td.dday { color: #c2410c; }
@@ -207,7 +241,7 @@ export default function RenewalsPage({ rows, meta }) {
         tr.dead td { color: #9ca3af; background: #fafafa; }
 
         .cards { display: none; flex-direction: column; gap: 10px; }
-        .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 12px; background: #fff; }
+        .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 12px; background: #fff; cursor: pointer; }
         .card.alert { border-color: #fdba74; background: #fff7ed; }
         .card.overdue { border-color: #fca5a5; background: #fef2f2; }
         .card.dead { opacity: .6; }
@@ -222,18 +256,38 @@ export default function RenewalsPage({ rows, meta }) {
         .more { text-align: center; margin-top: 16px; }
         .more button { padding: 9px 20px; border: 1px solid #e5e7eb; background: #fff; border-radius: 8px; cursor: pointer; font-size: 13px; color: #4f46e5; }
 
+        /* 바텀시트 */
+        .sheetBackdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 1000; display: flex; align-items: flex-end; justify-content: center; }
+        .sheet { position: relative; width: 100%; max-width: 560px; background: #fff; border-radius: 18px 18px 0 0; padding: 16px 20px 28px; max-height: 88vh; overflow-y: auto; animation: slideUp .22s ease; box-shadow: 0 -8px 30px rgba(0,0,0,.2); }
+        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        .sheetGrip { width: 40px; height: 4px; border-radius: 3px; background: #e5e7eb; margin: 2px auto 12px; }
+        .sheetClose { position: absolute; top: 12px; right: 14px; border: 0; background: none; font-size: 18px; color: #9ca3af; cursor: pointer; }
+        .sheetHead { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+        .sheetHead h2 { font-size: 18px; margin: 0; font-weight: 700; }
+        .sheetImg { text-align: center; margin-bottom: 16px; }
+        .sheetImg img { max-width: 240px; max-height: 240px; object-fit: contain; border: 1px solid #eee; border-radius: 10px; background: #fff; padding: 6px; }
+        .detail { margin: 0; }
+        .detail > div { display: flex; padding: 9px 0; border-bottom: 1px solid #f3f4f6; font-size: 14px; }
+        .detail dt { width: 110px; flex: 0 0 110px; color: #6b7280; margin: 0; }
+        .detail dd { margin: 0; flex: 1; font-weight: 500; }
+        .detail .rd { color: #b91c1c; } .detail .og { color: #c2410c; }
+
         @media (max-width: 768px) { .tableWrap { display: none; } .cards { display: flex; } }
         @media (prefers-color-scheme: dark) {
           .wrap { color: #e5e7eb; } .head h1 { color: #f3f4f6; } .meta { color: #9ca3af; } .meta b { color: #f3f4f6; }
           .seg { border-color: #374151; } .seg button { background: #1f2937; color: #9ca3af; }
           .search { background: #1f2937; border-color: #374151; color: #e5e7eb; }
-          .thumb { background: #fff; border-color: #374151; }
           thead th { background: #111827; color: #9ca3af; border-color: #374151; } tbody td { border-color: #1f2937; }
           tr.alert td { background: #3a2a13; } tr.overdue td { background: #3a1818; } tr.dead td { background: #161616; }
           .card { background: #1f2937; border-color: #374151; }
           .card.alert { background: #3a2a13; border-color: #b45309; } .card.overdue { background: #3a1818; border-color: #b91c1c; }
           .badge.tm { background: #312e81; color: #c7d2fe; } .badge.dsn { background: #064e3b; color: #a7f3d0; }
           .more button { background: #1f2937; border-color: #374151; color: #c7d2fe; }
+          .link { color: #a5b4fc; }
+          .sheet { background: #1f2937; box-shadow: 0 -8px 30px rgba(0,0,0,.5); }
+          .sheetHead h2 { color: #f3f4f6; } .sheetGrip { background: #374151; }
+          .detail > div { border-color: #111827; } .detail dt { color: #9ca3af; }
+          .sheetImg img { background: #fff; border-color: #374151; }
         }
       `}</style>
     </div>
