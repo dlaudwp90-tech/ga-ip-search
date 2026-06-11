@@ -70,6 +70,8 @@ export default function RenewalsPage({ rows, meta }) {
   const [q, setQ] = useState("");
   const [shown, setShown] = useState(PAGE);
   const [selected, setSelected] = useState(null); // 바텀시트 대상
+  const [drawings, setDrawings] = useState([]);   // 디자인 육면도(여러 도면) 목록
+  const [drLoading, setDrLoading] = useState(false); // 도면 불러오는 중 표시용
 
   const total = rows.length;
   const alertCount = rows.filter((r) => r.alive !== false && r.isAlert).length;
@@ -85,6 +87,21 @@ export default function RenewalsPage({ rows, meta }) {
   }, [rows, view, type, q]);
 
   useEffect(() => { setShown(PAGE); }, [view, type, q]);
+
+  // 바텀시트가 '디자인'으로 열릴 때만 육면도(여러 도면)를 1회 조회한다.
+  //  - 결과는 서버(/api/kipris-design-images)에서 Redis 캐시 → 같은 디자인 재방문 시 KIPRIS 호출 0회
+  //  - 상표는 도면이 1장뿐이라 호출하지 않는다.
+  useEffect(() => {
+    setDrawings([]); // 다른 항목 열릴 때 이전 도면 초기화
+    if (selected && selected.type === "디자인" && selected.appNo) {
+      setDrLoading(true);
+      fetch(`/api/kipris-design-images?app=${encodeURIComponent(selected.appNo)}`)
+        .then((r) => r.json())
+        .then((d) => setDrawings(Array.isArray(d.images) ? d.images : []))
+        .catch(() => {})
+        .finally(() => setDrLoading(false));
+    }
+  }, [selected]);
 
   const visible = list.slice(0, shown);
   const rowTone = (r) => r.alive === false ? "dead" : r.overdue ? "overdue" : r.isAlert ? "alert" : "normal";
@@ -188,8 +205,26 @@ export default function RenewalsPage({ rows, meta }) {
               <h2>{selected.title || "(명칭없음)"}</h2>
             </div>
 
-            {imgUrl(selected.image || selected.thumb) && (
-              <div className="sheetImg"><img src={imgUrl(selected.image || selected.thumb)} alt="" /></div>
+            {/* 디자인이고 육면도가 있으면 → 가로 스크롤 캐러셀(옆으로 넘겨보기), 그 외(상표/폴백) → 큰 단일 이미지 */}
+            {selected.type === "디자인" && drawings.length > 0 ? (
+              <>
+                <div className="drawings">
+                  {drawings.map((g, i) => (
+                    <div className="drawSlide" key={i}>
+                      <img src={imgUrl(g.large || g.small)} alt={g.name || ""} loading="lazy" />
+                      {g.name ? <span className="drawName">{g.name}</span> : null}
+                    </div>
+                  ))}
+                </div>
+                {drawings.length > 1 && <div className="drawHint">← 좌우로 넘겨보기 ({drawings.length}장) →</div>}
+              </>
+            ) : imgUrl(selected.image || selected.thumb) ? (
+              <div className="sheetImg">
+                <img src={imgUrl(selected.image || selected.thumb)} alt="" />
+                {selected.type === "디자인" && drLoading && <div className="drawHint">도면 불러오는 중…</div>}
+              </div>
+            ) : (
+              selected.type === "디자인" && drLoading ? <div className="drawHint">도면 불러오는 중…</div> : null
             )}
 
             <dl className="detail">
@@ -258,14 +293,20 @@ export default function RenewalsPage({ rows, meta }) {
 
         /* 바텀시트 */
         .sheetBackdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 1000; display: flex; align-items: flex-end; justify-content: center; }
-        .sheet { position: relative; width: 100%; max-width: 560px; background: #fff; border-radius: 18px 18px 0 0; padding: 16px 20px 28px; max-height: 88vh; overflow-y: auto; animation: slideUp .22s ease; box-shadow: 0 -8px 30px rgba(0,0,0,.2); }
+        .sheet { position: relative; width: 100%; max-width: 640px; background: #fff; border-radius: 18px 18px 0 0; padding: 16px 20px 28px; max-height: 90vh; overflow-y: auto; animation: slideUp .22s ease; box-shadow: 0 -8px 30px rgba(0,0,0,.2); }
         @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
         .sheetGrip { width: 40px; height: 4px; border-radius: 3px; background: #e5e7eb; margin: 2px auto 12px; }
         .sheetClose { position: absolute; top: 12px; right: 14px; border: 0; background: none; font-size: 18px; color: #9ca3af; cursor: pointer; }
         .sheetHead { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
         .sheetHead h2 { font-size: 18px; margin: 0; font-weight: 700; }
-        .sheetImg { text-align: center; margin-bottom: 16px; }
-        .sheetImg img { max-width: 240px; max-height: 240px; object-fit: contain; border: 1px solid #eee; border-radius: 10px; background: #fff; padding: 6px; }
+        .sheetImg { margin-bottom: 16px; }
+        .sheetImg img { width: 100%; max-height: 62vh; object-fit: contain; border: 1px solid #eee; border-radius: 10px; background: #fff; padding: 8px; box-sizing: border-box; }
+        /* 디자인 육면도 가로 스크롤 캐러셀 — 한 장이 시트 폭을 꽉 채우고 옆으로 스와이프 */
+        .drawings { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; padding-bottom: 6px; margin-bottom: 4px; }
+        .drawSlide { flex: 0 0 100%; scroll-snap-align: center; text-align: center; }
+        .drawSlide img { width: 100%; max-height: 62vh; object-fit: contain; border: 1px solid #eee; border-radius: 10px; background: #fff; padding: 8px; box-sizing: border-box; }
+        .drawName { display: block; font-size: 12px; color: #6b7280; margin-top: 4px; }
+        .drawHint { text-align: center; font-size: 12px; color: #9ca3af; margin: 4px 0 14px; }
         .detail { margin: 0; }
         .detail > div { display: flex; padding: 9px 0; border-bottom: 1px solid #f3f4f6; font-size: 14px; }
         .detail dt { width: 110px; flex: 0 0 110px; color: #6b7280; margin: 0; }
@@ -288,6 +329,7 @@ export default function RenewalsPage({ rows, meta }) {
           .sheetHead h2 { color: #f3f4f6; } .sheetGrip { background: #374151; }
           .detail > div { border-color: #111827; } .detail dt { color: #9ca3af; }
           .sheetImg img { background: #fff; border-color: #374151; }
+          .drawSlide img { background: #fff; border-color: #374151; }
         }
       `}</style>
     </div>
