@@ -84,6 +84,9 @@ export default async function handler(req, res) {
         title: one(b, "Title"),
         regNo: one(b, "RegistrationNumber"),
         regDate: one(b, "RegistrationDate"),
+        appNo: one(b, "ApplicationNumber"),
+        appDate: one(b, "ApplicationDate"),
+        classCode: one(b, "GoodClassificationCode"),
         status: one(b, "ApplicationStatus"),
         holder: one(b, "RegistrationRightholderName"),
         image: one(b, "ImagePath"),
@@ -109,6 +112,9 @@ export default async function handler(req, res) {
         title:  one(b, "articleName"),          // 디자인 물품명
         regNo:  one(b, "registrationNumber"),
         regDate:one(b, "registrationDate"),
+        appNo:  one(b, "applicationNumber"),
+        appDate:one(b, "applicationDate"),
+        classCode: one(b, "designMainClassification"),
         status: one(b, "applicationStatus"),
         holder: one(b, "applicantName"),        // 디자인 응답엔 출원인명만 있음
         image:  one(b, "imagePathLarge") || one(b, "imagePath"),  // 큰 이미지(없으면 작은 것)
@@ -185,6 +191,7 @@ export default async function handler(req, res) {
         detailMap.set(m.regNo, {
           regNo: m.regNo, type: m.type, title: m.title || "", status: m.status,
           holder: m.holder || "", image: m.image || "", thumb: m.thumb || "",
+          appNo: m.appNo || "", appDate: iso(toDate(m.appDate)), classCode: m.classCode || "",
           regDate: iso(regD), expirationDate: iso(expD),
           maxLastAnnual: maxLast, paymentType, nextDeadlineKind: nextKind, nextDeadline: iso(nextD),
           alive: !termDate, terminationCause: termCause || null, terminationDate: termDate ? iso(toDate(termDate)) : null,
@@ -197,7 +204,7 @@ export default async function handler(req, res) {
 
     // ── 4) 최종 데이터 구성 (현재 목록 기준 + 자주 변하는 필드는 목록값으로 갱신) ──
     const finalData = registered.map(m => {
-      const volatile = { title: m.title || "", status: m.status, holder: m.holder || "", image: m.image || "", thumb: m.thumb || "" };
+      const volatile = { title: m.title || "", status: m.status, holder: m.holder || "", image: m.image || "", thumb: m.thumb || "", appNo: m.appNo || "", appDate: iso(toDate(m.appDate)), classCode: m.classCode || "" };
       if (detailMap.has(m.regNo)) return detailMap.get(m.regNo);
       const old = prevMap.get(m.regNo);
       if (old && !old.detailPending) return { ...old, ...volatile }; // 상세는 유지, 변동필드만 최신화
