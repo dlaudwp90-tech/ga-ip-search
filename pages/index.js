@@ -378,7 +378,7 @@ export default function Home() {
     resultsRef.current = results;
   }, [results]);
 
-  // ── 노션 데이터 실시간 폴링 (30초) — recent 모드일 때만 ──
+  // ── 노션 데이터 실시간 폴링 (10초) — recent 모드일 때만 ──
   useEffect(() => {
     if (!isRecent) return; // 검색 결과 화면에서는 폴링 안 함
 
