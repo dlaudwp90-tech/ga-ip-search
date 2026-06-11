@@ -90,9 +90,11 @@ export default function RenewalsPage({ rows, meta }) {
 
   const Thumb = ({ r }) => {
     const src = imgUrl(r);
+    // styled-jsx는 중첩 컴포넌트에 클래스 스코프가 안 걸려서, 크기는 인라인으로 강제(이미지가 커지는 문제 방지)
+    const box = { width: 44, height: 44, objectFit: "contain", background: "#fff", border: "1px solid #e5e7eb", borderRadius: 6, flex: "0 0 auto", display: "block" };
     return src
-      ? <img className="thumb" src={src} loading="lazy" alt="" />
-      : <span className="thumb noimg">—</span>;
+      ? <img src={src} loading="lazy" alt="" style={box} />
+      : <span style={{ ...box, display: "inline-flex", alignItems: "center", justifyContent: "center", color: "#d1d5db", fontSize: 12 }}>—</span>;
   };
 
   return (
