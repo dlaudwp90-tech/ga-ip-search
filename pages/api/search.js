@@ -92,7 +92,7 @@ export default async function handler(req, res) {
   };
 
   try {
-    // 최근 수정 5개 조회 모드
+    // 최근 수정 20개 조회 모드
     if (mode === "recent") {
       const response = await fetch(
         `https://api.notion.com/v1/databases/${DB_ID}/query`,
