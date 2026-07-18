@@ -92,26 +92,40 @@ export default async function handler(req, res) {
   };
 
   try {
-    // 최근 수정 20개 조회 모드
+    // 최근 수정 목록 모드 (limit 만큼, '더보기' 지원)
+    //   · limit(기본 25)만큼 최근 편집순으로 반환. Notion은 한 번에 최대 100개라
+    //     limit 이 100을 넘으면 커서로 이어서 모읍니다.
+    //   · hasMore: limit 을 넘어 더 있는지 여부 → 화면의 '더보기' 버튼 표시에 사용.
     if (mode === "recent") {
-      const response = await fetch(
-        `https://api.notion.com/v1/databases/${DB_ID}/query`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${NOTION_KEY}`,
-            "Notion-Version": "2022-06-28",
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            sorts: [{ timestamp: "last_edited_time", direction: "descending" }],
-            page_size: 20,
-          }),
-        }
-      );
-      const data = await response.json();
-      if (!response.ok) return res.status(response.status).json({ error: data.message });
-      return res.status(200).json({ results: (data.results || []).map(parseRow) });
+      const rawLimit = parseInt(req.body.limit, 10);
+      const limit = Math.min(Math.max(Number.isFinite(rawLimit) ? rawLimit : 25, 1), 500);
+      const sorts = [{ timestamp: "last_edited_time", direction: "descending" }];
+      let all = [];
+      let cursor = undefined;
+      let hasMore = false;
+      while (all.length < limit) {
+        const pageSize = Math.min(100, limit - all.length);
+        const body = { sorts, page_size: pageSize, ...(cursor ? { start_cursor: cursor } : {}) };
+        const response = await fetch(
+          `https://api.notion.com/v1/databases/${DB_ID}/query`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${NOTION_KEY}`,
+              "Notion-Version": "2022-06-28",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(body),
+          }
+        );
+        const data = await response.json();
+        if (!response.ok) return res.status(response.status).json({ error: data.message });
+        all = all.concat((data.results || []).map(parseRow));
+        hasMore = !!data.has_more;
+        cursor = data.next_cursor;
+        if (!data.has_more) break;
+      }
+      return res.status(200).json({ results: all.slice(0, limit), hasMore });
     }
 
     // 일반 검색 모드
