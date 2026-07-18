@@ -14,7 +14,7 @@
 
 import React from "react";
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useClerk, useUser } from "@clerk/nextjs";
+import { createBrowserClient } from "@supabase/ssr";
 import Head from "next/head";
 import { useRouter } from "next/router";
 // framer-motion: 카드 재정렬(위치 이동) 애니메이션 라이브러리. ⚠ package.json 의존성 필요
@@ -290,6 +290,12 @@ function CardUploadPanel({ pageId, fileLinks, dark, onChange, onClose }) {
     </div>
   );
 }
+// ── Supabase 브라우저 클라이언트 (로그인 세션·현재 사용자 조회) ──
+const supabase = createBrowserClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+);
+
 export default function AllPage() {
   const router = useRouter();
   const [dark, setDark] = useState(() => {
@@ -338,8 +344,15 @@ export default function AllPage() {
   const filePopupRef  = useRef(null);
   const bottomRef     = useRef(null);
 
-  const { signOut } = useClerk();
-  const { user } = useUser();
+  // ── 로그인 사용자 이메일 (Clerk → Supabase 전환) ──
+  const [email, setEmail] = useState("");
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setEmail(data?.user?.email || ""));
+  }, []);
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    window.location.href = "/login";
+  };
   const [nickname, setNickname] = useState(null);
   const [commentPanels, setCommentPanels] = useState({});
 
@@ -389,22 +402,22 @@ export default function AllPage() {
   }, []);
 
   useEffect(() => {
-    if (!user?.primaryEmailAddress?.emailAddress) return;
+    if (!email) return;
     fetch("/api/nickname", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: user.primaryEmailAddress.emailAddress }),
+      body: JSON.stringify({ email: email }),
     }).then(r => r.json()).then(d => { setNickname(d.nickname || null); setNickInput(d.nickname || ""); });
-  }, [user]);
+  }, [email]);
 
   // ── 개인 설정 (dark / tabView) 로드·저장 ──
   const [prefsLoaded, setPrefsLoaded] = useState(false);
   useEffect(() => {
-    if (!user?.primaryEmailAddress?.emailAddress) return;
+    if (!email) return;
     fetch("/api/preferences", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: user.primaryEmailAddress.emailAddress }),
+      body: JSON.stringify({ email: email }),
     })
       .then(r => r.json())
       .then(d => {
@@ -415,38 +428,38 @@ export default function AllPage() {
       })
       .catch(() => {})
       .finally(() => setPrefsLoaded(true));
-  }, [user]);
+  }, [email]);
 
   useEffect(() => {
     if (!prefsLoaded) return;
-    if (!user?.primaryEmailAddress?.emailAddress) return;
+    if (!email) return;
     fetch("/api/preferences", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        email: user.primaryEmailAddress.emailAddress,
+        email: email,
         prefs: { dark, tabView },
       }),
     }).catch(() => {});
-  }, [dark, tabView, prefsLoaded, user]);
+  }, [dark, tabView, prefsLoaded, email]);
 
   const loadNotifications = async () => {
-    if (!user?.primaryEmailAddress?.emailAddress) return;
+    if (!email) return;
     const r = await fetch("/api/notifications", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "get", email: user.primaryEmailAddress.emailAddress }),
+      body: JSON.stringify({ action: "get", email: email }),
     });
     const d = await r.json();
     setNotifList(d.notifications || []);
     setLastRead(Number(d.lastRead) || 0);
   };
-  useEffect(() => { loadNotifications(); }, [user]);
+  useEffect(() => { loadNotifications(); }, [email]);
 
   const markNotifRead = async () => {
-    if (!user?.primaryEmailAddress?.emailAddress) return;
+    if (!email) return;
     await fetch("/api/notifications", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "markRead", email: user.primaryEmailAddress.emailAddress }),
+      body: JSON.stringify({ action: "markRead", email: email }),
     });
     setLastRead(Date.now());
   };
@@ -456,7 +469,7 @@ export default function AllPage() {
     setNickSaving(true);
     await fetch("/api/nickname", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: user.primaryEmailAddress.emailAddress, nickname: nickInput.trim() }),
+      body: JSON.stringify({ email: email, nickname: nickInput.trim() }),
     });
     setNickname(nickInput.trim());
     setNickEditing(false);
@@ -1175,10 +1188,10 @@ export default function AllPage() {
             borderRadius:10, boxShadow:"0 8px 24px rgba(19,39,79,0.18)",
             padding:6, minWidth:200, maxWidth:260, display:"flex", flexDirection:"column", gap:4 }}
             onMouseDown={e=>e.stopPropagation()}>
-            {user?.primaryEmailAddress?.emailAddress && (
+            {email && (
               <div style={{ fontSize:11, color:dark?"#94a3b8":"#6b7280", padding:"6px 10px 4px",
                 borderBottom:dark?"1px solid #334155":"1px solid #e5e9f5", marginBottom:2, wordBreak:"break-all" }}>
-                {user.primaryEmailAddress.emailAddress}
+                {email}
               </div>
             )}
             {nickEditing ? (
@@ -1257,7 +1270,7 @@ export default function AllPage() {
               </div>
             </div>
 
-            <button onClick={() => { setUserPopup(false); signOut({ redirectUrl: "/login" }); }}
+            <button onClick={() => { setUserPopup(false); handleSignOut(); }}
               style={{ fontSize:12, fontWeight:700, padding:"8px 14px", borderRadius:7, textAlign:"center",
                 background:dark?"#450a0a":"#fff1f2", color:dark?"#f87171":"#dc2626",
                 border:"none", cursor:"pointer", fontFamily:"inherit" }}>🚪 로그아웃</button>
@@ -1762,7 +1775,7 @@ export default function AllPage() {
                                           <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280",fontWeight:600}}>[{c.nickname}] {c.createdAt}</span>
                                           {c.edited&&<span style={{fontSize:10,color:"#9ca3af"}}>[수정됨] {c.editedAt}</span>}
                                         </div>
-                                        {(c.nickname===nickname||user?.primaryEmailAddress?.emailAddress==="dlaudwp90@gmail.com")&&(
+                                        {(c.nickname===nickname||email==="dlaudwp90@gmail.com")&&(
                                           <div style={{display:"flex",gap:3}}>
                                             <button onClick={()=>setCommentPanels(prev=>({...prev,[row.pageId]:{...prev[row.pageId],editingId:c.id,editInput:c.content}}))}
                                               style={{fontSize:9,fontWeight:700,background:dark?"#14532d":"#f0fdf4",color:dark?"#86efac":"#166534",
@@ -1991,7 +2004,7 @@ export default function AllPage() {
                                           <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280",fontWeight:600}}>[{c.nickname}] {c.createdAt}</span>
                                           {c.edited&&<span style={{fontSize:10,color:dark?"#6b7280":"#9ca3af"}}>[수정됨] {c.editedAt}</span>}
                                         </div>
-                                        {(c.nickname===nickname||user?.primaryEmailAddress?.emailAddress==="dlaudwp90@gmail.com")&&(
+                                        {(c.nickname===nickname||email==="dlaudwp90@gmail.com")&&(
                                           <div style={{display:"flex",gap:3}}>
                                             <button type="button"
                                               onClick={e=>{e.stopPropagation();setCommentPanels(prev=>({...prev,[row.pageId]:{...prev[row.pageId],editingId:prev[row.pageId]?.editingId===c.id?null:c.id,editInput:c.content}}));}}
