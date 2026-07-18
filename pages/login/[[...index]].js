@@ -10,6 +10,7 @@
 
 import { useState } from "react";
 import Head from "next/head";
+import Link from "next/link";
 import { createBrowserClient } from "@supabase/ssr";
 
 const supabase = createBrowserClient(
@@ -30,7 +31,14 @@ export default function Login() {
     const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
     setLoading(false);
     if (error) {
-      setError("로그인 실패: 이메일 또는 비밀번호를 확인하세요.");
+      const m = error.message || "";
+      if (/not confirmed/i.test(m)) {
+        setError("이메일 인증이 완료되지 않은 계정입니다. (관리자: Supabase에서 Auto Confirm으로 다시 생성하거나 인증 메일 확인)");
+      } else if (/invalid login credentials/i.test(m)) {
+        setError("이메일 또는 비밀번호가 올바르지 않습니다.");
+      } else {
+        setError("로그인 실패: " + m);
+      }
       return;
     }
     // 성공 → 세션 쿠키 저장됨. 전체 새로고침으로 메인 진입(미들웨어가 세션 인식)
@@ -90,6 +98,10 @@ export default function Login() {
           <button type="button" className="login-btn" onClick={handleLogin} disabled={loading}>
             {loading ? "로그인 중…" : "로그인"}
           </button>
+
+          <div className="signup-link">
+            계정이 없나요? <Link href="/signup">회원가입</Link>
+          </div>
         </div>
       </div>
 
@@ -153,6 +165,8 @@ export default function Login() {
         }
         .login-btn:hover { opacity: 0.92; }
         .login-btn:disabled { opacity: 0.6; cursor: default; }
+        .signup-link { margin-top: 16px; font-size: 13px; color: #6b7280; text-align: center; }
+        .signup-link :global(a) { color: #13274F; font-weight: 600; text-decoration: none; }
 
         @media (max-width: 400px) {
           .logo-main { font-size: 28px; }
