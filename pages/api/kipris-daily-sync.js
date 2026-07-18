@@ -3,7 +3,7 @@
 // 【연차/갱신 관리 - 동기화 함수 v2】  ⚠ 수정 주의: 데이터 적재 로직입니다.
 //
 //  하는 일: 김수산 대리인의 '등록 상표 + 등록 디자인'을 KIPRIS에서 가져와
-//           각 권리의 연차/갱신 마감을 계산해 Redis(renewals:data)에 캐시합니다.
+//           각 권리의 연차/갱신 마감을 계산해 Supabase(app_cache)에 캐시합니다.
 //           대시보드(renewals.js)는 이 캐시만 읽습니다(KIPRIS 0회).
 //
 //  ★ KIPRIS 호출 최소화 ★
@@ -13,7 +13,7 @@
 //   - 자주 변하는 정보(대리인·권리자·상태·명칭·이미지)는 매일 목록값으로 덮어써 항상 최신 유지.
 //   - 안 변하는 정보(등록일·분할/일시)는 캐시.
 //
-//  필요한 환경변수: KIPRIS_ACCESS_KEY / UPSTASH_REDIS_REST_URL / _TOKEN /
+//  필요한 환경변수: KIPRIS_ACCESS_KEY / SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY /
 //                  KIPRIS_SYNC_SECRET(기본 ga-sync-2026) / KIPRIS_AGENT_CODE(기본 920210007229)
 //
 //  ▶ 백필/운영:
@@ -25,14 +25,19 @@
 
 export const config = { maxDuration: 60 };
 
-async function redisPipeline(url, token, commands) {
-  const res = await fetch(`${url}/pipeline`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify(commands),
-  });
-  if (!res.ok) throw new Error(`Upstash ${res.status}: ${await res.text()}`);
-  return res.json();
+// ── Supabase app_cache 헬퍼 (연차 캐시 저장/조회) ──
+const SB_URL = (process.env.SUPABASE_URL || "").trim().replace(/\/+$/, "").replace(/\/rest\/v1$/, "");
+const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+async function sb(pathq, { method = "GET", body, prefer } = {}) {
+  const headers = { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json" };
+  if (prefer) headers.Prefer = prefer;
+  const r = await fetch(`${SB_URL}/rest/v1/${pathq}`, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  if (!r.ok) throw new Error(`Supabase ${r.status}: ${await r.text()}`);
+  const t = await r.text(); return t ? JSON.parse(t) : null;
+}
+async function cacheGet(key) {
+  const r = await sb(`app_cache?key=eq.${encodeURIComponent(key)}&select=value`);
+  return r && r[0] ? r[0].value : null;   // jsonb → 이미 배열/객체
 }
 
 export default async function handler(req, res) {
@@ -42,10 +47,8 @@ export default async function handler(req, res) {
   if (given !== SYNC_SECRET) return res.status(401).json({ error: "Unauthorized" });
 
   const ACCESS_KEY = process.env.KIPRIS_ACCESS_KEY;
-  const R_URL = process.env.UPSTASH_REDIS_REST_URL;
-  const R_TOK = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!ACCESS_KEY) return res.status(500).json({ error: "KIPRIS_ACCESS_KEY 미설정" });
-  if (!R_URL || !R_TOK) return res.status(500).json({ error: "UPSTASH_REDIS_REST_URL/TOKEN 미설정" });
+  if (!SB_URL || !SB_KEY) return res.status(500).json({ error: "SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY 미설정" });
 
   const AGENT = process.env.KIPRIS_AGENT_CODE || "920210007229";
   const KEY = encodeURIComponent(ACCESS_KEY);
@@ -70,7 +73,7 @@ export default async function handler(req, res) {
   try {
     // ── 0) 기존 캐시 ──
     let prev = [];
-    try { const r = await redisPipeline(R_URL, R_TOK, [["GET", "renewals:data"]]); const raw = r?.[0]?.result; if (raw) prev = JSON.parse(raw); } catch { prev = []; }
+    try { const v = await cacheGet("renewals_data"); if (Array.isArray(v)) prev = v; } catch { prev = []; }
     const prevMap = new Map(prev.map(x => [x.regNo, x]));
 
     // ── 1) 상표 목록 (이미지·권리자 포함) ──
@@ -220,10 +223,14 @@ export default async function handler(req, res) {
       designRegistered: registered.filter(x => x.type === "디자인").length,
       withDetail, remaining, designListError,
     };
-    await redisPipeline(R_URL, R_TOK, [
-      ["SET", "renewals:data", JSON.stringify(finalData)],
-      ["SET", "renewals:meta", JSON.stringify(meta)],
-    ]);
+    await sb("app_cache?on_conflict=key", {
+      method: "POST",
+      body: [
+        { key: "renewals_data", value: finalData, updated_at: new Date().toISOString() },
+        { key: "renewals_meta", value: meta,      updated_at: new Date().toISOString() },
+      ],
+      prefer: "resolution=merge-duplicates,return=minimal",
+    });
 
     return res.status(200).json({
       ok: true, ...meta, processedThisRun: processed, done: remaining === 0,
