@@ -20,7 +20,8 @@ export const config = { maxDuration: 60 };
 
 const R_URL  = process.env.UPSTASH_REDIS_REST_URL;
 const R_TOK  = process.env.UPSTASH_REDIS_REST_TOKEN;
-const SB_URL = process.env.SUPABASE_URL;
+// SUPABASE_URL 값에 끝슬래시·/rest/v1·공백이 섞여 들어와도 자동 정리 (PGRST125 방지)
+const SB_URL = (process.env.SUPABASE_URL || "").trim().replace(/\/+$/, "").replace(/\/rest\/v1$/, "");
 const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 // Redis 파이프라인 호출
@@ -47,6 +48,17 @@ async function sb(path, { method = "GET", body, prefer } = {}) {
 export default async function handler(req, res) {
   const SECRET = process.env.KIPRIS_SYNC_SECRET || "ga-sync-2026";
   if ((req.query.secret || "") !== SECRET) return res.status(401).json({ error: "Unauthorized" });
+
+  // ?check=1 : 실제로 접속할 주소가 올바른지 먼저 확인 (키는 노출 안 함)
+  if (req.query.check === "1") {
+    return res.status(200).json({
+      supabaseUrl: SB_URL || null,                 // 여기가 https://xxxx.supabase.co (끝 슬래시/rest·v1 없이) 여야 정상
+      willCallExample: `${SB_URL}/rest/v1/profiles`,
+      supabaseKeySet: !!SB_KEY,                     // secret 키가 들어왔는지(true/false만)
+      redisSet: !!(R_URL && R_TOK),
+    });
+  }
+
   if (!R_URL || !R_TOK) return res.status(500).json({ error: "Redis 환경변수 미설정" });
   if (!SB_URL || !SB_KEY) return res.status(500).json({ error: "Supabase 환경변수 미설정 (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY)" });
 
