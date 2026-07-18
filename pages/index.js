@@ -305,6 +305,9 @@ export default function Home() {
   const [loadError,    setLoadError]    = useState(false); // 노션 초기 로딩 실패 여부 (빈 화면 방지용)
   const [error,        setError]        = useState(null);
   const [searched,     setSearched]     = useState(false);
+  const [visibleCount, setVisibleCount] = useState(25);    // 최근목록 표시 개수 (더보기로 +25)
+  const [hasMoreRecent,setHasMoreRecent]= useState(false); // 더 불러올 게 있는지
+  const [loadingMore,  setLoadingMore]  = useState(false); // 더보기 로딩중
   const [dark, setDark] = useState(() => {
     if (typeof window === "undefined") return false;
     return window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -397,6 +400,10 @@ export default function Home() {
     resultsRef.current = results;
   }, [results]);
 
+  // ── visibleCountRef: 폴링 클로저에서 최신 표시개수 참조 ──
+  const visibleCountRef = useRef(25);
+  useEffect(() => { visibleCountRef.current = visibleCount; }, [visibleCount]);
+
   // ── 노션 데이터 실시간 폴링 (10초) — recent 모드일 때만 ──
   useEffect(() => {
     if (!isRecent) return; // 검색 결과 화면에서는 폴링 안 함
@@ -409,11 +416,12 @@ export default function Home() {
         const res = await fetch("/api/search", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ mode: "recent" }),
+          body: JSON.stringify({ mode: "recent", limit: visibleCountRef.current }),
         });
         if (!res.ok) return;
         const data = await res.json();
         const polled = data.results || [];
+        setHasMoreRecent(!!data.hasMore);
         if (!polled.length) return;
 
         const current = resultsRef.current;
@@ -627,11 +635,11 @@ export default function Home() {
     try {
       const res  = await fetch("/api/search", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "recent" }),
+        body: JSON.stringify({ mode: "recent", limit: visibleCountRef.current }),
       });
       const data = await res.json();
       if (res.ok) {
-        setResults(data.results); setIsRecent(true); setLoadError(false);
+        setResults(data.results); setIsRecent(true); setLoadError(false); setHasMoreRecent(!!data.hasMore);
         setTimeout(() => setTableVisible(true), 50);
         setLoading(false);
         return;
@@ -786,9 +794,26 @@ export default function Home() {
     }
   };
 
+  // ── 더보기: 표시개수 +25 후 그만큼 다시 불러옴 ──
+  const loadMore = async () => {
+    const next = visibleCount + 25;
+    setLoadingMore(true);
+    setVisibleCount(next);
+    visibleCountRef.current = next;
+    try {
+      const res = await fetch("/api/search", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "recent", limit: next }),
+      });
+      const data = await res.json();
+      if (res.ok) { setResults(data.results); setHasMoreRecent(!!data.hasMore); }
+    } catch {}
+    finally { setLoadingMore(false); }
+  };
+
   const handleClear   = () => {
     setQuery(""); setSearched(false); setResults(null); setError(null); setFilePopup(null);
-    setTableVisible(false); setIsRecent(false); fetchRecent();
+    setTableVisible(false); setIsRecent(false); setVisibleCount(25); visibleCountRef.current = 25; fetchRecent();
     inputRef.current?.focus();
   };
   const handleTitleClick = (e, url) => { e.stopPropagation(); setFilePopup(null); setPopup({ url }); };
@@ -1179,7 +1204,7 @@ export default function Home() {
                   {isRecent ? (
                     <div className="count-left-stack">
                       <p className="count" style={{marginBottom:0}}>
-                        🕐 최근 수정된 문서 20건&nbsp;
+                        🕐 최근 수정된 문서 {results.length}건&nbsp;
                         <span className="recent-hint">(여기에 없는 문서는 검색창을 이용해주세요)</span>
                       </p>
                     </div>
@@ -1789,6 +1814,13 @@ export default function Home() {
               )}
 
 
+                {isRecent && hasMoreRecent && (
+                  <div className="loadmore-wrap">
+                    <button className="loadmore-btn" onClick={loadMore} disabled={loadingMore}>
+                      {loadingMore ? "불러오는 중…" : "▾ 더보기 (25개씩)"}
+                    </button>
+                  </div>
+                )}
                 <div className="notion-db-wrap">
                   <button className="notion-db-btn"
                     onClick={()=>window.open("https://www.notion.so/328c05f9ee4c80e8bd4dec05e76bf10a","_blank")}>
@@ -1889,6 +1921,17 @@ export default function Home() {
         @keyframes spin { to{transform:rotate(360deg)} }
         .fade-wrap { opacity:0; transform:translateY(8px); transition:opacity .3s ease,transform .3s ease; }
         .fade-wrap.visible { opacity:1; transform:translateY(0); }
+        /* 더보기 버튼 */
+        .loadmore-wrap { display:flex; justify-content:center; margin:18px 0 6px; }
+        .loadmore-btn {
+          font-family:inherit; font-size:14px; font-weight:700; cursor:pointer;
+          color:#13274F; background:#eef2ff; border:1.5px solid #c7d2fe;
+          border-radius:999px; padding:10px 28px; transition:background .15s;
+        }
+        .loadmore-btn:hover { background:#e0e7ff; }
+        .loadmore-btn:disabled { opacity:.6; cursor:default; }
+        .dark .loadmore-btn { color:#c7d2fe; background:#1e293b; border-color:#475569; }
+        .dark .loadmore-btn:hover { background:#334155; }
       `}</style>
 
       <style jsx>{`
