@@ -1,30 +1,26 @@
 // middleware.js
 // ─────────────────────────────────────────────────────────────────────────────
-// 【접근 보호 — Supabase 버전】  ⚠ 수정 주의: 로그인 안 한 사용자를 막는 관문입니다.
-//  - Clerk 미들웨어를 Supabase 세션 확인으로 교체.
-//  - 하는 일: ① 매 요청마다 Supabase 로그인 세션(쿠키)을 새로고침,
-//            ② 로그인 안 했으면 /login 으로 돌려보냄(공개 경로·봇 제외).
-//  - 앱 전체(페이지+API)를 이 한 곳에서 보호합니다. (기존 Clerk와 동일한 구조)
+// 【접근 보호 + 승인 관문 — Supabase】  ⚠ 수정 주의: 로그인·승인 안 된 사용자를 막습니다.
+//  흐름:
+//   ① 로그인 안 함        → /login 으로
+//   ② 로그인 O, 승인 대기 → /pending 으로 (앱 진입 불가)
+//   ③ 로그인 O, 승인 완료 → 정상 이용
+//   · 관리자(ADMIN_EMAIL)는 승인 여부와 무관하게 항상 허용(자기 자신 잠김 방지).
+//  승인 여부: Supabase 계정의 app_metadata.approved === true (서버에서만 설정 가능)
 //
-//  필요한 환경변수(공개용): NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY
+//  공개 경로(로그인 없이): /login, /signup, /og-image.png, /favicon.ico
+//  필요한 환경변수: NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse } from "next/server";
 
-// 로그인 없이 접근 허용할 경로
-function isPublic(pathname) {
-  return (
-    pathname.startsWith("/login") ||
-    pathname === "/og-image.png" ||
-    pathname === "/favicon.ico"
-  );
-}
+const ADMIN_EMAIL = "dlaudwp90@gmail.com"; // 관리자 이메일
 
 export async function middleware(request) {
   const ua = request.headers.get("user-agent") || "";
 
-  // 노션·소셜·검색엔진 봇은 OG 태그를 읽을 수 있게 통과 (기존 동작 유지)
+  // 봇(노션·검색엔진 등)은 OG 태그 읽도록 통과
   const isCrawler =
     /Notion|Slackbot|Twitterbot|facebookexternalhit|LinkedInBot|Googlebot|bingbot|crawler|spider/i.test(ua);
   if (isCrawler) return NextResponse.next();
@@ -36,9 +32,7 @@ export async function middleware(request) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     {
       cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
+        getAll() { return request.cookies.getAll(); },
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
           response = NextResponse.next({ request });
@@ -50,26 +44,45 @@ export async function middleware(request) {
     }
   );
 
-  // 세션 새로고침 + 현재 로그인 사용자 확인
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const { data: { user } } = await supabase.auth.getUser();
   const pathname = request.nextUrl.pathname;
 
-  // 로그인 안 했고 공개 경로도 아니면 → 로그인 화면으로
-  if (!user && !isPublic(pathname)) {
+  const redirectTo = (p) => {
     const url = request.nextUrl.clone();
-    url.pathname = "/login";
+    url.pathname = p;
     return NextResponse.redirect(url);
+  };
+
+  // 로그인 없이 접근 가능한 경로
+  const isPublicNoAuth =
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/signup") ||
+    pathname === "/og-image.png" ||
+    pathname === "/favicon.ico";
+
+  // ① 로그인 안 됨
+  if (!user) {
+    if (isPublicNoAuth) return response;
+    return redirectTo("/login");
   }
 
+  // 관리자 여부(최초 관리자 또는 is_admin) → 관리자는 자동 승인·항상 통과
+  const isAdmin = user.email === ADMIN_EMAIL || user.app_metadata?.is_admin === true;
+  const approved = user.app_metadata?.approved === true || isAdmin;
+
+  // ② 로그인 O, 승인 대기
+  if (!approved) {
+    if (pathname === "/pending") return response;   // 대기 화면만 허용
+    return redirectTo("/pending");
+  }
+
+  // ③ 승인 완료: 로그인/가입/대기 화면으로 오면 메인으로 보냄
+  if (pathname.startsWith("/login") || pathname.startsWith("/signup") || pathname === "/pending") {
+    return redirectTo("/");
+  }
   return response;
 }
 
 export const config = {
-  matcher: [
-    // Next.js 내부 경로·정적 파일 제외
-    "/((?!_next/static|_next/image|favicon.ico).*)",
-  ],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };
