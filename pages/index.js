@@ -345,8 +345,13 @@ export default function Home() {
   const router        = useRouter();
   // ── 로그인 사용자 이메일 (Clerk → Supabase 전환) ──
   const [email, setEmail] = useState("");
+  const [isAdmin, setIsAdmin] = useState(false);   // 현재 사용자가 관리자인지
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setEmail(data?.user?.email || ""));
+    supabase.auth.getUser().then(({ data }) => {
+      const u = data?.user;
+      setEmail(u?.email || "");
+      setIsAdmin(u?.email === "dlaudwp90@gmail.com" || u?.app_metadata?.is_admin === true);
+    });
   }, []);
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -826,6 +831,9 @@ export default function Home() {
 
   return (
     <>
+      {isAdmin && (
+        <a href="/admin" className="admin-fab" title="관리자 페이지">⚙ 관리자</a>
+      )}
       <Head>
         <title>Guardian & Angel IP — 문서 통합 검색</title>
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
@@ -1907,6 +1915,17 @@ export default function Home() {
         .user-icon-btn:hover { background:#f1f5f9; }
         .dark .user-icon-btn { border-color:#475569; }
         .dark .user-icon-btn:hover { background:#1e293b; }
+        /* 관리자 전용 상단 고정 버튼 */
+        .admin-fab {
+          position: fixed; top: 12px; left: 12px; z-index: 9999;
+          display: inline-flex; align-items: center; gap: 4px;
+          font-size: 12px; font-weight: 700; text-decoration: none; font-family: inherit;
+          color: #13274F; background: #eef2ff; border: 1.5px solid #c7d2fe;
+          border-radius: 999px; padding: 6px 12px; box-shadow: 0 2px 8px rgba(19,39,79,.12); cursor: pointer;
+        }
+        .admin-fab:hover { background: #e0e7ff; }
+        .dark .admin-fab { color:#c7d2fe; background:#1e293b; border-color:#475569; }
+        .dark .admin-fab:hover { background:#334155; }
 
         .logo-area { margin-top:10vh; margin-bottom:32px; text-align:center; transition:margin .3s; }
         .searched .logo-area { margin-top:24px; margin-bottom:16px; }
