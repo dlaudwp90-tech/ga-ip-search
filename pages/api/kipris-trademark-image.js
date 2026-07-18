@@ -6,20 +6,35 @@
 //      · 베이스/인증이 특이: /kipo-api/kipi/ + ServiceKey  (다른 서비스는 /openapi/rest/ + accessKey)
 //      · 키가 어느 쪽에 먹는지 확실치 않아 kipo-api 먼저 → 실패 시 openapi/rest 폴백
 //  - 응답: item 1개 안에  path(큰이미지경로=고해상도)  +  smallPath(작은경로)
-//  - ★ 호출 최소화: 결과를 Redis(tm-img:<출원번호>)에 캐시 → 같은 상표 재조회 시 KIPRIS 0회 ★
+//  - ★ 호출 최소화: 결과를 Supabase(app_cache)에 캐시 → 같은 상표 재조회 시 KIPRIS 0회 ★
 //    (이미지 표시는 /api/kipris-image 프록시 경유)
 //
 //  사용:  /api/kipris-trademark-image?app=<출원번호>   → { large, small }
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function redis(url, token, commands) {
-  const r = await fetch(`${url}/pipeline`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify(commands),
-  });
-  if (!r.ok) throw new Error("redis " + r.status);
-  return r.json();
+// ── Supabase app_cache 헬퍼 (이미지 캐시 저장/조회) ──
+const SB_URL = (process.env.SUPABASE_URL || "").trim().replace(/\/+$/, "").replace(/\/rest\/v1$/, "");
+const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+async function cacheGet(key) {
+  if (!SB_URL || !SB_KEY) return null;
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/app_cache?key=eq.${encodeURIComponent(key)}&select=value`, {
+      headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
+    });
+    if (!r.ok) return null;
+    const j = await r.json();
+    return j && j[0] ? j[0].value : null;   // jsonb → 이미 파싱된 값
+  } catch { return null; }
+}
+async function cacheSet(key, value) {
+  if (!SB_URL || !SB_KEY) return;
+  try {
+    await fetch(`${SB_URL}/rest/v1/app_cache?on_conflict=key`, {
+      method: "POST",
+      headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal" },
+      body: JSON.stringify([{ key, value, updated_at: new Date().toISOString() }]),
+    });
+  } catch {}
 }
 
 export default async function handler(req, res) {
@@ -27,19 +42,14 @@ export default async function handler(req, res) {
   if (!/^\d{10,13}$/.test(app)) return res.status(400).json({ error: "bad app", large: "", small: "" });
 
   const KEY = process.env.KIPRIS_ACCESS_KEY;
-  const R_URL = process.env.UPSTASH_REDIS_REST_URL;
-  const R_TOK = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!KEY) return res.status(500).json({ error: "no key", large: "", small: "" });
 
-  const cacheKey = `tm-img:${app}`;
+  const cacheKey = `tm_img_${app}`;
 
   // 1) 캐시 확인
-  if (R_URL && R_TOK) {
-    try {
-      const j = await redis(R_URL, R_TOK, [["GET", cacheKey]]);
-      const raw = j?.[0]?.result;
-      if (raw) { const o = JSON.parse(raw); return res.status(200).json({ ...o, cached: true }); }
-    } catch {}
+  {
+    const cached = await cacheGet(cacheKey);
+    if (cached && (cached.large || cached.small)) return res.status(200).json({ ...cached, cached: true });
   }
 
   // XML 단일 태그 추출
@@ -66,9 +76,7 @@ export default async function handler(req, res) {
     }
 
     // 이미지가 있을 때만 캐시(인증 실패/일시오류로 빈 결과를 영구 캐시하지 않도록)
-    if (img && R_URL && R_TOK) {
-      try { await redis(R_URL, R_TOK, [["SET", cacheKey, JSON.stringify(img)]]); } catch {}
-    }
+    if (img) { await cacheSet(cacheKey, img); }
     return res.status(200).json({ ...(img || { large: "", small: "" }), via, codes });
   } catch (e) {
     return res.status(502).json({ error: e.message, large: "", small: "" });
