@@ -3,7 +3,7 @@
 // 【연차/갱신 관리 · 전체 포트폴리오 페이지 v3】
 //
 //  - 김수산 대리인의 등록 상표/디자인을 한눈에 보고 연차/갱신 마감을 관리하는 화면.
-//  - ★ 데이터는 Redis 캐시(renewals:data)에서만 읽음 → KIPRIS 호출 0회 ★
+//  - ★ 데이터는 Supabase 캐시(app_cache)에서만 읽음 → KIPRIS 호출 0회 ★
 //  - v3 추가: 썸네일 크게(130px), 명칭 클릭 시 '바텀시트'로 상세정보(큰 이미지 + 출원/등록/존속/연차 등).
 //
 //  ⚠ 수정 주의: getServerSideProps 의 Redis 읽기(환경변수/키 이름)는 review.js 와 동일하게.
@@ -11,30 +11,28 @@
 
 import { useState, useMemo, useEffect } from "react";
 
-// ── Redis(pipeline) 읽기 — review.js 와 동일 방식 ──
-async function redisGet(key) {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return null;
+// ── Supabase app_cache 읽기 (jsonb → 이미 배열/객체로 반환) ──
+async function sbGetCache(key) {
+  const url = (process.env.SUPABASE_URL || "").trim().replace(/\/+$/, "").replace(/\/rest\/v1$/, "");
+  const skey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !skey) return null;
   try {
-    const r = await fetch(`${url}/pipeline`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify([["GET", key]]),
+    const r = await fetch(`${url}/rest/v1/app_cache?key=eq.${encodeURIComponent(key)}&select=value`, {
+      headers: { apikey: skey, Authorization: `Bearer ${skey}` },
     });
     if (!r.ok) return null;
     const j = await r.json();
-    return j?.[0]?.result ?? null;
+    return j && j[0] ? j[0].value : null;
   } catch { return null; }
 }
 
 export async function getServerSideProps() {
   let data = [], meta = null;
   try {
-    const rawData = await redisGet("renewals:data");
-    if (rawData) data = JSON.parse(rawData);
-    const rawMeta = await redisGet("renewals:meta");
-    if (rawMeta) meta = JSON.parse(rawMeta);
+    const d = await sbGetCache("renewals_data");
+    if (Array.isArray(d)) data = d;
+    const m = await sbGetCache("renewals_meta");
+    if (m) meta = m;
   } catch {}
 
   const today = new Date(); today.setHours(0, 0, 0, 0);
