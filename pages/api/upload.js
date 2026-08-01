@@ -1,3 +1,19 @@
+// ============================================================================
+// pages/api/upload.js  —  파일 업로드(R2) + 노션 '파일다운링크' 갱신 API
+// ----------------------------------------------------------------------------
+// [액션]
+//   check   : 폴더명(=문서 제목)에 해당하는 노션 페이지가 있는지 확인
+//   presign : R2 업로드용 임시 주소 발급
+//   notify  : 업로드 완료 → 노션 '파일다운링크'에 (파일명)URL 추가
+//   delete  : R2에서 영구 삭제 + 노션 링크 제거
+//   list    : 한 폴더의 파일 목록 (이름·주소·크기·업로드시각)
+//   dates   : 여러 폴더의 '파일별 업로드 시각'만 한 번에 조회  ← 카드 파일 날짜 정렬용
+//
+// ⚠ 수정 주의
+//   · 노션 '파일다운링크'는 (파일명)URL 형식 한 줄씩입니다. 형식을 바꾸면 화면 파싱이 깨집니다.
+//   · R2 폴더명은 예전 파일은 '문서 제목', 최근 업로드는 '노션 pageId'입니다.
+//     그래서 dates 액션은 폴더를 여러 개 한꺼번에 받도록 되어 있습니다.
+// ============================================================================
 import { S3Client, PutObjectCommand, DeleteObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
@@ -106,7 +122,7 @@ async function removeFileLink(pageId, urlToRemove) {
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
-  const { action, fileName, contentType, folder, publicUrl, key, pageId } = req.body;
+  const { action, fileName, contentType, folder, folders, publicUrl, key, pageId } = req.body;
 
   if (action === "check") {
     const pageId = await getNotionPageId(folder);
@@ -164,6 +180,8 @@ export default async function handler(req, res) {
         name: obj.Key.split("/").pop(),
         url: `${process.env.R2_PUBLIC_URL}/${obj.Key}`,
         size: obj.Size,
+        // 업로드 시각(R2가 기록한 마지막 수정 시각) — 화면에서 날짜별 정렬·구분선에 사용
+        lastModified: obj.LastModified ? new Date(obj.LastModified).toISOString() : null,
       }));
       return res.status(200).json({ files });
     } catch (err) {
@@ -171,5 +189,37 @@ export default async function handler(req, res) {
     }
   }
 
-  return res.status(400).json({ error: "action 필요 (check | presign | notify | delete | list)" });
+  // ── dates: 여러 폴더의 '파일별 업로드 시각'을 한 번에 조회 ──
+  //   요청: { action:"dates", folders:["폴더1","폴더2", ...] }
+  //   응답: { dates: { "폴더1/파일명.pdf": "2026-04-22T05:11:03.000Z", ... } }
+  //   화면(index.js)이 카드의 파일들을 날짜순으로 정렬하고 날짜 구분선을 그리는 데 씁니다.
+  //   ⚠ 폴더 하나당 R2 목록조회 1회 → 한 번에 최대 80개 폴더로 제한.
+  if (action === "dates") {
+    try {
+      const list = (Array.isArray(folders) ? folders : [folder])
+        .filter((f) => typeof f === "string" && f.length > 0)
+        .slice(0, 80);
+      const out = {};
+      await Promise.all(
+        list.map(async (f) => {
+          try {
+            const data = await s3.send(new ListObjectsV2Command({
+              Bucket: process.env.R2_BUCKET_NAME,
+              Prefix: `${f}/`,
+            }));
+            (data.Contents || []).forEach((obj) => {
+              if (obj.LastModified) out[obj.Key] = new Date(obj.LastModified).toISOString();
+            });
+          } catch {
+            // 폴더 하나가 실패해도 나머지는 정상 반환 (조용히 건너뜀)
+          }
+        })
+      );
+      return res.status(200).json({ dates: out });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
+  return res.status(400).json({ error: "action 필요 (check | presign | notify | delete | list | dates)" });
 }
