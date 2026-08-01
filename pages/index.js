@@ -1508,14 +1508,19 @@ export default function Home() {
                               )}
                               {rest.length > 0 && (
                                 <>
-                                  <div style={{ overflow:"hidden",
-                                    maxHeight: mExpanded ? `${restFile * 44 + restSep * 30}px` : "0px",
+                                  {/* 펼침 영역 — 파일명이 두 줄로 넘어가도 잘리지 않도록
+                                      높이를 px로 계산하지 않고 '내용 높이'(grid 0fr→1fr)로 애니메이션합니다.
+                                      ⚠ 안쪽 div의 minHeight:0 / overflow:hidden 을 지우면 접기가 안 됩니다. */}
+                                  <div style={{ display:"grid",
+                                    gridTemplateRows: mExpanded ? "1fr" : "0fr",
                                     opacity: mExpanded ? 1 : 0,
-                                    transition: "max-height 0.55s cubic-bezier(0.4,0,0.2,1), opacity 0.4s ease" }}>
-                                    {rest.map((r, k) => r.kind === "sep"
-                                      ? <FileDateSep key={`s${k}`} day={r.day} dark={dark} />
-                                      : <div key={`f${k}`} style={{ paddingTop:4 }}>{drawFile(r)}</div>
-                                    )}
+                                    transition: "grid-template-rows 0.55s cubic-bezier(0.4,0,0.2,1), opacity 0.4s ease" }}>
+                                    <div style={{ minHeight:0, overflow:"hidden" }}>
+                                      {rest.map((r, k) => r.kind === "sep"
+                                        ? <FileDateSep key={`s${k}`} day={r.day} dark={dark} />
+                                        : <div key={`f${k}`} style={{ paddingTop:4 }}>{drawFile(r)}</div>
+                                      )}
+                                    </div>
                                   </div>
                                   <button className="expand-btn"
                                     style={{ marginTop:4, transition:"all 0.3s ease" }}
@@ -1888,14 +1893,17 @@ export default function Home() {
                             )}
                             {rest.length>0&&(
                               <>
-                                <div style={{overflow:"hidden",
-                                  maxHeight:pcExpanded?`${restFile*28 + restSep*26}px`:"0px",
+                                {/* 펼침 영역 — 내용 높이만큼 자동으로 펼쳐짐 (px 계산 X) */}
+                                <div style={{display:"grid",
+                                  gridTemplateRows:pcExpanded?"1fr":"0fr",
                                   opacity:pcExpanded?1:0,
-                                  transition:"max-height 0.55s cubic-bezier(0.4,0,0.2,1),opacity 0.4s ease"}}>
-                                  {rest.map((r,k)=> r.kind==="sep"
-                                    ? <FileDateSep key={`s${k}`} day={r.day} dark={dark} small />
-                                    : <div key={`f${k}`}>{drawFile(r,{marginTop:3})}</div>
-                                  )}
+                                  transition:"grid-template-rows 0.55s cubic-bezier(0.4,0,0.2,1),opacity 0.4s ease"}}>
+                                  <div style={{minHeight:0,overflow:"hidden"}}>
+                                    {rest.map((r,k)=> r.kind==="sep"
+                                      ? <FileDateSep key={`s${k}`} day={r.day} dark={dark} small />
+                                      : <div key={`f${k}`}>{drawFile(r,{marginTop:3})}</div>
+                                    )}
+                                  </div>
                                 </div>
                                 <button className="expand-btn"
                                   style={{marginTop:2,fontSize:10,padding:"2px 6px",transition:"all 0.3s ease"}}
