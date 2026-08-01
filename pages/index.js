@@ -108,6 +108,81 @@ const notionTextStyle = (info, dark) => {
 // row 의 특정 필드(ck 로 판별)·특정 줄(li)의 색/볼드 style 반환
 const lineStyle = (row, ck, li, dark) =>
   notionTextStyle(row[(fieldFromCk(ck) || "") + "Styles"]?.[li], dark);
+// row 의 특정 필드(ck 로 판별)·특정 줄(li)의 '조각별' 색 정보 배열
+const segsOf = (row, ck, li) => row[(fieldFromCk(ck) || "") + "Segs"]?.[li];
+
+// ── 한 줄을 '조각별 색'으로 그리는 도우미 ────────────────────────────────
+//   노션은 한 줄 안에서도 글자마다 색이 다를 수 있습니다.
+//   예) "1차OA - "(파랑) + "기간연장"(빨강)  →  segs = [{t,c:"blue"},{t,c:"red"}]
+//   ⚠ 예전에는 줄마다 색을 하나만 받아서 두 번째 색이 통째로 사라졌습니다.
+//   빈 줄이면 공백문자(&nbsp;)를 넣어 노션의 '빈 줄 간격'이 화면에서도 그대로 유지됩니다.
+function LineSegs({ segs, line, dark }) {
+  const raw = line == null ? "" : String(line);
+  const marked = raw.startsWith("  ");   // 공백 2칸 = 복사버튼 제외 마커 → 표시할 땐 제거
+  let parts = (Array.isArray(segs) && segs.length)
+    ? segs
+    : (raw.trim() ? [{ t: raw, c: null, b: false }] : []);
+  if (marked && parts.length) {
+    parts = parts.map((s, k) => (k === 0 ? { ...s, t: String(s.t).replace(/^ {2}/, "") } : s));
+  }
+  if (!parts.length) return <>{"\u00A0"}</>;   // 빈 줄 — 높이 유지
+  return <>{parts.map((s, k) => <span key={k} style={notionTextStyle(s, dark)}>{s.t}</span>)}</>;
+}
+
+// ── 파일 '업로드 날짜' 도우미 ────────────────────────────────────────────
+//   노션 '파일다운링크'에는 날짜가 없어서, R2(저장소)에 기록된 파일 시각을 씁니다.
+//   링크 형태: https://pub-xxxx.r2.dev/폴더명/파일명  →  키 = "폴더명/파일명"
+const keyFromUrl = (u) => {
+  const raw = String(u || "").split("/").slice(3).join("/");
+  try { return decodeURIComponent(raw); } catch { return raw; }
+};
+const folderFromUrl = (u) => {
+  const k = keyFromUrl(u);
+  const i = k.lastIndexOf("/");
+  return i > 0 ? k.slice(0, i) : "";
+};
+// UTC 시각 → 한국 날짜(YYYY-MM-DD)
+const dayKST = (iso) => {
+  if (!iso) return "";
+  try { return new Date(iso).toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" }); }
+  catch { return String(iso).slice(0, 10); }
+};
+const fmtDay = (day) => (day ? day.replace(/-/g, ".") : "날짜 미확인");
+
+// 파일 목록을 '업로드 날짜(최신순)'로 정렬하고 날짜 구분선을 끼워 넣은 평평한 목록을 만듭니다.
+//   반환: [{kind:"sep", day}, {kind:"file", url, oi, day}, ...]
+//   oi = 원래 목록에서의 순번 → 파일 팝업이 이 번호로 파일을 찾으므로 반드시 유지할 것.
+//   ⚠ 오래된 것부터 보이게 바꾸려면 아래 sort 의 b.iso / a.iso 순서를 서로 바꾸세요.
+const buildFileRows = (links, dates) => {
+  const items = links.map((url, oi) => {
+    const iso = (dates && dates[keyFromUrl(url)]) || null;
+    return { url, oi, iso, day: dayKST(iso) };
+  });
+  items.sort((a, b) => {
+    if (a.iso && b.iso) return b.iso.localeCompare(a.iso);  // 최신 날짜가 위로
+    if (a.iso) return -1;                                    // 날짜 아는 파일이 먼저
+    if (b.iso) return 1;
+    return a.oi - b.oi;
+  });
+  const rows = [];
+  let cur = null;
+  items.forEach((it) => {
+    if (it.day !== cur) { rows.push({ kind: "sep", day: it.day }); cur = it.day; }
+    rows.push({ kind: "file", ...it });
+  });
+  return rows;
+};
+
+// 파일 목록 안의 날짜 구분선 (업로드 날짜가 바뀔 때마다 표시)
+function FileDateSep({ day, dark, small }) {
+  return (
+    <div style={{ display:"flex", alignItems:"center", gap:6, margin: small ? "4px 0 1px" : "6px 0 2px" }}>
+      <span style={{ fontSize: small ? 9 : 10, fontWeight:700, whiteSpace:"nowrap",
+        color: dark ? "#64748b" : "#9ca3af" }}>{fmtDay(day)}</span>
+      <span style={{ flex:1, height:1, background: dark ? "#334155" : "#e5e9f5" }} />
+    </div>
+  );
+}
 function renderSingleLine(text) {
   if (!text) return "—";
   return text.split("\n")[0];
@@ -317,6 +392,8 @@ export default function Home() {
   const [popup,        setPopup]        = useState(null);
   const [copied,       setCopied]       = useState({});
   const [filePopup,    setFilePopup]    = useState(null);
+  // 파일 업로드 날짜 (R2 기준) — { "폴더명/파일명": "2026-04-22T05:11:03.000Z" }
+  const [fileDates,    setFileDates]    = useState({});
   const [popupPos,     setPopupPos]     = useState({ x: 0, y: 0 });
   const [downloading,  setDownloading]  = useState({});
   const [tableVisible, setTableVisible] = useState(false);
@@ -340,11 +417,18 @@ export default function Home() {
   const [dbOptions, setDbOptions] = useState({ statusGroups: [], docWorkStateGroups: [] });
   const toggleUploadPanel = (pageId) => setUploadPanels(p => ({ ...p, [pageId]: { open: !p[pageId]?.open } }));
   // 업로드/삭제 후 해당 카드의 파일 목록(fileLinks)을 즉시 갱신 (낙관적 업데이트)
-  const updateRowFiles = (pid, urls) => setResults(prev => Array.isArray(prev) ? prev.map(r => r.pageId === pid ? { ...r, fileLinks: urls.join("\n") } : r) : prev);
+  const updateRowFiles = (pid, urls) => {
+    // 업로드/삭제 직후에는 그 폴더의 날짜 정보를 다시 받아오도록 캐시를 비웁니다.
+    urls.forEach((u) => fileDatesAsked.current.delete(folderFromUrl(u)));
+    fileDatesAsked.current.delete(pid);
+    setResults(prev => Array.isArray(prev) ? prev.map(r => r.pageId === pid ? { ...r, fileLinks: urls.join("\n") } : r) : prev);
+  };
 
   const toggleRow = (idx) => setExpandedRows(p => ({ ...p, [idx]: !p[idx] }));
   const inputRef      = useRef(null);
   const filePopupRef  = useRef(null);
+  // 이미 날짜를 조회한 R2 폴더 목록 (같은 폴더를 폴링 때마다 다시 부르지 않도록)
+  const fileDatesAsked = useRef(new Set());
   const router        = useRouter();
   // ── 로그인 사용자 이메일 (Clerk → Supabase 전환) ──
   const [email, setEmail] = useState("");
@@ -793,6 +877,34 @@ export default function Home() {
       setCommentPanels(prev => ({ ...prev, [pageId]: { ...prev[pageId], saving: false } }));
     }
   };
+
+  // ── 카드 파일들의 '업로드 날짜' 불러오기 ──
+  //   노션에는 업로드 날짜가 없어서 R2(저장소)에 기록된 파일 시각을 가져옵니다.
+  //   폴더 단위로 '한 번만' 조회하고 기억해 둡니다 → 10초 폴링마다 다시 부르지 않음.
+  //   날짜를 못 받아와도 파일 목록은 그대로 보입니다(“날짜 미확인”으로 묶임).
+  useEffect(() => {
+    if (!Array.isArray(results) || results.length === 0) return;
+    const need = [];
+    results.forEach((r) => {
+      (r.fileLinks || "").split("\n").filter(Boolean).forEach((u) => {
+        const f = folderFromUrl(u);
+        if (f && !fileDatesAsked.current.has(f) && !need.includes(f)) need.push(f);
+      });
+    });
+    if (!need.length) return;
+    const batch = need.slice(0, 80);            // 한 번에 최대 80개 폴더
+    batch.forEach((f) => fileDatesAsked.current.add(f));
+    (async () => {
+      try {
+        const res = await fetch("/api/upload", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "dates", folders: batch }),
+        });
+        const d = await res.json();
+        if (d && d.dates) setFileDates((prev) => ({ ...prev, ...d.dates }));
+      } catch { /* 실패해도 화면은 정상 동작 */ }
+    })();
+  }, [results]);
 
   // ── 더보기: 표시개수 +25 후 그만큼 다시 불러옴 ──
   const loadMore = async () => {
@@ -1269,7 +1381,7 @@ export default function Home() {
                         {/* Row2: 📄 제목 */}
                         <div className="m-card-top">
                           <span className="m-card-icon">📄</span>
-                          <span className="m-card-title" onClick={e=>handleTitleClick(e,row.url)} style={notionTextStyle(row.titleStyle,dark)}>{renderSingleLine(row.title)}</span>
+                          <span className="m-card-title" onClick={e=>handleTitleClick(e,row.url)}><LineSegs segs={row.titleSegs?.[0]} line={(row.title||"").split("\n")[0]} dark={dark} /></span>
                         </div>
                         {/* Row3: 상태/서류작업 배지 — 제목 아래(PC와 동일). 유형 배지는 위 Row1로 이동 */}
                         {(row.statusItem||row.docWorkStatusItem)&&(
@@ -1289,7 +1401,7 @@ export default function Home() {
                                     const ck=`${i}-mn-${li}`;
                                     return (
                                     <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
-                                      <span className="m-info-item" style={lineStyle(row,ck,li,dark)}>{displayLine(line)}</span>
+                                      <span className="m-info-item"><LineSegs segs={segsOf(row,ck,li)} line={line} dark={dark} /></span>
                                       {shouldCopyLine(line) && <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
                                       {(() => { const ex = extractCopyExtras(line, fieldFromCk(ck));
                                         const nk = `${ck}-nm`, yk = `${ck}-y`, pk = `${ck}-p`;
@@ -1313,7 +1425,7 @@ export default function Home() {
                                     const ck=`${i}-mo-${li}`;
                                     return (
                                     <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
-                                      <span className="m-info-item" style={lineStyle(row,ck,li,dark)}>{displayLine(line)}</span>
+                                      <span className="m-info-item"><LineSegs segs={segsOf(row,ck,li)} line={line} dark={dark} /></span>
                                       {shouldCopyLine(line) && <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
                                       {(() => { const ex = extractCopyExtras(line, fieldFromCk(ck));
                                         const nk = `${ck}-nm`, yk = `${ck}-y`, pk = `${ck}-p`;
@@ -1337,7 +1449,7 @@ export default function Home() {
                                     const ck=`${i}-mc-${li}`;
                                     return (
                                     <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
-                                      <span className="m-info-item" style={lineStyle(row,ck,li,dark)}>{displayLine(line)}</span>
+                                      <span className="m-info-item"><LineSegs segs={segsOf(row,ck,li)} line={line} dark={dark} /></span>
                                       {shouldCopyLine(line) && <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
                                       {(() => { const ex = extractCopyExtras(line, fieldFromCk(ck));
                                         const nk = `${ck}-nm`, yk = `${ck}-y`, pk = `${ck}-p`;
@@ -1355,69 +1467,60 @@ export default function Home() {
                             )}
                           </div>
                         )}
-                        {/* 파일 - 팝업 포함 */}
+                        {/* 파일 — 업로드 날짜(최신순) 정렬 + 날짜별 구분선 + 팝업 */}
                         {row.fileLinks&&(()=>{
                           const mFiles = row.fileLinks.split("\n").filter(Boolean);
-                          const mLimit = 1;
+                          // rows = [{kind:"sep",day}, {kind:"file",url,oi,day}, ...]
+                          const fRows = buildFileRows(mFiles, fileDates);
+                          // 접힘 상태에서는 '첫 날짜 구분선 + 첫 파일'까지만 보여줌
+                          const headEnd  = fRows.findIndex(r => r.kind === "file") + 1;
+                          const head     = fRows.slice(0, headEnd);
+                          const rest     = fRows.slice(headEnd);
+                          const restFile = rest.filter(r => r.kind === "file").length;
+                          const restSep  = rest.length - restFile;
                           const mExpanded = !!expandedRows[`m_${i}`];
-                          const mShow = mExpanded ? mFiles : mFiles.slice(0, mLimit);
+                          // 파일 한 줄 그리기 (oi = 원래 순번 → 팝업이 이 번호로 파일을 찾음)
+                          const drawFile = (r) => {
+                            const fn = decodeURIComponent(r.url.split("/").pop());
+                            const mpk = `m_${i}_${r.oi}`;
+                            const isOpen = filePopup === mpk;
+                            return (
+                              <span className={`m-file-link${isOpen?" active":""}`}
+                                style={{ cursor:"pointer", userSelect:"none", display:"inline-block" }}
+                                onMouseDown={e => {
+                                  e.stopPropagation();
+                                  if (isOpen) { setFilePopup(null); return; }
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  const x = Math.min(e.clientX, window.innerWidth - 160);
+                                  const y = rect.bottom + 4;
+                                  setPopupPos({ x, y });
+                                  setFilePopup(mpk);
+                                }}>
+                                📄 {fn} ▾
+                              </span>
+                            );
+                          };
                           return (
                             <div className="m-card-files">
-                              {mFiles.slice(0, mLimit).map((link, j) => {
-                                const fn = decodeURIComponent(link.split("/").pop());
-                                const mpk = `m_${i}_${j}`;
-                                const isOpen = filePopup === mpk;
-                                return (
-                                  <div key={j} style={{ position:"relative" }}>
-                                    <span className={`m-file-link${isOpen?" active":""}`}
-                                      style={{ cursor:"pointer", userSelect:"none", display:"inline-block" }}
-                                      onMouseDown={e => {
-                                        e.stopPropagation();
-                                        if (isOpen) { setFilePopup(null); return; }
-                                        const rect = e.currentTarget.getBoundingClientRect();
-                                        const x = Math.min(e.clientX, window.innerWidth - 160);
-                                        const y = rect.bottom + 4;
-                                        setPopupPos({ x, y });
-                                        setFilePopup(mpk);
-                                      }}>
-                                      📄 {fn} ▾
-                                    </span>
-                                  </div>
-                                );
-                              })}
-                              {mFiles.length > mLimit && (
+                              {head.map((r, k) => r.kind === "sep"
+                                ? <FileDateSep key={`s${k}`} day={r.day} dark={dark} />
+                                : <div key={`f${k}`} style={{ position:"relative" }}>{drawFile(r)}</div>
+                              )}
+                              {rest.length > 0 && (
                                 <>
                                   <div style={{ overflow:"hidden",
-                                    maxHeight: mExpanded ? `${(mFiles.length - mLimit) * 44}px` : "0px",
+                                    maxHeight: mExpanded ? `${restFile * 44 + restSep * 30}px` : "0px",
                                     opacity: mExpanded ? 1 : 0,
                                     transition: "max-height 0.55s cubic-bezier(0.4,0,0.2,1), opacity 0.4s ease" }}>
-                                    {mFiles.slice(mLimit).map((link, j) => {
-                                      const fn = decodeURIComponent(link.split("/").pop());
-                                      const mpk = `m_${i}_${j+mLimit}`;
-                                      const isOpen = filePopup === mpk;
-                                      return (
-                                        <div key={j} style={{ paddingTop:4 }}>
-                                          <span className={`m-file-link${isOpen?" active":""}`}
-                                            style={{ cursor:"pointer", userSelect:"none", display:"inline-block" }}
-                                            onMouseDown={e => {
-                                              e.stopPropagation();
-                                              if (isOpen) { setFilePopup(null); return; }
-                                              const rect = e.currentTarget.getBoundingClientRect();
-                                              const x = Math.min(e.clientX, window.innerWidth - 160);
-                                              const y = rect.bottom + 4;
-                                              setPopupPos({ x, y });
-                                              setFilePopup(mpk);
-                                            }}>
-                                            📄 {fn} ▾
-                                          </span>
-                                        </div>
-                                      );
-                                    })}
+                                    {rest.map((r, k) => r.kind === "sep"
+                                      ? <FileDateSep key={`s${k}`} day={r.day} dark={dark} />
+                                      : <div key={`f${k}`} style={{ paddingTop:4 }}>{drawFile(r)}</div>
+                                    )}
                                   </div>
                                   <button className="expand-btn"
                                     style={{ marginTop:4, transition:"all 0.3s ease" }}
                                     onClick={e => { e.stopPropagation(); setExpandedRows(p => ({ ...p, [`m_${i}`]: !p[`m_${i}`] })); }}>
-                                    {mExpanded ? "↑ 접기" : `+${mFiles.length - mLimit} 파일더보기`}
+                                    {mExpanded ? "↑ 접기" : `+${restFile} 파일더보기`}
                                   </button>
                                 </>
                               )}
@@ -1571,9 +1674,8 @@ export default function Home() {
                         <span style={{fontSize:14,flexShrink:0}}>📄</span>
                         <span onClick={e=>handleTitleClick(e,row.url)}
                           style={{ fontSize:13, fontWeight:700, color:dark?"#93c5fd":"#1a3a8f",
-                            cursor:"pointer", textDecoration:"underline", lineHeight:1.3,
-                            ...notionTextStyle(row.titleStyle,dark) }}>
-                          {renderSingleLine(row.title)}
+                            cursor:"pointer", textDecoration:"underline", lineHeight:1.3 }}>
+                          <LineSegs segs={row.titleSegs?.[0]} line={(row.title||"").split("\n")[0]} dark={dark} />
                         </span>
                       </div>
                       {/* Row4: 상태/서류작업 배지 */}
@@ -1592,7 +1694,7 @@ export default function Home() {
                                 const ck=`${i}-pn-${li}`;
                                 return (
                                 <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
-                                  <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280",...lineStyle(row,ck,li,dark)}}>{displayLine(line)}</span>
+                                  <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280"}}><LineSegs segs={segsOf(row,ck,li)} line={line} dark={dark} /></span>
                                   {shouldCopyLine(line) && <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
                                   {(() => { const ex = extractCopyExtras(line, fieldFromCk(ck));
                                     const nk = `${ck}-nm`, yk = `${ck}-y`, pk = `${ck}-p`;
@@ -1616,7 +1718,7 @@ export default function Home() {
                                 const ck=`${i}-po-${li}`;
                                 return (
                                 <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
-                                  <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280",...lineStyle(row,ck,li,dark)}}>{displayLine(line)}</span>
+                                  <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280"}}><LineSegs segs={segsOf(row,ck,li)} line={line} dark={dark} /></span>
                                   {shouldCopyLine(line) && <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
                                   {(() => { const ex = extractCopyExtras(line, fieldFromCk(ck));
                                     const nk = `${ck}-nm`, yk = `${ck}-y`, pk = `${ck}-p`;
@@ -1640,7 +1742,7 @@ export default function Home() {
                                 const ck=`${i}-pc-${li}`;
                                 return (
                                 <div key={li} style={{display:"flex",alignItems:"center",gap:4}}>
-                                  <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280",...lineStyle(row,ck,li,dark)}}>{displayLine(line)}</span>
+                                  <span style={{fontSize:11,color:dark?"#94a3b8":"#6b7280"}}><LineSegs segs={segsOf(row,ck,li)} line={line} dark={dark} /></span>
                                   {shouldCopyLine(line) && <button className={`m-copy-btn${copied[ck]?" m-copied":""}`} onClick={e=>handleCopy(e,line,ck)}>{copied[ck]?"✓":"복사"}</button>}
                                   {(() => { const ex = extractCopyExtras(line, fieldFromCk(ck));
                                     const nk = `${ck}-nm`, yk = `${ck}-y`, pk = `${ck}-p`;
@@ -1748,60 +1850,57 @@ export default function Home() {
                         );
                       })()}
 
+                      {/* 파일 — 업로드 날짜(최신순) 정렬 + 날짜별 구분선 + 팝업 */}
                       {row.fileLinks&&(()=>{
-                        const pcFiles = row.fileLinks.split("\n").filter(Boolean);
-                        const pcLimit = 1;
+                        const pcFiles  = row.fileLinks.split("\n").filter(Boolean);
+                        const fRows    = buildFileRows(pcFiles, fileDates);
+                        const headEnd  = fRows.findIndex(r=>r.kind==="file")+1;
+                        const head     = fRows.slice(0,headEnd);
+                        const rest     = fRows.slice(headEnd);
+                        const restFile = rest.filter(r=>r.kind==="file").length;
+                        const restSep  = rest.length - restFile;
                         const pcKey = `pc_${i}`;
                         const pcExpanded = !!expandedRows[pcKey];
+                        // 파일 한 줄 그리기 (oi = 원래 순번 → 팝업이 이 번호로 파일을 찾음)
+                        const drawFile = (r, extra) => {
+                          const fn = decodeURIComponent(r.url.split("/").pop());
+                          const mpk = `pc_${i}_${r.oi}`;
+                          const isOpen = filePopup===mpk;
+                          return (
+                            <span className={`m-file-link${isOpen?" active":""}`}
+                              style={{cursor:"pointer",userSelect:"none",display:"inline-block",fontSize:11,...(extra||{})}}
+                              onMouseDown={e=>{
+                                e.stopPropagation();
+                                if(isOpen){setFilePopup(null);return;}
+                                const rect=e.currentTarget.getBoundingClientRect();
+                                const x=Math.min(e.clientX,window.innerWidth-160);
+                                const y=rect.bottom+4;
+                                setPopupPos({x,y});
+                                setFilePopup(mpk);
+                              }}>📄 {fn} ▾</span>
+                          );
+                        };
                         return (
                           <div style={{display:"flex",flexDirection:"column",gap:3}}>
-                            {pcFiles.slice(0,pcLimit).map((link,j)=>{
-                              const fn=decodeURIComponent(link.split("/").pop());
-                              const mpk=`pc_${i}_${j}`;
-                              const isOpen=filePopup===mpk;
-                              return (
-                                <span key={j} className={`m-file-link${isOpen?" active":""}`}
-                                  style={{cursor:"pointer",userSelect:"none",display:"inline-block",fontSize:11}}
-                                  onMouseDown={e=>{
-                                    e.stopPropagation();
-                                    if(isOpen){setFilePopup(null);return;}
-                                    const rect=e.currentTarget.getBoundingClientRect();
-                                    const x=Math.min(e.clientX,window.innerWidth-160);
-                                    const y=rect.bottom+4;
-                                    setPopupPos({x,y});
-                                    setFilePopup(mpk);
-                                  }}>📄 {fn} ▾</span>
-                              );
-                            })}
-                            {pcFiles.length>pcLimit&&(
+                            {head.map((r,k)=> r.kind==="sep"
+                              ? <FileDateSep key={`s${k}`} day={r.day} dark={dark} small />
+                              : <div key={`f${k}`}>{drawFile(r)}</div>
+                            )}
+                            {rest.length>0&&(
                               <>
                                 <div style={{overflow:"hidden",
-                                  maxHeight:pcExpanded?`${(pcFiles.length-pcLimit)*28}px`:"0px",
+                                  maxHeight:pcExpanded?`${restFile*28 + restSep*26}px`:"0px",
                                   opacity:pcExpanded?1:0,
                                   transition:"max-height 0.55s cubic-bezier(0.4,0,0.2,1),opacity 0.4s ease"}}>
-                                  {pcFiles.slice(pcLimit).map((link,j)=>{
-                                    const fn=decodeURIComponent(link.split("/").pop());
-                                    const mpk=`pc_${i}_${j+pcLimit}`;
-                                    const isOpen=filePopup===mpk;
-                                    return (
-                                      <span key={j} className={`m-file-link${isOpen?" active":""}`}
-                                        style={{cursor:"pointer",userSelect:"none",display:"inline-block",fontSize:11,marginTop:3}}
-                                        onMouseDown={e=>{
-                                          e.stopPropagation();
-                                          if(isOpen){setFilePopup(null);return;}
-                                          const rect=e.currentTarget.getBoundingClientRect();
-                                          const x=Math.min(e.clientX,window.innerWidth-160);
-                                          const y=rect.bottom+4;
-                                          setPopupPos({x,y});
-                                          setFilePopup(mpk);
-                                        }}>📄 {fn} ▾</span>
-                                    );
-                                  })}
+                                  {rest.map((r,k)=> r.kind==="sep"
+                                    ? <FileDateSep key={`s${k}`} day={r.day} dark={dark} small />
+                                    : <div key={`f${k}`}>{drawFile(r,{marginTop:3})}</div>
+                                  )}
                                 </div>
                                 <button className="expand-btn"
                                   style={{marginTop:2,fontSize:10,padding:"2px 6px",transition:"all 0.3s ease"}}
                                   onClick={e=>{e.stopPropagation();setExpandedRows(p=>({...p,[pcKey]:!p[pcKey]}));}}>
-                                  {pcExpanded?"↑ 접기":`+${pcFiles.length-pcLimit} 파일더보기`}
+                                  {pcExpanded?"↑ 접기":`+${restFile} 파일더보기`}
                                 </button>
                               </>
                             )}
